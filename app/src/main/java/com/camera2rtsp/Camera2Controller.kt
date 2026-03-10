@@ -25,20 +25,18 @@ class Camera2Controller {
     var currentBitrate   = 4000   // kbps
     var currentFps       = 30
 
-    // Thread dedicada para operações pesadas (stopStream/prepareVideo/startStream/switchCamera)
-    // Mantém a thread HTTP do NanoHTTPD livre — servidor nunca para de responder
-    // HandlerThread serializa os comandos: um de cada vez, sem race condition
+    // Thread dedicada para operações pesadas
     private val workerThread = HandlerThread("CameraWorker").also { it.start() }
     private val worker = Handler(workerThread.looper)
 
-    // Posta tarefa na worker thread e retorna imediatamente para a thread HTTP
-    private fun post(block: () -> Unit) = worker.post { runCatching(block).onFailure { Log.e(TAG, "Erro na worker", it) } }
+    private fun post(block: () -> Unit) =
+        worker.post { runCatching(block).onFailure { Log.e(TAG, "Erro na worker", it) } }
 
     fun updateSettings(params: Map<String, Any>) {
         val srv = server
         if (srv == null) { Log.w(TAG, "server nao inicializado"); return }
 
-        // ── Operações LEVES — só setam parâmetro no camera session, ok na thread HTTP ──
+        // ── Operações LEVES (executam na thread HTTP, retorno imediato) ──
 
         params["iso"]?.let {
             val iso = (it as Double).toInt()
@@ -54,9 +52,8 @@ class Camera2Controller {
             val ns = (it as Double).toLong()
             val minEv = srv.minExposure; val maxEv = srv.maxExposure
             val ratio = ((ns - 125_000L).toFloat() / (1_000_000_000L - 125_000L).toFloat()).coerceIn(0f, 1f)
-            val ev = (minEv + ratio * (maxEv - minEv)).toInt()
-            exposureLevel = ev
-            srv.setExposure(ev)
+            exposureLevel = (minEv + ratio * (maxEv - minEv)).toInt()
+            srv.setExposure(exposureLevel)
         }
 
         params["focus"]?.let {
@@ -94,7 +91,7 @@ class Camera2Controller {
             if (enable) srv.enableOpticalVideoStabilization()
         }
 
-        // Bitrate on-the-fly — também leve, sem restart
+        // Bitrate on-the-fly — não reinicia stream, ok na thread HTTP
         params["bitrate"]?.let {
             val br = (it as Double).toInt()
             currentBitrate = br
@@ -102,13 +99,11 @@ class Camera2Controller {
             Log.d(TAG, "Bitrate onFly -> ${br}kbps")
         }
 
-        // ── Operações PESADAS — postadas na worker thread, retornam imediatamente ──
-        // A thread HTTP responde {"status":"ok"} na hora; a aplicação acontece em background
+        // ── Operações PESADAS (worker thread, HTTP responde imediatamente) ──
 
         params["camera"]?.let { value ->
             val id = value as String
             currentCameraId = id
-            // switchCamera pode levar 200-800ms — worker thread
             post {
                 srv.switchCamera(id)
                 Log.d(TAG, "Camera -> $id")
@@ -125,18 +120,28 @@ class Camera2Controller {
             currentWidth   = w
             currentHeight  = h
             currentBitrate = br
-            // stopStream + prepareVideo + startStream — bloqueia por ~500ms — worker thread
+
             post {
                 val wasStreaming = srv.isStreaming
                 if (wasStreaming) srv.stopStream()
-                val ok = srv.prepareVideo(w, h, currentFps, br * 1024, 0)
-                if (wasStreaming && ok) srv.startStream()
-                Log.d(TAG, "Resolução -> ${w}x${h} @${br}kbps ok=$ok")
+
+                // stopStream() para AMBOS os encoders (vídeo + áudio).
+                // Por isso é obrigatório chamar prepareAudio() novamente junto
+                // com prepareVideo() — sem isso o AudioEncoder fica sem prepare
+                // e startStream() lança: IllegalStateException: AudioEncoder not prepared yet
+                val videoOk = srv.prepareVideo(w, h, currentFps, br * 1024, 0)
+                val audioOk = srv.prepareAudio(128 * 1024, 44100, true)
+
+                if (wasStreaming && videoOk && audioOk) {
+                    srv.startStream()
+                    Log.d(TAG, "Resolução aplicada -> ${w}x${h} @${br}kbps")
+                } else {
+                    Log.e(TAG, "Falha ao reaplicar stream: videoOk=$videoOk audioOk=$audioOk")
+                }
             }
         }
     }
 
-    // Libera a worker thread quando a Activity for destruída
     fun release() {
         workerThread.quitSafely()
     }
