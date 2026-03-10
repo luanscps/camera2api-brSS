@@ -52,4 +52,8 @@ dependencies {
     // Camera2
     implementation("androidx.camera:camera-camera2:1.3.0")
     implementation("androidx.camera:camera-lifecycle:1.3.0")
+    
+    // RootEncoder - Streaming RTSP/RTMP profissional
+    // Biblioteca completa para streaming H.264 com Camera2
+    implementation("com.github.pedroSG94.RootEncoder:library:2.4.5")
 }
