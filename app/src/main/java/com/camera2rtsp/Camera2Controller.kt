@@ -10,7 +10,7 @@ class Camera2Controller {
 
     var server: RtspServerCamera2? = null
 
-    // Estado atual (para /api/status)
+    // Estado atual — exposto para /api/status
     var currentCameraId  = "0"
     var exposureLevel    = 0
     var whiteBalanceMode = "auto"
@@ -18,10 +18,17 @@ class Camera2Controller {
     var zoomLevel        = 1.0f
     var lanternEnabled   = false
     var oisEnabled       = false
-    var currentWidth     = 1280
-    var currentHeight    = 720
-    var currentBitrate   = 2500   // kbps
-    var currentFps       = 30
+
+    // Configuração de vídeo
+    // Defaults ajustados com base no logcat:
+    //   - VQApply eleva bitrate mínimo de 2.5M para 3M no Exynos → usamos 4M para dar margem
+    //   - CBR não suportado no OMX.Exynos.AVC.Encoder, fica em VBR automaticamente
+    //   - 1080p é o sweet spot para H264/Exynos no Note10+ (menor latência que 4K)
+    //   - 4K funciona mas gera ~32MB bruto; para RTSP/IP usar 4K com bitrate ≥ 20Mbps
+    var currentWidth    = 1920
+    var currentHeight   = 1080
+    var currentBitrate  = 4000   // kbps — base segura acima do threshold do VQApply
+    var currentFps      = 30
 
     fun updateSettings(params: Map<String, Any>) {
         val srv = server
@@ -58,13 +65,8 @@ class Camera2Controller {
             // Foco
             params["focus"]?.let {
                 val dist = (it as Double).toFloat()
-                if (dist == 0f) {
-                    srv.enableAutoFocus()
-                    autoFocus = true
-                } else {
-                    srv.disableAutoFocus()
-                    autoFocus = false
-                }
+                if (dist == 0f) { srv.enableAutoFocus(); autoFocus = true }
+                else            { srv.disableAutoFocus(); autoFocus = false }
             }
 
             // Balanço de branco
@@ -86,7 +88,7 @@ class Camera2Controller {
                 Log.d(TAG, "Camera -> $currentCameraId")
             }
 
-            // Zoom (0.0 = 1x .. 1.0 = máximo)
+            // Zoom (0.0 = 1x .. 1.0 = máximo óptico)
             params["zoom"]?.let {
                 val z = (it as Double).toFloat().coerceIn(0f, 1f)
                 zoomLevel = z
@@ -102,22 +104,26 @@ class Camera2Controller {
                 Log.d(TAG, "Lanterna -> $enable")
             }
 
-            // Estabilização óptica / eletrônica
+            // OIS
             params["ois"]?.let {
                 val enable = it as Boolean
                 oisEnabled = enable
                 if (enable) srv.enableOpticalVideoStabilization()
-                else srv.enableOpticalVideoStabilization()  // toggle via mesma chamada; ajuste conforme API
                 Log.d(TAG, "OIS -> $enable")
             }
 
-            // Resolução: reconfigura vídeo em tempo real
+            // Resolução — mapeia para resoluções reais suportadas pelo Note10+ (camera-id=0)
+            // 720p  → 1280x720  @ 4000kbps  (H264/Exynos, baixa latência)
+            // 1080p → 1920x1080 @ 8000kbps  (H264/Exynos, sweet spot)
+            // 4k    → 3840x2160 @ 20000kbps (H264 no limite do Exynos;
+            //         para streaming puro prefira MJPEG que usa bitrate bruto ~32MB
+            //         e elimina artefatos de compressão temporal)
             params["resolution"]?.let {
-                val res = it as String  // "720p" | "1080p" | "4k"
+                val res = it as String
                 val (w, h, br) = when (res) {
-                    "4k"   -> Triple(3840, 2160, 20000)
-                    "1080p"-> Triple(1920, 1080, 8000)
-                    else   -> Triple(1280, 720,  2500)
+                    "4k"    -> Triple(3840, 2160, 20000)
+                    "1080p" -> Triple(1920, 1080, 8000)
+                    else    -> Triple(1280, 720,  4000)  // default 720p com 4Mbps (acima do threshold VQApply)
                 }
                 currentWidth   = w
                 currentHeight  = h
@@ -129,12 +135,12 @@ class Camera2Controller {
                 Log.d(TAG, "Resolução -> ${w}x${h} @${br}kbps")
             }
 
-            // Bitrate manual em kbps
+            // Bitrate manual em kbps — setVideoBitrateOnFly não requer restart do stream
             params["bitrate"]?.let {
                 val br = (it as Double).toInt()
                 currentBitrate = br
                 srv.setVideoBitrateOnFly(br * 1024)
-                Log.d(TAG, "Bitrate -> ${br}kbps")
+                Log.d(TAG, "Bitrate onFly -> ${br}kbps")
             }
 
         } catch (e: Exception) {

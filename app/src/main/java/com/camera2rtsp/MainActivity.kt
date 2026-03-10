@@ -2,6 +2,7 @@ package com.camera2rtsp
 
 import android.Manifest
 import android.content.pm.PackageManager
+import android.content.res.Configuration
 import android.os.Bundle
 import android.util.Log
 import android.view.TextureView
@@ -9,10 +10,15 @@ import android.widget.TextView
 import androidx.appcompat.app.AppCompatActivity
 import androidx.core.app.ActivityCompat
 import androidx.core.content.ContextCompat
+import androidx.lifecycle.lifecycleScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 import java.net.Inet4Address
 import java.net.NetworkInterface
 
 class MainActivity : AppCompatActivity() {
+
     private lateinit var rtspServer: RtspServer
     private lateinit var httpServer: WebControlServer
     private lateinit var cameraController: Camera2Controller
@@ -34,32 +40,47 @@ class MainActivity : AppCompatActivity() {
         else requestPermissions()
     }
 
+    // Chamado quando orientation/screenSize muda — como declaramos configChanges no Manifest,
+    // a Activity NÃO é destruída, apenas este método é chamado. O stream continua ininterrupto.
+    override fun onConfigurationChanged(newConfig: Configuration) {
+        super.onConfigurationChanged(newConfig)
+        Log.d("MainActivity", "onConfigurationChanged — stream mantido, sem restart")
+    }
+
     private fun initializeServers() {
-        try {
-            val ip = getLocalIpAddress()
+        // Roda em IO thread para não bloquear a main thread durante prepareVideo/openCamera
+        // Isso elimina o "Skipped 48 frames" que aparecia no logcat
+        lifecycleScope.launch(Dispatchers.IO) {
+            try {
+                val ip = getLocalIpAddress()
 
-            // 1. Criar o controlador (ainda sem referência ao server)
-            cameraController = Camera2Controller()
+                cameraController = Camera2Controller()
 
-            // 2. Criar e iniciar o RTSP server
-            //    Internamente ele injeta a referência em cameraController.server
-            rtspServer = RtspServer(this, cameraController)
-            rtspServer.attachTextureView(cameraPreview)
-            rtspServer.start(cameraPreview)
+                rtspServer = RtspServer(this@MainActivity, cameraController)
+                rtspServer.attachTextureView(cameraPreview)
+                rtspServer.start(cameraPreview)
 
-            // 3. Painel web — recebe o mesmo cameraController já ligado ao server
-            httpServer = WebControlServer(8080, cameraController)
-            httpServer.start()
+                httpServer = WebControlServer(8080, cameraController)
+                httpServer.start()
 
-            statusText.text = "📡 rtsp://$ip:8554/live\n🌐 http://$ip:8080"
-            rtspIndicator.text = "● RTSP :8554"
-            rtspIndicator.setTextColor(0xFF10b981.toInt())
+                val rtspUrl = "rtsp://$ip:8554/live"
+                val webUrl  = "http://$ip:8080"
 
-            Log.i("MainActivity", "RTSP : rtsp://$ip:8554/live")
-            Log.i("MainActivity", "Web  : http://$ip:8080")
-        } catch (e: Exception) {
-            Log.e("MainActivity", "Erro ao inicializar", e)
-            statusText.text = "❌ ${e.message}"
+                withContext(Dispatchers.Main) {
+                    statusText.text = "📡 $rtspUrl\n🌐 $webUrl"
+                    rtspIndicator.text = "● RTSP :8554"
+                    rtspIndicator.setTextColor(0xFF10b981.toInt())
+                }
+
+                Log.i("MainActivity", "RTSP : $rtspUrl")
+                Log.i("MainActivity", "Web  : $webUrl")
+
+            } catch (e: Exception) {
+                Log.e("MainActivity", "Erro ao inicializar", e)
+                withContext(Dispatchers.Main) {
+                    statusText.text = "❌ ${e.message}"
+                }
+            }
         }
     }
 
@@ -106,7 +127,7 @@ class MainActivity : AppCompatActivity() {
             grantResults.all { it == PackageManager.PERMISSION_GRANTED })
             initializeServers()
         else
-            statusText.text = "❌ Permissões negadas"
+            withContext@statusText.text = "❌ Permissões negadas"
     }
 
     override fun onDestroy() {

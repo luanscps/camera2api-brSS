@@ -30,7 +30,10 @@
         <activity
             android:name=".MainActivity"
             android:exported="true"
-            android:screenOrientation="fullSensor">
+            android:screenOrientation="fullSensor"
+            android:configChanges="orientation|screenSize|screenLayout|keyboardHidden|uiMode">
+            <!-- configChanges evita que o Android destrua/recrie a Activity na rotação,
+                 o que derrubava o RTSP server e congelava a tela por ~1.5s -->
             <intent-filter>
                 <action android:name="android.intent.action.MAIN" />
                 <category android:name="android.intent.category.LAUNCHER" />
