@@ -16,13 +16,10 @@ class RtspServer(
     private val TAG = "RtspServer"
     private val PORT = 8554
 
-    fun attachTextureView(tv: TextureView) {
-        tv.surfaceTextureListener = this
-    }
-
+    // Na versao 2.6.x o construtor recebe Context, nao TextureView
     fun start(tv: TextureView) {
         try {
-            server = RtspServerCamera2(tv, this, PORT)
+            server = RtspServerCamera2(context, this, PORT)
 
             val videoOk = server!!.prepareVideo(
                 1280, 720,
@@ -41,13 +38,16 @@ class RtspServer(
                 Log.i(TAG, "RTSP Server iniciado na porta $PORT")
             } else {
                 Log.e(TAG, "Falha ao preparar video=$videoOk audio=$audioOk")
-                // Tentar resolucao menor como fallback
                 val fallback = server!!.prepareVideo(640, 480, 30, 1200 * 1024, 0)
                 if (fallback) server!!.startStream()
             }
         } catch (e: Exception) {
             Log.e(TAG, "Erro ao iniciar RTSP", e)
         }
+    }
+
+    fun attachTextureView(tv: TextureView) {
+        tv.surfaceTextureListener = this
     }
 
     fun stop() {
