@@ -2,80 +2,93 @@ package com.camera2rtsp
 
 import android.hardware.camera2.CameraMetadata
 import android.util.Log
+import com.pedro.encoder.input.sources.video.Camera2Source
 import com.pedro.rtspserver.RtspServerCamera2
 
 /**
- * Ponte entre o WebControlServer e o RtspServerCamera2.
- * Todos os controles (ISO, exposição, foco, WB, câmera) são
- * aplicados diretamente na instância da biblioteca.
+ * Ponte entre o WebControlServer e a Camera2Source interna do RtspServerCamera2.
+ * Todos os controles são aplicados diretamente via videoSource da biblioteca.
  */
 class Camera2Controller {
 
     private val TAG = "Camera2Controller"
 
-    // Referência injetada pelo MainActivity após o server ser criado
+    // Referência injetada pelo RtspServer após server.start()
     var server: RtspServerCamera2? = null
 
     // Estado atual (para /api/status)
     var currentCameraId = "0"
-    var iso = 400
-    var exposureTime = 16666667L  // 1/60s em ns
-    var focusDistance = 0f
+    var exposureLevel = 0
     var whiteBalanceMode = "auto"
+    var autoFocus = true
+
+    private fun cam(): Camera2Source? {
+        val src = server?.videoSource
+        if (src !is Camera2Source) {
+            Log.w(TAG, "videoSource nao e Camera2Source, ignorando")
+            return null
+        }
+        return src
+    }
 
     fun updateSettings(params: Map<String, Any>) {
-        val srv = server
-        if (srv == null) {
-            Log.w(TAG, "server ainda nao inicializado, ignorando comando")
-            return
-        }
+        val camera = cam() ?: return
 
         try {
+            // ISO 50-3200 convertido para faixa EV -3..+3
             params["iso"]?.let {
-                iso = (it as Double).toInt()
-                srv.setExposure(iso)          // ISO via setExposure(isoValue)
-                Log.d(TAG, "ISO -> $iso")
+                val iso = (it as Double).toInt()
+                val ev = ((iso - 400) / 400.0).coerceIn(-3.0, 3.0).toInt()
+                exposureLevel = ev
+                camera.setExposure(ev)
+                Log.d(TAG, "ISO $iso -> EV $ev")
             }
 
+            // Exposicao em ns -> EV aproximado via log
             params["exposure"]?.let {
-                exposureTime = (it as Double).toLong()
-                // A biblioteca aceita exposure em nanossegundos via setExposure(ns)
-                // O segundo parâmetro é o tempo de exposição
-                srv.setExposure(iso, exposureTime)
-                Log.d(TAG, "Exposure -> $exposureTime ns")
+                val ns = (it as Double).toLong()
+                val ev = Math.log(ns / 16_666_667.0).toInt().coerceIn(-3, 3)
+                exposureLevel = ev
+                camera.setExposure(ev)
+                Log.d(TAG, "Exposure ${ns}ns -> EV $ev")
             }
 
+            // Foco: 0 = auto, >0 = desabilitar AF
             params["focus"]?.let {
-                focusDistance = (it as Double).toFloat()
-                if (focusDistance == 0f) {
-                    srv.enableAutoFocus()
+                val dist = (it as Double).toFloat()
+                if (dist == 0f) {
+                    camera.enableAutoFocus()
+                    autoFocus = true
                     Log.d(TAG, "Foco -> Auto")
                 } else {
-                    srv.setFocusDistance(focusDistance)
-                    Log.d(TAG, "Foco -> $focusDistance")
+                    camera.disableAutoFocus()
+                    autoFocus = false
+                    Log.d(TAG, "Foco -> Manual (AF desabilitado)")
                 }
             }
 
+            // Balanco de branco
             params["whiteBalance"]?.let {
                 whiteBalanceMode = it as String
                 val mode = when (whiteBalanceMode) {
-                    "daylight"  -> CameraMetadata.CONTROL_AWB_MODE_DAYLIGHT
-                    "cloudy"    -> CameraMetadata.CONTROL_AWB_MODE_CLOUDY_DAYLIGHT
-                    "tungsten"  -> CameraMetadata.CONTROL_AWB_MODE_INCANDESCENT
-                    else        -> CameraMetadata.CONTROL_AWB_MODE_AUTO
+                    "daylight" -> CameraMetadata.CONTROL_AWB_MODE_DAYLIGHT
+                    "cloudy"   -> CameraMetadata.CONTROL_AWB_MODE_CLOUDY_DAYLIGHT
+                    "tungsten" -> CameraMetadata.CONTROL_AWB_MODE_INCANDESCENT
+                    else       -> CameraMetadata.CONTROL_AWB_MODE_AUTO
                 }
-                srv.setWhiteBalance(mode)
-                Log.d(TAG, "WB -> $whiteBalanceMode")
+                camera.enableAutoWhiteBalance(mode)
+                Log.d(TAG, "WB -> $whiteBalanceMode (mode=$mode)")
             }
 
+            // Troca de camera por ID
             params["camera"]?.let {
                 currentCameraId = it as String
-                srv.changeVideoSourceCamera(currentCameraId.toInt())
+                camera.openCameraId(currentCameraId)
                 Log.d(TAG, "Camera -> $currentCameraId")
             }
 
         } catch (e: Exception) {
-            Log.e(TAG, "Erro ao aplicar configuração", e)
+            Log.e(TAG, "Erro ao aplicar configuracao", e)
         }
     }
 }
