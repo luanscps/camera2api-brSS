@@ -5,6 +5,7 @@ import android.graphics.SurfaceTexture
 import android.util.Log
 import android.view.TextureView
 import com.pedro.common.ConnectChecker
+import com.pedro.encoder.video.VideoEncoder
 import com.pedro.rtspserver.RtspServerCamera2
 
 class RtspServer(
@@ -36,28 +37,26 @@ class RtspServer(
             val br  = cameraController.currentBitrate  // kbps
             val fps = cameraController.currentFps
 
-            // Força o encoder H264 hardware Exynos — melhor qualidade/latência no Note10+
-            // O OMX.Exynos.AVC.Encoder supera c2.android.avc.encoder (sw) em throughput
-            // O VQApply da Samsung eleva o bitrate mínimo para ~3MB em 720p,
-            // por isso usamos 4000kbps como base para deixar margem.
+            // prepareVideo(width, height, fps, bitrate_bps, rotation)
+            // RootEncoder 2.6.1 seleciona automaticamente o encoder HW (OMX.Exynos.AVC.Encoder)
+            // quando disponivel — o SW encoder (c2.android.avc.encoder) so e usado como fallback.
+            // O VQApply da Samsung eleva bitrate minimo de 2.5M para 3M em 720p no Exynos,
+            // por isso usamos 4Mbps como base para nao ser sobrescrito silenciosamente.
             val videoOk = srv.prepareVideo(
                 w, h, fps,
-                br * 1024,   // bitrate em bps
-                0,           // rotation
-                "video/avc", // MIME H264
-                "OMX.Exynos.AVC.Encoder"  // força HW Exynos
+                br * 1024,  // bitrate em bps
+                0           // rotation
             )
             val audioOk = srv.prepareAudio(128 * 1024, 44100, true)
 
             if (videoOk && audioOk) {
                 srv.startStream()
-                Log.i(TAG, "RTSP iniciado ${w}x${h} @${br}kbps encoder=OMX.Exynos.AVC.Encoder :$PORT")
+                Log.i(TAG, "RTSP iniciado ${w}x${h} @${br}kbps :$PORT")
             } else {
-                // fallback sem forçar encoder
-                Log.w(TAG, "Falha com Exynos encoder (videoOk=$videoOk audioOk=$audioOk), tentando fallback automático")
+                Log.w(TAG, "Falha prepareVideo=$videoOk prepareAudio=$audioOk, tentando fallback 1080p")
                 val fallback = srv.prepareVideo(1920, 1080, 30, 4000 * 1024, 0)
                 if (fallback && audioOk) srv.startStream()
-                else Log.e(TAG, "Fallback também falhou")
+                else Log.e(TAG, "Fallback tambem falhou")
             }
         } catch (e: Exception) {
             Log.e(TAG, "Erro ao iniciar RTSP", e)
@@ -87,14 +86,11 @@ class RtspServer(
 
     fun isStreaming(): Boolean = server?.isStreaming ?: false
 
-    // SurfaceTextureListener — NÃO chamar stop() aqui pois onDestroy já chama
+    // SurfaceTextureListener — NAO chama stop() aqui pois onDestroy ja chama
+    // Isso evitava o double-stop que aparecia no logcat
     override fun onSurfaceTextureAvailable(surface: SurfaceTexture, w: Int, h: Int) {}
     override fun onSurfaceTextureSizeChanged(surface: SurfaceTexture, w: Int, h: Int) {}
-    override fun onSurfaceTextureDestroyed(surface: SurfaceTexture): Boolean {
-        // Não chama stop() — deixa o onDestroy da Activity gerenciar o ciclo de vida
-        // para evitar o double-stop que aparecia no logcat
-        return true
-    }
+    override fun onSurfaceTextureDestroyed(surface: SurfaceTexture): Boolean { return true }
     override fun onSurfaceTextureUpdated(surface: SurfaceTexture) {}
 
     // ConnectChecker
