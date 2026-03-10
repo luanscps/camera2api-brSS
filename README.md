@@ -274,7 +274,7 @@ Contribuições são bem-vindas!
 
 ## 📧 Contato
 
-**Luan Santos**
+**Luan Silva**
 - GitHub: [@luanscps](https://github.com/luanscps)
 - Email: luanscps@gmail.com
 
