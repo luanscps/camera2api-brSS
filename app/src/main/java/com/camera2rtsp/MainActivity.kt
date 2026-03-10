@@ -5,6 +5,7 @@ import android.content.pm.PackageManager
 import android.os.Bundle
 import android.util.Log
 import android.widget.TextView
+import android.widget.Toast
 import androidx.appcompat.app.AppCompatActivity
 import androidx.core.app.ActivityCompat
 import androidx.core.content.ContextCompat
@@ -15,67 +16,63 @@ class MainActivity : AppCompatActivity() {
     private lateinit var rtspServer: RtspServer
     private lateinit var httpServer: WebControlServer
     private lateinit var cameraController: Camera2Controller
-
+    
     private val CAMERA_PERMISSION_CODE = 100
-
+    
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         setContentView(R.layout.activity_main)
-
-        if (checkPermissions()) {
+        
+        // Solicitar permissões
+        if (checkCameraPermission()) {
             initializeServers()
         }
     }
-
+    
     private fun initializeServers() {
         try {
             // Inicializar controlador da câmera
             cameraController = Camera2Controller(this)
-
-            // Inicializar servidor RTSP com referência ao controller
+            
+            // Inicializar servidor RTSP (porta 8554)
             rtspServer = RtspServer(this, cameraController)
             rtspServer.start()
-
-            // Inicializar servidor HTTP
+            
+            // Inicializar servidor HTTP (porta 8080)
             httpServer = WebControlServer(8080, cameraController)
             httpServer.start()
-
-            // Obter IPs e mostrar URLs
-            val ip = getLocalIpAddress()
-            val rtspUrl = rtspServer.getEndpoint() ?: "rtsp://$ip:8554/live"
-            val webUrl = "http://$ip:8080"
-
-            Log.i("MainActivity", "=== SERVIDORES INICIADOS ===")
-            Log.i("MainActivity", "RTSP: $rtspUrl")
-            Log.i("MainActivity", "Web Control: $webUrl")
-            Log.i("MainActivity", "=============================")
-
-            // Atualizar UI se TextViews existirem
-            runOnUiThread {
-                try {
-                    findViewById<TextView>(R.id.tv_status)?.text = "✅ Servidores Ativos"
-                    findViewById<TextView>(R.id.tv_rtsp_url)?.text = "RTSP: $rtspUrl"
-                    findViewById<TextView>(R.id.tv_web_url)?.text = "Web: $webUrl"
-                } catch (e: Exception) {
-                    Log.w("MainActivity", "UI update failed: ${e.message}")
-                }
-            }
+            
+            // Exibir URLs na tela e no log
+            val ipAddress = getLocalIpAddress()
+            val rtspUrl = "rtsp://$ipAddress:8554/live"
+            val webUrl = "http://$ipAddress:8080"
+            
+            findViewById<TextView>(R.id.rtspUrlText)?.text = rtspUrl
+            findViewById<TextView>(R.id.webUrlText)?.text = webUrl
+            findViewById<TextView>(R.id.statusText)?.text = "✅ Servidores Ativos"
+            
+            Log.i("Server", "RTSP URL: $rtspUrl")
+            Log.i("Server", "Web Control: $webUrl")
+            
+            Toast.makeText(this, "Servidores iniciados com sucesso!", Toast.LENGTH_LONG).show()
+            
         } catch (e: Exception) {
             Log.e("MainActivity", "Erro ao inicializar servidores", e)
-            e.printStackTrace()
+            findViewById<TextView>(R.id.statusText)?.text = "❌ Erro: ${e.message}"
+            Toast.makeText(this, "Erro: ${e.message}", Toast.LENGTH_LONG).show()
         }
     }
-
+    
     private fun getLocalIpAddress(): String {
         try {
             val interfaces = NetworkInterface.getNetworkInterfaces()
             while (interfaces.hasMoreElements()) {
-                val ni = interfaces.nextElement()
-                val addrs = ni.inetAddresses
-                while (addrs.hasMoreElements()) {
-                    val addr = addrs.nextElement()
-                    if (!addr.isLoopbackAddress && addr is Inet4Address) {
-                        return addr.hostAddress ?: "127.0.0.1"
+                val networkInterface = interfaces.nextElement()
+                val addresses = networkInterface.inetAddresses
+                while (addresses.hasMoreElements()) {
+                    val address = addresses.nextElement()
+                    if (!address.isLoopbackAddress && address is Inet4Address) {
+                        return address.hostAddress ?: "127.0.0.1"
                     }
                 }
             }
@@ -84,55 +81,50 @@ class MainActivity : AppCompatActivity() {
         }
         return "127.0.0.1"
     }
-
-    private fun checkPermissions(): Boolean {
-        val permissions = arrayOf(
-            Manifest.permission.CAMERA,
-            Manifest.permission.RECORD_AUDIO
-        )
-
-        val deniedPermissions = permissions.filter {
-            ContextCompat.checkSelfPermission(this, it) != PackageManager.PERMISSION_GRANTED
-        }
-
-        return if (deniedPermissions.isNotEmpty()) {
-            ActivityCompat.requestPermissions(
-                this,
-                deniedPermissions.toTypedArray(),
-                CAMERA_PERMISSION_CODE
-            )
+    
+    private fun checkCameraPermission(): Boolean {
+        return if (ContextCompat.checkSelfPermission(this,
+            Manifest.permission.CAMERA) != PackageManager.PERMISSION_GRANTED) {
+            ActivityCompat.requestPermissions(this,
+                arrayOf(
+                    Manifest.permission.CAMERA,
+                    Manifest.permission.RECORD_AUDIO,
+                    Manifest.permission.INTERNET
+                ),
+                CAMERA_PERMISSION_CODE)
             false
         } else {
             true
         }
     }
-
+    
     override fun onRequestPermissionsResult(
         requestCode: Int,
         permissions: Array<out String>,
         grantResults: IntArray
     ) {
         super.onRequestPermissionsResult(requestCode, permissions, grantResults)
-        
         if (requestCode == CAMERA_PERMISSION_CODE) {
-            if (grantResults.all { it == PackageManager.PERMISSION_GRANTED }) {
-                Log.i("MainActivity", "Permissões concedidas")
+            if (grantResults.isNotEmpty() && 
+                grantResults[0] == PackageManager.PERMISSION_GRANTED) {
                 initializeServers()
             } else {
-                Log.e("MainActivity", "Permissões negadas")
+                Toast.makeText(this, 
+                    "Permissões de câmera necessárias!", 
+                    Toast.LENGTH_LONG).show()
+                finish()
             }
         }
     }
-
+    
     override fun onDestroy() {
         super.onDestroy()
         try {
             rtspServer.stop()
             httpServer.stop()
             cameraController.close()
-            Log.i("MainActivity", "Servidores finalizados")
         } catch (e: Exception) {
-            Log.e("MainActivity", "Erro ao finalizar", e)
+            Log.e("MainActivity", "Erro ao parar servidores", e)
         }
     }
 }
