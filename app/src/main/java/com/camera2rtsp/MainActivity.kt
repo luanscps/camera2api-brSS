@@ -12,64 +12,59 @@ import java.net.Inet4Address
 import java.net.NetworkInterface
 
 class MainActivity : AppCompatActivity() {
-    private lateinit var rtspServer: RtspServerPedro
+    private lateinit var rtspServer: RtspServer
     private lateinit var httpServer: WebControlServer
     private lateinit var cameraController: Camera2Controller
     private lateinit var statusText: TextView
-    
+
     private val CAMERA_PERMISSION_CODE = 100
-    
+
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         setContentView(R.layout.activity_main)
-        
+
         statusText = findViewById(R.id.statusText)
-        
+
         if (checkPermissions()) {
             initializeServers()
         } else {
             requestPermissions()
         }
     }
-    
+
     private fun initializeServers() {
         try {
-            // Inicializar controlador da câmera
             cameraController = Camera2Controller(this)
-            
-            // Inicializar servidor RTSP (porta 8554)
-            rtspServer = RtspServerPedro(this, cameraController)
+
+            rtspServer = RtspServer(this, cameraController)
             rtspServer.start()
-            
-            // Inicializar servidor HTTP (porta 8080)
+
             httpServer = WebControlServer(8080, cameraController)
             httpServer.start()
-            
-            // Exibir URLs
+
             val ipAddress = getLocalIpAddress()
             val status = """
                 ✅ Servidores Iniciados!
-                
+
                 📡 RTSP Stream:
                 rtsp://$ipAddress:8554/live
-                
+
                 🌐 Painel Web:
                 http://$ipAddress:8080
-                
+
                 💡 Abra o painel web no PC
                 💡 Use VLC/OBS para ver stream
             """.trimIndent()
-            
+
             statusText.text = status
-            
-            Log.i("Camera2RTSP", "RTSP URL: rtsp://$ipAddress:8554/live")
-            Log.i("Camera2RTSP", "Web Control: http://$ipAddress:8080")
+            Log.i("Camera2RTSP", "RTSP: rtsp://$ipAddress:8554/live")
+            Log.i("Camera2RTSP", "Web: http://$ipAddress:8080")
         } catch (e: Exception) {
-            Log.e("Camera2RTSP", "Error initializing servers", e)
+            Log.e("Camera2RTSP", "Erro ao inicializar servidores", e)
             statusText.text = "❌ Erro: ${e.message}"
         }
     }
-    
+
     private fun getLocalIpAddress(): String {
         try {
             val interfaces = NetworkInterface.getNetworkInterfaces()
@@ -84,18 +79,18 @@ class MainActivity : AppCompatActivity() {
                 }
             }
         } catch (e: Exception) {
-            Log.e("Camera2RTSP", "Error getting IP", e)
+            Log.e("Camera2RTSP", "Erro ao obter IP", e)
         }
         return "127.0.0.1"
     }
-    
+
     private fun checkPermissions(): Boolean {
-        return ContextCompat.checkSelfPermission(this, Manifest.permission.CAMERA) == 
+        return ContextCompat.checkSelfPermission(this, Manifest.permission.CAMERA) ==
             PackageManager.PERMISSION_GRANTED &&
             ContextCompat.checkSelfPermission(this, Manifest.permission.RECORD_AUDIO) ==
             PackageManager.PERMISSION_GRANTED
     }
-    
+
     private fun requestPermissions() {
         ActivityCompat.requestPermissions(
             this,
@@ -109,7 +104,7 @@ class MainActivity : AppCompatActivity() {
             CAMERA_PERMISSION_CODE
         )
     }
-    
+
     override fun onRequestPermissionsResult(
         requestCode: Int,
         permissions: Array<out String>,
@@ -124,15 +119,15 @@ class MainActivity : AppCompatActivity() {
             }
         }
     }
-    
+
     override fun onDestroy() {
         super.onDestroy()
         try {
-            rtspServer.stop()
-            httpServer.stop()
-            cameraController.close()
+            if (::rtspServer.isInitialized) rtspServer.stop()
+            if (::httpServer.isInitialized) httpServer.stop()
+            if (::cameraController.isInitialized) cameraController.close()
         } catch (e: Exception) {
-            Log.e("Camera2RTSP", "Error stopping servers", e)
+            Log.e("Camera2RTSP", "Erro ao parar servidores", e)
         }
     }
 }
