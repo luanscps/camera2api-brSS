@@ -11,9 +11,9 @@ dependencyResolutionManagement {
     repositories {
         google()
         mavenCentral()
-        maven { url 'https://jitpack.io' }
+        maven { url 'https://jitpack.io' } // RootEncoder
     }
 }
 
-rootProject.name = "Camera2_RTSP"
+rootProject.name = "Camera2RTSP"
 include ':app'
