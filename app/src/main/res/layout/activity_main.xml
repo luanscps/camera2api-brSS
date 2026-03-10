@@ -1,0 +1,56 @@
+<?xml version="1.0" encoding="utf-8"?>
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent"
+    android:orientation="vertical"
+    android:gravity="center"
+    android:background="#0f172a"
+    android:padding="24dp">
+
+    <TextView
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:text="📡 Camera2 RTSP"
+        android:textSize="28sp"
+        android:textColor="#38bdf8"
+        android:textStyle="bold"
+        android:layout_marginBottom="16dp"/>
+
+    <TextView
+        android:id="@+id/tv_status"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:text="Iniciando servidores..."
+        android:textSize="16sp"
+        android:textColor="#cbd5e1"
+        android:layout_marginBottom="24dp"/>
+
+    <TextView
+        android:id="@+id/tv_rtsp_url"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:text="RTSP: aguardando..."
+        android:textSize="14sp"
+        android:textColor="#10b981"
+        android:fontFamily="monospace"
+        android:layout_marginBottom="8dp"/>
+
+    <TextView
+        android:id="@+id/tv_web_url"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:text="Web: aguardando..."
+        android:textSize="14sp"
+        android:textColor="#38bdf8"
+        android:fontFamily="monospace"
+        android:layout_marginBottom="32dp"/>
+
+    <TextView
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:text="Abra os endereços acima no seu PC"
+        android:textSize="13sp"
+        android:textColor="#64748b"
+        android:gravity="center"/>
+
+</LinearLayout>
