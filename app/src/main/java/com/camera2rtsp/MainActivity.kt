@@ -8,7 +8,6 @@ import android.widget.TextView
 import androidx.appcompat.app.AppCompatActivity
 import androidx.core.app.ActivityCompat
 import androidx.core.content.ContextCompat
-import com.pedro.library.view.OpenGlView
 import java.net.Inet4Address
 import java.net.NetworkInterface
 
@@ -16,15 +15,12 @@ class MainActivity : AppCompatActivity() {
     private lateinit var rtspServer: RtspServer
     private lateinit var httpServer: WebControlServer
     private lateinit var cameraController: Camera2Controller
-    private lateinit var glView: OpenGlView
 
     private val CAMERA_PERMISSION_CODE = 100
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         setContentView(R.layout.activity_main)
-
-        glView = OpenGlView(this)
 
         if (checkCameraPermission()) {
             initializeServers()
@@ -34,11 +30,9 @@ class MainActivity : AppCompatActivity() {
     private fun initializeServers() {
         cameraController = Camera2Controller(this)
 
-        // RTSP recebe context e cameraController
-        rtspServer = RtspServer(this, cameraController)
-        rtspServer.start(glView)
+        rtspServer = RtspServer(this)
+        rtspServer.start()
 
-        // HTTP na porta 8080
         httpServer = WebControlServer(8080, cameraController)
         httpServer.start()
 
@@ -49,9 +43,13 @@ class MainActivity : AppCompatActivity() {
         Log.i("Server", "RTSP: $rtspUrl")
         Log.i("Server", "Web: $webUrl")
 
-        findViewById<TextView>(R.id.tv_status).text = "✅ Servidores ativos!"
-        findViewById<TextView>(R.id.tv_rtsp_url).text = "RTSP: $rtspUrl"
-        findViewById<TextView>(R.id.tv_web_url).text = "Web: $webUrl"
+        try {
+            findViewById<TextView>(R.id.tv_status).text = "Servidores ativos!"
+            findViewById<TextView>(R.id.tv_rtsp_url).text = "RTSP: $rtspUrl"
+            findViewById<TextView>(R.id.tv_web_url).text = "Web: $webUrl"
+        } catch (e: Exception) {
+            Log.w("MainActivity", "TextViews nao encontrados no layout")
+        }
     }
 
     private fun getLocalIpAddress(): String {

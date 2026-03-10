@@ -4,19 +4,17 @@ import android.content.Context
 import android.util.Log
 import com.pedro.common.ConnectChecker
 import com.pedro.library.rtsp.RtspStream
-import com.pedro.library.view.OpenGlView
 
 class RtspServer(
-    private val context: Context,
-    private val cameraController: Camera2Controller
+    private val context: Context
 ) : ConnectChecker {
 
     private var rtspStream: RtspStream? = null
     private val port = 8554
 
-    fun start(glView: OpenGlView) {
+    fun start() {
         try {
-            rtspStream = RtspStream(context, glView, this)
+            rtspStream = RtspStream(context, this)
 
             val prepared = rtspStream?.prepareVideo(
                 1280, 720,
@@ -42,7 +40,6 @@ class RtspServer(
         Log.i("RtspServer", "RTSP parado")
     }
 
-    // ConnectChecker - todos os metodos obrigatorios
     override fun onConnectionStarted(url: String) {
         Log.i("RtspServer", "Conectando: $url")
     }
