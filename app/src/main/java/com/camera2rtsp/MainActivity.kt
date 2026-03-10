@@ -26,7 +26,7 @@ class MainActivity : AppCompatActivity() {
         super.onCreate(savedInstanceState)
         setContentView(R.layout.activity_main)
 
-        statusText = findViewById(R.id.statusText)
+        statusText    = findViewById(R.id.statusText)
         rtspIndicator = findViewById(R.id.rtspIndicator)
         cameraPreview = findViewById(R.id.cameraPreview)
 
@@ -38,14 +38,16 @@ class MainActivity : AppCompatActivity() {
         try {
             val ip = getLocalIpAddress()
 
-            cameraController = Camera2Controller(this)
+            // 1. Criar o controlador (ainda sem referência ao server)
+            cameraController = Camera2Controller()
 
-            // Iniciar servidor RTSP passando o TextureView diretamente
+            // 2. Criar e iniciar o RTSP server
+            //    Internamente ele injeta a referência em cameraController.server
             rtspServer = RtspServer(this, cameraController)
             rtspServer.attachTextureView(cameraPreview)
             rtspServer.start(cameraPreview)
 
-            // Painel web
+            // 3. Painel web — recebe o mesmo cameraController já ligado ao server
             httpServer = WebControlServer(8080, cameraController)
             httpServer.start()
 
@@ -53,10 +55,10 @@ class MainActivity : AppCompatActivity() {
             rtspIndicator.text = "● RTSP :8554"
             rtspIndicator.setTextColor(0xFF10b981.toInt())
 
-            Log.i("MainActivity", "RTSP: rtsp://$ip:8554/live")
-            Log.i("MainActivity", "Web:  http://$ip:8080")
+            Log.i("MainActivity", "RTSP : rtsp://$ip:8554/live")
+            Log.i("MainActivity", "Web  : http://$ip:8080")
         } catch (e: Exception) {
-            Log.e("MainActivity", "Erro", e)
+            Log.e("MainActivity", "Erro ao inicializar", e)
             statusText.text = "❌ ${e.message}"
         }
     }
@@ -74,7 +76,9 @@ class MainActivity : AppCompatActivity() {
                     }
                 }
             }
-        } catch (e: Exception) { Log.e("MainActivity", "IP error", e) }
+        } catch (e: Exception) {
+            Log.e("MainActivity", "Erro ao obter IP", e)
+        }
         return "127.0.0.1"
     }
 
@@ -92,19 +96,26 @@ class MainActivity : AppCompatActivity() {
         ), PERMISSION_CODE)
     }
 
-    override fun onRequestPermissionsResult(requestCode: Int, permissions: Array<out String>, grantResults: IntArray) {
+    override fun onRequestPermissionsResult(
+        requestCode: Int,
+        permissions: Array<out String>,
+        grantResults: IntArray
+    ) {
         super.onRequestPermissionsResult(requestCode, permissions, grantResults)
-        if (requestCode == PERMISSION_CODE && grantResults.all { it == PackageManager.PERMISSION_GRANTED })
+        if (requestCode == PERMISSION_CODE &&
+            grantResults.all { it == PackageManager.PERMISSION_GRANTED })
             initializeServers()
-        else statusText.text = "❌ Permissões negadas"
+        else
+            statusText.text = "❌ Permissões negadas"
     }
 
     override fun onDestroy() {
         super.onDestroy()
         try {
-            if (::rtspServer.isInitialized) rtspServer.stop()
-            if (::httpServer.isInitialized) httpServer.stop()
-            if (::cameraController.isInitialized) cameraController.close()
-        } catch (e: Exception) { Log.e("MainActivity", "Erro ao encerrar", e) }
+            if (::rtspServer.isInitialized)  rtspServer.stop()
+            if (::httpServer.isInitialized)  httpServer.stop()
+        } catch (e: Exception) {
+            Log.e("MainActivity", "Erro ao encerrar", e)
+        }
     }
 }

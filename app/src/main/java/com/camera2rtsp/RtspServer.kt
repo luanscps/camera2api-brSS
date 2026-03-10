@@ -12,34 +12,39 @@ class RtspServer(
     private val cameraController: Camera2Controller
 ) : ConnectChecker, TextureView.SurfaceTextureListener {
 
-    private var server: RtspServerCamera2? = null
+    var server: RtspServerCamera2? = null
+        private set
+
     private val TAG = "RtspServer"
     private val PORT = 8554
 
-    // Na versao 2.6.x o construtor recebe Context, nao TextureView
     fun start(tv: TextureView) {
         try {
-            server = RtspServerCamera2(context, this, PORT)
+            val srv = RtspServerCamera2(context, this, PORT)
+            server = srv
 
-            val videoOk = server!!.prepareVideo(
+            // Injeta a referência no controlador para que os controles web funcionem
+            cameraController.server = srv
+
+            val videoOk = srv.prepareVideo(
                 1280, 720,
                 30,
                 2500 * 1024,
                 0
             )
-            val audioOk = server!!.prepareAudio(
+            val audioOk = srv.prepareAudio(
                 128 * 1024,
                 44100,
                 true
             )
 
             if (videoOk && audioOk) {
-                server!!.startStream()
+                srv.startStream()
                 Log.i(TAG, "RTSP Server iniciado na porta $PORT")
             } else {
-                Log.e(TAG, "Falha ao preparar video=$videoOk audio=$audioOk")
-                val fallback = server!!.prepareVideo(640, 480, 30, 1200 * 1024, 0)
-                if (fallback) server!!.startStream()
+                Log.e(TAG, "Falha prepareVideo=$videoOk prepareAudio=$audioOk - tentando fallback 640x480")
+                val fallback = srv.prepareVideo(640, 480, 30, 1200 * 1024, 0)
+                if (fallback) srv.startStream()
             }
         } catch (e: Exception) {
             Log.e(TAG, "Erro ao iniciar RTSP", e)
@@ -53,6 +58,7 @@ class RtspServer(
     fun stop() {
         try {
             server?.stopStream()
+            cameraController.server = null
             server = null
             Log.i(TAG, "RTSP parado")
         } catch (e: Exception) {
@@ -73,10 +79,10 @@ class RtspServer(
 
     // ConnectChecker callbacks
     override fun onConnectionStarted(url: String) { Log.i(TAG, "Cliente conectando: $url") }
-    override fun onConnectionSuccess() { Log.i(TAG, "Cliente conectado") }
-    override fun onConnectionFailed(reason: String) { Log.e(TAG, "Falha: $reason") }
+    override fun onConnectionSuccess() { Log.i(TAG, "Cliente conectado com sucesso") }
+    override fun onConnectionFailed(reason: String) { Log.e(TAG, "Falha de conexão: $reason") }
     override fun onNewBitrate(bitrate: Long) {}
     override fun onDisconnect() { Log.i(TAG, "Cliente desconectado") }
-    override fun onAuthError() { Log.e(TAG, "Erro de auth") }
-    override fun onAuthSuccess() { Log.i(TAG, "Auth ok") }
+    override fun onAuthError() { Log.e(TAG, "Erro de autenticação") }
+    override fun onAuthSuccess() { Log.i(TAG, "Autenticação ok") }
 }
