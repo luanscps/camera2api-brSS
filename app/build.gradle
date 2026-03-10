@@ -9,7 +9,7 @@ android {
 
     defaultConfig {
         applicationId "com.camera2rtsp"
-        minSdk 24
+        minSdk 26
         targetSdk 34
         versionCode 1
         versionName "1.0.0"
@@ -42,8 +42,10 @@ dependencies {
     implementation 'androidx.constraintlayout:constraintlayout:2.1.4'
     implementation 'androidx.cardview:cardview:1.0.0'
     
-    // RootEncoder - RTSP/RTMP Streaming (PedroSG94)
-    implementation 'com.github.pedroSG94.RootEncoder:library:2.4.5'
+    // RootEncoder - RTSP Streaming (PedroSG94) - modulos separados v2.4.5
+    implementation 'com.github.pedroSG94.RootEncoder:rtsp:2.4.5'
+    implementation 'com.github.pedroSG94.RootEncoder:encoder:2.4.5'
+    implementation 'com.github.pedroSG94.RootEncoder:common:2.4.5'
     
     // NanoHTTPD - Servidor HTTP leve
     implementation 'org.nanohttpd:nanohttpd:2.3.1'
