@@ -12,11 +12,11 @@ class RtspServer(
 ) : ConnectChecker {
 
     private var rtspStream: RtspStream? = null
-    private val PORT = 8554
+    private val port = 8554
 
     fun start(glView: OpenGlView) {
         try {
-            rtspStream = RtspStream(glView, this)
+            rtspStream = RtspStream(context, glView, this)
 
             val prepared = rtspStream?.prepareVideo(
                 1280, 720,
@@ -27,8 +27,8 @@ class RtspServer(
             ) ?: false
 
             if (prepared) {
-                rtspStream?.startStream("rtsp://0.0.0.0:$PORT/live")
-                Log.i("RtspServer", "RTSP iniciado na porta $PORT")
+                rtspStream?.startStream("rtsp://0.0.0.0:$port/live")
+                Log.i("RtspServer", "RTSP iniciado na porta $port")
             } else {
                 Log.e("RtspServer", "Falha ao preparar video RTSP")
             }
@@ -42,9 +42,11 @@ class RtspServer(
         Log.i("RtspServer", "RTSP parado")
     }
 
-    fun isStreaming(): Boolean = rtspStream?.isStreaming ?: false
+    // ConnectChecker - todos os metodos obrigatorios
+    override fun onConnectionStarted(url: String) {
+        Log.i("RtspServer", "Conectando: $url")
+    }
 
-    // ConnectChecker callbacks
     override fun onConnectionSuccess() {
         Log.i("RtspServer", "Cliente conectado")
     }
