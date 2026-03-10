@@ -5,6 +5,7 @@ import android.content.pm.PackageManager
 import android.os.Bundle
 import android.util.Log
 import android.widget.TextView
+import android.view.TextureView
 import androidx.appcompat.app.AppCompatActivity
 import androidx.core.app.ActivityCompat
 import androidx.core.content.ContextCompat
@@ -16,6 +17,8 @@ class MainActivity : AppCompatActivity() {
     private lateinit var httpServer: WebControlServer
     private lateinit var cameraController: Camera2Controller
     private lateinit var statusText: TextView
+    private lateinit var rtspIndicator: TextView
+    private lateinit var cameraPreview: TextureView
 
     private val CAMERA_PERMISSION_CODE = 100
 
@@ -24,6 +27,8 @@ class MainActivity : AppCompatActivity() {
         setContentView(R.layout.activity_main)
 
         statusText = findViewById(R.id.statusText)
+        rtspIndicator = findViewById(R.id.rtspIndicator)
+        cameraPreview = findViewById(R.id.cameraPreview)
 
         if (checkPermissions()) {
             initializeServers()
@@ -34,33 +39,30 @@ class MainActivity : AppCompatActivity() {
 
     private fun initializeServers() {
         try {
+            val ipAddress = getLocalIpAddress()
+
             cameraController = Camera2Controller(this)
 
+            // Iniciar servidor RTSP real com TextureView
             rtspServer = RtspServer(this, cameraController)
+            rtspServer.attachTextureView(cameraPreview)
             rtspServer.start()
 
+            // Iniciar painel web
             httpServer = WebControlServer(8080, cameraController)
             httpServer.start()
 
-            val ipAddress = getLocalIpAddress()
-            val status = """
-                ✅ Servidores Iniciados!
+            statusText.text = "📡 rtsp://$ipAddress:8554/live\n🌐 http://$ipAddress:8080"
 
-                📡 RTSP Stream:
-                rtsp://$ipAddress:8554/live
+            // Atualizar indicador RTSP
+            rtspIndicator.text = "● RTSP :8554"
+            rtspIndicator.setTextColor(0xFF10b981.toInt())
 
-                🌐 Painel Web:
-                http://$ipAddress:8080
-
-                💡 Abra o painel web no PC
-                💡 Use VLC/OBS para ver stream
-            """.trimIndent()
-
-            statusText.text = status
             Log.i("Camera2RTSP", "RTSP: rtsp://$ipAddress:8554/live")
-            Log.i("Camera2RTSP", "Web: http://$ipAddress:8080")
+            Log.i("Camera2RTSP", "Web:  http://$ipAddress:8080")
+
         } catch (e: Exception) {
-            Log.e("Camera2RTSP", "Erro ao inicializar servidores", e)
+            Log.e("Camera2RTSP", "Erro ao inicializar", e)
             statusText.text = "❌ Erro: ${e.message}"
         }
     }
@@ -69,12 +71,12 @@ class MainActivity : AppCompatActivity() {
         try {
             val interfaces = NetworkInterface.getNetworkInterfaces()
             while (interfaces.hasMoreElements()) {
-                val networkInterface = interfaces.nextElement()
-                val addresses = networkInterface.inetAddresses
+                val iface = interfaces.nextElement()
+                val addresses = iface.inetAddresses
                 while (addresses.hasMoreElements()) {
-                    val address = addresses.nextElement()
-                    if (!address.isLoopbackAddress && address is Inet4Address) {
-                        return address.hostAddress ?: "127.0.0.1"
+                    val addr = addresses.nextElement()
+                    if (!addr.isLoopbackAddress && addr is Inet4Address) {
+                        return addr.hostAddress ?: "127.0.0.1"
                     }
                 }
             }
@@ -115,7 +117,7 @@ class MainActivity : AppCompatActivity() {
             if (grantResults.all { it == PackageManager.PERMISSION_GRANTED }) {
                 initializeServers()
             } else {
-                statusText.text = "❌ Permissões necessárias não concedidas"
+                statusText.text = "❌ Permissões necessárias negadas"
             }
         }
     }
@@ -127,7 +129,7 @@ class MainActivity : AppCompatActivity() {
             if (::httpServer.isInitialized) httpServer.stop()
             if (::cameraController.isInitialized) cameraController.close()
         } catch (e: Exception) {
-            Log.e("Camera2RTSP", "Erro ao parar servidores", e)
+            Log.e("Camera2RTSP", "Erro ao encerrar", e)
         }
     }
 }
