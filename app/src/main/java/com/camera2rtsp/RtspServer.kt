@@ -2,25 +2,23 @@ package com.camera2rtsp
 
 import android.content.Context
 import android.util.Log
-import com.pedro.rtsp.utils.ConnectCheckerRtsp
+import com.pedro.common.ConnectChecker
+import com.pedro.library.rtsp.RtspStream
+import com.pedro.library.view.OpenGlView
 
 class RtspServer(
     private val context: Context,
     private val cameraController: Camera2Controller
-) : ConnectCheckerRtsp {
+) : ConnectChecker {
 
-    private var rtspServerCamera2: com.pedro.rtsp.rtsp.RtspServerCamera2? = null
+    private var rtspStream: RtspStream? = null
     private val PORT = 8554
 
-    fun start() {
+    fun start(glView: OpenGlView) {
         try {
-            rtspServerCamera2 = com.pedro.rtsp.rtsp.RtspServerCamera2(
-                context,
-                this,
-                PORT
-            )
+            rtspStream = RtspStream(glView, this)
 
-            val prepared = rtspServerCamera2?.prepareVideo(
+            val prepared = rtspStream?.prepareVideo(
                 1280, 720,
                 30,
                 1200 * 1024,
@@ -29,43 +27,43 @@ class RtspServer(
             ) ?: false
 
             if (prepared) {
-                rtspServerCamera2?.startStream()
-                Log.i("RtspServer", "Servidor RTSP iniciado na porta $PORT")
+                rtspStream?.startStream("rtsp://0.0.0.0:$PORT/live")
+                Log.i("RtspServer", "RTSP iniciado na porta $PORT")
             } else {
-                Log.e("RtspServer", "Falha ao preparar video")
+                Log.e("RtspServer", "Falha ao preparar video RTSP")
             }
         } catch (e: Exception) {
-            Log.e("RtspServer", "Erro ao iniciar servidor RTSP: ${e.message}")
+            Log.e("RtspServer", "Erro: ${e.message}")
         }
     }
 
     fun stop() {
-        rtspServerCamera2?.stopStream()
-        Log.i("RtspServer", "Servidor RTSP parado")
+        rtspStream?.stopStream()
+        Log.i("RtspServer", "RTSP parado")
     }
 
-    fun isStreaming(): Boolean = rtspServerCamera2?.isStreaming ?: false
+    fun isStreaming(): Boolean = rtspStream?.isStreaming ?: false
 
-    // ConnectCheckerRtsp callbacks
-    override fun onConnectionSuccessRtsp() {
-        Log.i("RtspServer", "Cliente conectado ao RTSP")
+    // ConnectChecker callbacks
+    override fun onConnectionSuccess() {
+        Log.i("RtspServer", "Cliente conectado")
     }
 
-    override fun onConnectionFailedRtsp(reason: String) {
-        Log.e("RtspServer", "Falha de conexao RTSP: $reason")
+    override fun onConnectionFailed(reason: String) {
+        Log.e("RtspServer", "Falha: $reason")
     }
 
-    override fun onNewBitrateRtsp(bitrate: Long) {}
+    override fun onNewBitrate(bitrate: Long) {}
 
-    override fun onDisconnectRtsp() {
-        Log.i("RtspServer", "Cliente desconectado do RTSP")
+    override fun onDisconnect() {
+        Log.i("RtspServer", "Cliente desconectado")
     }
 
-    override fun onAuthErrorRtsp() {
-        Log.e("RtspServer", "Erro de autenticacao RTSP")
+    override fun onAuthError() {
+        Log.e("RtspServer", "Erro de autenticacao")
     }
 
-    override fun onAuthSuccessRtsp() {
-        Log.i("RtspServer", "Autenticacao RTSP ok")
+    override fun onAuthSuccess() {
+        Log.i("RtspServer", "Auth ok")
     }
 }

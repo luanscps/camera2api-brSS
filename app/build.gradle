@@ -46,10 +46,10 @@ dependencies {
     // NanoHTTPD - Servidor HTTP leve
     implementation 'org.nanohttpd:nanohttpd:2.3.1'
 
-    // RTSP Server - versao compativel com RtspServerCamera2
-    implementation 'com.github.pedroSG94.RootEncoder:rtsp:2.4.4'
+    // RootEncoder - RTSP streaming (pedro094 library)
+    implementation 'com.github.pedroSG94.RootEncoder:library:2.4.4'
 
-    // Gson - Comunicacao JSON
+    // Gson
     implementation 'com.google.code.gson:gson:2.10.1'
 
     // Coroutines
