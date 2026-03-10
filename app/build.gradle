@@ -21,14 +21,20 @@ android {
             proguardFiles getDefaultProguardFile('proguard-android-optimize.txt'), 'proguard-rules.pro'
         }
     }
-    
+
     compileOptions {
         sourceCompatibility JavaVersion.VERSION_1_8
         targetCompatibility JavaVersion.VERSION_1_8
     }
-    
+
     kotlinOptions {
         jvmTarget = '1.8'
+    }
+
+    packaging {
+        resources {
+            excludes += '/META-INF/{AL2.0,LGPL2.1}'
+        }
     }
 }
 
@@ -36,16 +42,16 @@ dependencies {
     implementation 'androidx.core:core-ktx:1.12.0'
     implementation 'androidx.appcompat:appcompat:1.6.1'
     implementation 'com.google.android.material:material:1.11.0'
-    
+
     // NanoHTTPD - Servidor HTTP leve
     implementation 'org.nanohttpd:nanohttpd:2.3.1'
-    
-    // Libstreaming - Servidor RTSP
-    implementation 'com.github.pedroSG94:rtmp-rtsp-stream-client-java:2.2.7'
-    
-    // Gson - Comunicação JSON
+
+    // RTSP Server - versao compativel com RtspServerCamera2
+    implementation 'com.github.pedroSG94.RootEncoder:rtsp:2.4.4'
+
+    // Gson - Comunicacao JSON
     implementation 'com.google.code.gson:gson:2.10.1'
-    
-    // Coroutines - Operações assíncronas
+
+    // Coroutines
     implementation 'org.jetbrains.kotlinx:kotlinx-coroutines-android:1.7.3'
 }

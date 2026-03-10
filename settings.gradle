@@ -15,5 +15,5 @@ dependencyResolutionManagement {
     }
 }
 
-rootProject.name = "Camera2 RTSP"
+rootProject.name = "Camera2_RTSP"
 include ':app'
