@@ -40,22 +40,17 @@ class MainActivity : AppCompatActivity() {
         else requestPermissions()
     }
 
-    // Chamado quando orientation/screenSize muda — como declaramos configChanges no Manifest,
-    // a Activity NÃO é destruída, apenas este método é chamado. O stream continua ininterrupto.
     override fun onConfigurationChanged(newConfig: Configuration) {
         super.onConfigurationChanged(newConfig)
         Log.d("MainActivity", "onConfigurationChanged — stream mantido, sem restart")
     }
 
     private fun initializeServers() {
-        // Roda em IO thread para não bloquear a main thread durante prepareVideo/openCamera
-        // Isso elimina o "Skipped 48 frames" que aparecia no logcat
         lifecycleScope.launch(Dispatchers.IO) {
             try {
                 val ip = getLocalIpAddress()
 
                 cameraController = Camera2Controller()
-
                 rtspServer = RtspServer(this@MainActivity, cameraController)
                 rtspServer.attachTextureView(cameraPreview)
                 rtspServer.start(cameraPreview)
@@ -77,9 +72,7 @@ class MainActivity : AppCompatActivity() {
 
             } catch (e: Exception) {
                 Log.e("MainActivity", "Erro ao inicializar", e)
-                withContext(Dispatchers.Main) {
-                    statusText.text = "❌ ${e.message}"
-                }
+                withContext(Dispatchers.Main) { statusText.text = "❌ ${e.message}" }
             }
         }
     }
@@ -97,9 +90,7 @@ class MainActivity : AppCompatActivity() {
                     }
                 }
             }
-        } catch (e: Exception) {
-            Log.e("MainActivity", "Erro ao obter IP", e)
-        }
+        } catch (e: Exception) { Log.e("MainActivity", "Erro ao obter IP", e) }
         return "127.0.0.1"
     }
 
@@ -127,14 +118,15 @@ class MainActivity : AppCompatActivity() {
             grantResults.all { it == PackageManager.PERMISSION_GRANTED })
             initializeServers()
         else
-            withContext@statusText.text = "❌ Permissões negadas"
+            statusText.text = "❌ Permissões negadas"
     }
 
     override fun onDestroy() {
         super.onDestroy()
         try {
-            if (::rtspServer.isInitialized)  rtspServer.stop()
-            if (::httpServer.isInitialized)  httpServer.stop()
+            if (::cameraController.isInitialized) cameraController.release()  // libera HandlerThread
+            if (::rtspServer.isInitialized)       rtspServer.stop()
+            if (::httpServer.isInitialized)       httpServer.stop()
         } catch (e: Exception) {
             Log.e("MainActivity", "Erro ao encerrar", e)
         }
