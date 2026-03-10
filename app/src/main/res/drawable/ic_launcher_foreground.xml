@@ -1,0 +1,17 @@
+<?xml version="1.0" encoding="utf-8"?>
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="108dp"
+    android:height="108dp"
+    android:viewportWidth="108"
+    android:viewportHeight="108">
+    <!-- Câmera simples como ícone -->
+    <path
+        android:fillColor="#0f172a"
+        android:pathData="M54,30 C40,30 29,41 29,55 C29,69 40,80 54,80 C68,80 79,69 79,55 C79,41 68,30 54,30 Z M54,72 C44.6,72 37,64.4 37,55 C37,45.6 44.6,38 54,38 C63.4,38 71,45.6 71,55 C71,64.4 63.4,72 54,72 Z"/>
+    <path
+        android:fillColor="#0f172a"
+        android:pathData="M54,45 C49.6,45 46,48.6 46,53 C46,57.4 49.6,61 54,61 C58.4,61 62,57.4 62,53 C62,48.6 58.4,45 54,45 Z"/>
+    <path
+        android:fillColor="#0f172a"
+        android:pathData="M82,26 L74,26 L71,20 L37,20 L34,26 L26,26 C23.8,26 22,27.8 22,30 L22,78 C22,80.2 23.8,82 26,82 L82,82 C84.2,82 86,80.2 86,78 L86,30 C86,27.8 84.2,26 82,26 Z"/>
+</vector>
