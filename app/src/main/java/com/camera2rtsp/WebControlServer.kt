@@ -312,10 +312,11 @@ class WebControlServer(
     
     private fun serveStatus(): Response {
         val status = mapOf(
-            "camera" to cameraController.currentCameraId,
-            "iso" to cameraController.iso,
-            "exposure" to cameraController.exposureTime,
-            "status" to "active"
+            "camera"       to cameraController.currentCameraId,
+            "exposureLevel" to cameraController.exposureLevel,
+            "whiteBalance" to cameraController.whiteBalanceMode,
+            "autoFocus"    to cameraController.autoFocus,
+            "status"       to "active"
         )
         return newFixedLengthResponse(
             Response.Status.OK,
