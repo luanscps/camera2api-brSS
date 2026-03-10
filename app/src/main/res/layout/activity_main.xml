@@ -1,56 +1,110 @@
 <?xml version="1.0" encoding="utf-8"?>
-<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+<androidx.constraintlayout.widget.ConstraintLayout 
+    xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:app="http://schemas.android.com/apk/res-auto"
+    xmlns:tools="http://schemas.android.com/tools"
     android:layout_width="match_parent"
     android:layout_height="match_parent"
-    android:orientation="vertical"
-    android:gravity="center"
     android:background="#0f172a"
-    android:padding="24dp">
+    tools:context=".MainActivity">
 
-    <TextView
-        android:layout_width="wrap_content"
-        android:layout_height="wrap_content"
-        android:text="📡 Camera2 RTSP"
-        android:textSize="28sp"
-        android:textColor="#38bdf8"
-        android:textStyle="bold"
-        android:layout_marginBottom="16dp"/>
+    <ScrollView
+        android:layout_width="match_parent"
+        android:layout_height="match_parent"
+        android:fillViewport="true">
 
-    <TextView
-        android:id="@+id/tv_status"
-        android:layout_width="wrap_content"
-        android:layout_height="wrap_content"
-        android:text="Iniciando servidores..."
-        android:textSize="16sp"
-        android:textColor="#cbd5e1"
-        android:layout_marginBottom="24dp"/>
+        <LinearLayout
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:orientation="vertical"
+            android:padding="24dp">
 
-    <TextView
-        android:id="@+id/tv_rtsp_url"
-        android:layout_width="wrap_content"
-        android:layout_height="wrap_content"
-        android:text="RTSP: aguardando..."
-        android:textSize="14sp"
-        android:textColor="#10b981"
-        android:fontFamily="monospace"
-        android:layout_marginBottom="8dp"/>
+            <!-- Header -->
+            <TextView
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:text="📡 Camera2 RTSP Server"
+                android:textSize="28sp"
+                android:textStyle="bold"
+                android:textColor="#38bdf8"
+                android:gravity="center"
+                android:layout_marginBottom="8dp" />
 
-    <TextView
-        android:id="@+id/tv_web_url"
-        android:layout_width="wrap_content"
-        android:layout_height="wrap_content"
-        android:text="Web: aguardando..."
-        android:textSize="14sp"
-        android:textColor="#38bdf8"
-        android:fontFamily="monospace"
-        android:layout_marginBottom="32dp"/>
+            <TextView
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:text="Samsung Galaxy Note10+"
+                android:textSize="14sp"
+                android:textColor="#cbd5e1"
+                android:gravity="center"
+                android:layout_marginBottom="32dp" />
 
-    <TextView
-        android:layout_width="wrap_content"
-        android:layout_height="wrap_content"
-        android:text="Abra os endereços acima no seu PC"
-        android:textSize="13sp"
-        android:textColor="#64748b"
-        android:gravity="center"/>
+            <!-- Status Card -->
+            <androidx.cardview.widget.CardView
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginBottom="24dp"
+                app:cardBackgroundColor="#1e293b"
+                app:cardCornerRadius="12dp"
+                app:cardElevation="4dp">
 
-</LinearLayout>
+                <LinearLayout
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:orientation="vertical"
+                    android:padding="20dp">
+
+                    <TextView
+                        android:id="@+id/statusText"
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:text="⏳ Inicializando servidores..."
+                        android:textSize="16sp"
+                        android:textColor="#f1f5f9"
+                        android:fontFamily="monospace"
+                        android:lineSpacingExtra="4dp" />
+
+                </LinearLayout>
+
+            </androidx.cardview.widget.CardView>
+
+            <!-- Info Card -->
+            <androidx.cardview.widget.CardView
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                app:cardBackgroundColor="#1e293b"
+                app:cardCornerRadius="12dp"
+                app:cardElevation="4dp">
+
+                <LinearLayout
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:orientation="vertical"
+                    android:padding="20dp">
+
+                    <TextView
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:text="💡 Como Usar"
+                        android:textSize="18sp"
+                        android:textStyle="bold"
+                        android:textColor="#38bdf8"
+                        android:layout_marginBottom="12dp" />
+
+                    <TextView
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:text="1️⃣ Certifique-se de estar na mesma rede WiFi que o PC\n\n2️⃣ No PC, abra o navegador com o endereço HTTP acima\n\n3️⃣ Use VLC ou OBS com o endereço RTSP\n\n4️⃣ Controle ISO, exposição e foco em tempo real!"
+                        android:textSize="14sp"
+                        android:textColor="#cbd5e1"
+                        android:lineSpacingExtra="4dp" />
+
+                </LinearLayout>
+
+            </androidx.cardview.widget.CardView>
+
+        </LinearLayout>
+
+    </ScrollView>
+
+</androidx.constraintlayout.widget.ConstraintLayout>

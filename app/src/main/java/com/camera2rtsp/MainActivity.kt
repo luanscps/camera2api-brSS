@@ -5,7 +5,6 @@ import android.content.pm.PackageManager
 import android.os.Bundle
 import android.util.Log
 import android.widget.TextView
-import android.widget.Toast
 import androidx.appcompat.app.AppCompatActivity
 import androidx.core.app.ActivityCompat
 import androidx.core.content.ContextCompat
@@ -13,9 +12,10 @@ import java.net.Inet4Address
 import java.net.NetworkInterface
 
 class MainActivity : AppCompatActivity() {
-    private lateinit var rtspServer: RtspServer
+    private lateinit var rtspServer: RtspServerPedro
     private lateinit var httpServer: WebControlServer
     private lateinit var cameraController: Camera2Controller
+    private lateinit var statusText: TextView
     
     private val CAMERA_PERMISSION_CODE = 100
     
@@ -23,9 +23,12 @@ class MainActivity : AppCompatActivity() {
         super.onCreate(savedInstanceState)
         setContentView(R.layout.activity_main)
         
-        // Solicitar permissões
-        if (checkCameraPermission()) {
+        statusText = findViewById(R.id.statusText)
+        
+        if (checkPermissions()) {
             initializeServers()
+        } else {
+            requestPermissions()
         }
     }
     
@@ -35,31 +38,35 @@ class MainActivity : AppCompatActivity() {
             cameraController = Camera2Controller(this)
             
             // Inicializar servidor RTSP (porta 8554)
-            rtspServer = RtspServer(this, cameraController)
+            rtspServer = RtspServerPedro(this, cameraController)
             rtspServer.start()
             
             // Inicializar servidor HTTP (porta 8080)
             httpServer = WebControlServer(8080, cameraController)
             httpServer.start()
             
-            // Exibir URLs na tela e no log
+            // Exibir URLs
             val ipAddress = getLocalIpAddress()
-            val rtspUrl = "rtsp://$ipAddress:8554/live"
-            val webUrl = "http://$ipAddress:8080"
+            val status = """
+                ✅ Servidores Iniciados!
+                
+                📡 RTSP Stream:
+                rtsp://$ipAddress:8554/live
+                
+                🌐 Painel Web:
+                http://$ipAddress:8080
+                
+                💡 Abra o painel web no PC
+                💡 Use VLC/OBS para ver stream
+            """.trimIndent()
             
-            findViewById<TextView>(R.id.rtspUrlText)?.text = rtspUrl
-            findViewById<TextView>(R.id.webUrlText)?.text = webUrl
-            findViewById<TextView>(R.id.statusText)?.text = "✅ Servidores Ativos"
+            statusText.text = status
             
-            Log.i("Server", "RTSP URL: $rtspUrl")
-            Log.i("Server", "Web Control: $webUrl")
-            
-            Toast.makeText(this, "Servidores iniciados com sucesso!", Toast.LENGTH_LONG).show()
-            
+            Log.i("Camera2RTSP", "RTSP URL: rtsp://$ipAddress:8554/live")
+            Log.i("Camera2RTSP", "Web Control: http://$ipAddress:8080")
         } catch (e: Exception) {
-            Log.e("MainActivity", "Erro ao inicializar servidores", e)
-            findViewById<TextView>(R.id.statusText)?.text = "❌ Erro: ${e.message}"
-            Toast.makeText(this, "Erro: ${e.message}", Toast.LENGTH_LONG).show()
+            Log.e("Camera2RTSP", "Error initializing servers", e)
+            statusText.text = "❌ Erro: ${e.message}"
         }
     }
     
@@ -77,25 +84,30 @@ class MainActivity : AppCompatActivity() {
                 }
             }
         } catch (e: Exception) {
-            Log.e("MainActivity", "Erro ao obter IP", e)
+            Log.e("Camera2RTSP", "Error getting IP", e)
         }
         return "127.0.0.1"
     }
     
-    private fun checkCameraPermission(): Boolean {
-        return if (ContextCompat.checkSelfPermission(this,
-            Manifest.permission.CAMERA) != PackageManager.PERMISSION_GRANTED) {
-            ActivityCompat.requestPermissions(this,
-                arrayOf(
-                    Manifest.permission.CAMERA,
-                    Manifest.permission.RECORD_AUDIO,
-                    Manifest.permission.INTERNET
-                ),
-                CAMERA_PERMISSION_CODE)
-            false
-        } else {
-            true
-        }
+    private fun checkPermissions(): Boolean {
+        return ContextCompat.checkSelfPermission(this, Manifest.permission.CAMERA) == 
+            PackageManager.PERMISSION_GRANTED &&
+            ContextCompat.checkSelfPermission(this, Manifest.permission.RECORD_AUDIO) ==
+            PackageManager.PERMISSION_GRANTED
+    }
+    
+    private fun requestPermissions() {
+        ActivityCompat.requestPermissions(
+            this,
+            arrayOf(
+                Manifest.permission.CAMERA,
+                Manifest.permission.RECORD_AUDIO,
+                Manifest.permission.INTERNET,
+                Manifest.permission.ACCESS_NETWORK_STATE,
+                Manifest.permission.ACCESS_WIFI_STATE
+            ),
+            CAMERA_PERMISSION_CODE
+        )
     }
     
     override fun onRequestPermissionsResult(
@@ -105,14 +117,10 @@ class MainActivity : AppCompatActivity() {
     ) {
         super.onRequestPermissionsResult(requestCode, permissions, grantResults)
         if (requestCode == CAMERA_PERMISSION_CODE) {
-            if (grantResults.isNotEmpty() && 
-                grantResults[0] == PackageManager.PERMISSION_GRANTED) {
+            if (grantResults.all { it == PackageManager.PERMISSION_GRANTED }) {
                 initializeServers()
             } else {
-                Toast.makeText(this, 
-                    "Permissões de câmera necessárias!", 
-                    Toast.LENGTH_LONG).show()
-                finish()
+                statusText.text = "❌ Permissões necessárias não concedidas"
             }
         }
     }
@@ -124,7 +132,7 @@ class MainActivity : AppCompatActivity() {
             httpServer.stop()
             cameraController.close()
         } catch (e: Exception) {
-            Log.e("MainActivity", "Erro ao parar servidores", e)
+            Log.e("Camera2RTSP", "Error stopping servers", e)
         }
     }
 }
