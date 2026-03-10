@@ -22,33 +22,47 @@ class MainActivity : AppCompatActivity() {
         super.onCreate(savedInstanceState)
         setContentView(R.layout.activity_main)
 
-        if (checkCameraPermission()) {
+        if (checkPermissions()) {
             initializeServers()
         }
     }
 
     private fun initializeServers() {
-        cameraController = Camera2Controller(this)
-
-        rtspServer = RtspServer(this)
-        rtspServer.start()
-
-        httpServer = WebControlServer(8080, cameraController)
-        httpServer.start()
-
-        val ip = getLocalIpAddress()
-        val rtspUrl = "rtsp://$ip:8554/live"
-        val webUrl = "http://$ip:8080"
-
-        Log.i("Server", "RTSP: $rtspUrl")
-        Log.i("Server", "Web: $webUrl")
-
         try {
-            findViewById<TextView>(R.id.tv_status).text = "Servidores ativos!"
-            findViewById<TextView>(R.id.tv_rtsp_url).text = "RTSP: $rtspUrl"
-            findViewById<TextView>(R.id.tv_web_url).text = "Web: $webUrl"
+            // Inicializar controlador da câmera
+            cameraController = Camera2Controller(this)
+
+            // Inicializar servidor RTSP com referência ao controller
+            rtspServer = RtspServer(this, cameraController)
+            rtspServer.start()
+
+            // Inicializar servidor HTTP
+            httpServer = WebControlServer(8080, cameraController)
+            httpServer.start()
+
+            // Obter IPs e mostrar URLs
+            val ip = getLocalIpAddress()
+            val rtspUrl = rtspServer.getEndpoint() ?: "rtsp://$ip:8554/live"
+            val webUrl = "http://$ip:8080"
+
+            Log.i("MainActivity", "=== SERVIDORES INICIADOS ===")
+            Log.i("MainActivity", "RTSP: $rtspUrl")
+            Log.i("MainActivity", "Web Control: $webUrl")
+            Log.i("MainActivity", "=============================")
+
+            // Atualizar UI se TextViews existirem
+            runOnUiThread {
+                try {
+                    findViewById<TextView>(R.id.tv_status)?.text = "✅ Servidores Ativos"
+                    findViewById<TextView>(R.id.tv_rtsp_url)?.text = "RTSP: $rtspUrl"
+                    findViewById<TextView>(R.id.tv_web_url)?.text = "Web: $webUrl"
+                } catch (e: Exception) {
+                    Log.w("MainActivity", "UI update failed: ${e.message}")
+                }
+            }
         } catch (e: Exception) {
-            Log.w("MainActivity", "TextViews nao encontrados no layout")
+            Log.e("MainActivity", "Erro ao inicializar servidores", e)
+            e.printStackTrace()
         }
     }
 
@@ -60,24 +74,37 @@ class MainActivity : AppCompatActivity() {
                 val addrs = ni.inetAddresses
                 while (addrs.hasMoreElements()) {
                     val addr = addrs.nextElement()
-                    if (!addr.isLoopbackAddress && addr is Inet4Address)
-                        return addr.hostAddress ?: ""
+                    if (!addr.isLoopbackAddress && addr is Inet4Address) {
+                        return addr.hostAddress ?: "127.0.0.1"
+                    }
                 }
             }
-        } catch (e: Exception) { e.printStackTrace() }
+        } catch (e: Exception) {
+            Log.e("MainActivity", "Erro ao obter IP", e)
+        }
         return "127.0.0.1"
     }
 
-    private fun checkCameraPermission(): Boolean {
-        return if (ContextCompat.checkSelfPermission(this,
-                Manifest.permission.CAMERA) != PackageManager.PERMISSION_GRANTED) {
+    private fun checkPermissions(): Boolean {
+        val permissions = arrayOf(
+            Manifest.permission.CAMERA,
+            Manifest.permission.RECORD_AUDIO
+        )
+
+        val deniedPermissions = permissions.filter {
+            ContextCompat.checkSelfPermission(this, it) != PackageManager.PERMISSION_GRANTED
+        }
+
+        return if (deniedPermissions.isNotEmpty()) {
             ActivityCompat.requestPermissions(
                 this,
-                arrayOf(Manifest.permission.CAMERA, Manifest.permission.RECORD_AUDIO),
+                deniedPermissions.toTypedArray(),
                 CAMERA_PERMISSION_CODE
             )
             false
-        } else true
+        } else {
+            true
+        }
     }
 
     override fun onRequestPermissionsResult(
@@ -86,17 +113,26 @@ class MainActivity : AppCompatActivity() {
         grantResults: IntArray
     ) {
         super.onRequestPermissionsResult(requestCode, permissions, grantResults)
-        if (requestCode == CAMERA_PERMISSION_CODE &&
-            grantResults.isNotEmpty() &&
-            grantResults[0] == PackageManager.PERMISSION_GRANTED) {
-            initializeServers()
+        
+        if (requestCode == CAMERA_PERMISSION_CODE) {
+            if (grantResults.all { it == PackageManager.PERMISSION_GRANTED }) {
+                Log.i("MainActivity", "Permissões concedidas")
+                initializeServers()
+            } else {
+                Log.e("MainActivity", "Permissões negadas")
+            }
         }
     }
 
     override fun onDestroy() {
         super.onDestroy()
-        rtspServer.stop()
-        httpServer.stop()
-        cameraController.close()
+        try {
+            rtspServer.stop()
+            httpServer.stop()
+            cameraController.close()
+            Log.i("MainActivity", "Servidores finalizados")
+        } catch (e: Exception) {
+            Log.e("MainActivity", "Erro ao finalizar", e)
+        }
     }
 }
