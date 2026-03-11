@@ -4,9 +4,12 @@ import android.content.Context
 import android.hardware.camera2.CameraCharacteristics
 import android.hardware.camera2.CameraManager
 import android.hardware.camera2.CameraMetadata
+import android.hardware.camera2.CaptureRequest
 import android.os.Handler
 import android.os.HandlerThread
 import android.util.Log
+import com.pedro.encoder.input.video.Camera2ApiManager
+import com.pedro.library.base.Camera2Base
 import com.pedro.rtspserver.RtspServerCamera2
 
 class Camera2Controller {
@@ -17,9 +20,9 @@ class Camera2Controller {
 
     var currentCameraId   = "0"
     var exposureLevel     = 0
-    var exposureNs        = 85000L
-    var frameDurationNs   = 16665880L
-    var isoValue          = 50
+    var exposureNs        = 33_333_333L   // 1/30s em nanosegundos
+    var frameDurationNs   = 33_333_333L   // 1/30s em nanosegundos
+    var isoValue          = 100
     var manualSensor      = false
     var whiteBalanceMode  = "auto"
     var autoFocus         = true
@@ -30,7 +33,7 @@ class Camera2Controller {
     var eisEnabled        = false
     var aeLocked          = false
     var awbLocked         = false
-    var flashMode         = "off"  // off, torch, single
+    var flashMode         = "off"
     var currentWidth      = 1920
     var currentHeight     = 1080
     var currentBitrate    = 4000
@@ -41,6 +44,52 @@ class Camera2Controller {
 
     private fun post(block: () -> Unit) =
         worker.post { runCatching(block).onFailure { Log.e(tag, "Erro na worker", it) } }
+
+    // -------------------------------------------------------------------------
+    // Reflection: acessa o Camera2ApiManager privado dentro do Camera2Base
+    // -------------------------------------------------------------------------
+    private fun getCam2Manager(): Camera2ApiManager? {
+        return try {
+            val field = Camera2Base::class.java.getDeclaredField("cameraManager")
+            field.isAccessible = true
+            field.get(server) as? Camera2ApiManager
+        } catch (e: Exception) {
+            Log.e(tag, "Reflection falhou ao acessar cameraManager", e)
+            null
+        }
+    }
+
+    /**
+     * Aplica configurações manuais de sensor via Camera2ApiManager.setCustomRequest.
+     * SENSOR_FRAME_DURATION deve ser >= SENSOR_EXPOSURE_TIME, sempre.
+     */
+    private fun applyManualSensor() {
+        val cam = getCam2Manager() ?: return
+        val safeDuration = maxOf(frameDurationNs, exposureNs)
+        cam.setCustomRequest { builder ->
+            builder.set(CaptureRequest.CONTROL_MODE,        CameraMetadata.CONTROL_MODE_OFF)
+            builder.set(CaptureRequest.CONTROL_AE_MODE,     CameraMetadata.CONTROL_AE_MODE_OFF)
+            builder.set(CaptureRequest.SENSOR_SENSITIVITY,  isoValue)
+            builder.set(CaptureRequest.SENSOR_EXPOSURE_TIME, exposureNs)
+            builder.set(CaptureRequest.SENSOR_FRAME_DURATION, safeDuration)
+        }
+        Log.d(tag, "Manual sensor -> ISO=$isoValue exp=${exposureNs}ns " +
+                   "dur=${safeDuration}ns (${1_000_000_000.0 / safeDuration.toDouble():.1f}fps max)")
+    }
+
+    /**
+     * Restaura AE automático (sai do modo manual).
+     */
+    private fun applyAutoSensor() {
+        val cam = getCam2Manager() ?: return
+        cam.setCustomRequest { builder ->
+            builder.set(CaptureRequest.CONTROL_MODE,    CameraMetadata.CONTROL_MODE_AUTO)
+            builder.set(CaptureRequest.CONTROL_AE_MODE, CameraMetadata.CONTROL_AE_MODE_ON)
+        }
+        Log.d(tag, "Sensor -> AUTO")
+    }
+
+    // -------------------------------------------------------------------------
 
     fun discoverAllCameras(context: Context): List<CameraCapabilities> {
         val manager = context.getSystemService(Context.CAMERA_SERVICE) as CameraManager
@@ -60,12 +109,12 @@ class Camera2Controller {
             val caps = chars.get(CameraCharacteristics.REQUEST_AVAILABLE_CAPABILITIES) ?: intArrayOf()
             fun hasCap(value: Int) = caps.contains(value)
 
-            val manualSensor  = hasCap(CameraCharacteristics.REQUEST_AVAILABLE_CAPABILITIES_MANUAL_SENSOR)
-            val manualPost    = hasCap(CameraCharacteristics.REQUEST_AVAILABLE_CAPABILITIES_MANUAL_POST_PROCESSING)
-            val raw           = hasCap(CameraCharacteristics.REQUEST_AVAILABLE_CAPABILITIES_RAW)
-            val burst         = hasCap(CameraCharacteristics.REQUEST_AVAILABLE_CAPABILITIES_BURST_CAPTURE)
-            val depth         = hasCap(CameraCharacteristics.REQUEST_AVAILABLE_CAPABILITIES_DEPTH_OUTPUT)
-            val multiCam      = hasCap(CameraCharacteristics.REQUEST_AVAILABLE_CAPABILITIES_LOGICAL_MULTI_CAMERA)
+            val manualSensorCap = hasCap(CameraCharacteristics.REQUEST_AVAILABLE_CAPABILITIES_MANUAL_SENSOR)
+            val manualPost      = hasCap(CameraCharacteristics.REQUEST_AVAILABLE_CAPABILITIES_MANUAL_POST_PROCESSING)
+            val raw             = hasCap(CameraCharacteristics.REQUEST_AVAILABLE_CAPABILITIES_RAW)
+            val burst           = hasCap(CameraCharacteristics.REQUEST_AVAILABLE_CAPABILITIES_BURST_CAPTURE)
+            val depth           = hasCap(CameraCharacteristics.REQUEST_AVAILABLE_CAPABILITIES_DEPTH_OUTPUT)
+            val multiCam        = hasCap(CameraCharacteristics.REQUEST_AVAILABLE_CAPABILITIES_LOGICAL_MULTI_CAMERA)
 
             val isoRange = chars.get(CameraCharacteristics.SENSOR_INFO_SENSITIVITY_RANGE)?.let {
                 listOf(it.lower, it.upper)
@@ -159,31 +208,31 @@ class Camera2Controller {
 
             cameras.add(
                 CameraCapabilities(
-                    cameraId                  = id,
-                    hardwareLevel             = hwLevel,
-                    facing                    = facing,
-                    name                      = name,
-                    isDepth                   = isDepth,
-                    supportsManualSensor      = manualSensor,
+                    cameraId                     = id,
+                    hardwareLevel                = hwLevel,
+                    facing                       = facing,
+                    name                         = name,
+                    isDepth                      = isDepth,
+                    supportsManualSensor         = manualSensorCap,
                     supportsManualPostProcessing = manualPost,
-                    supportsRaw               = raw,
-                    supportsBurstCapture      = burst,
-                    supportsDepthOutput       = depth,
-                    supportsLogicalMultiCamera = multiCam,
-                    isoRange                  = isoRange,
-                    exposureTimeRange         = expRange,
-                    evRange                   = evRange,
-                    focusDistanceRange        = focusRange,
-                    zoomRange                 = zoomRange,
-                    fpsRanges                 = fpsRanges,
-                    availableResolutions      = resolutions,
-                    supportedAFModes          = afModes,
-                    supportedAEModes          = aeModes,
-                    supportedAWBModes         = awbModes,
-                    hasFlash                  = hasFlash,
-                    hasOIS                    = hasOIS,
-                    focalLengths              = focalLengths,
-                    apertures                 = apertures
+                    supportsRaw                  = raw,
+                    supportsBurstCapture         = burst,
+                    supportsDepthOutput          = depth,
+                    supportsLogicalMultiCamera   = multiCam,
+                    isoRange                     = isoRange,
+                    exposureTimeRange            = expRange,
+                    evRange                      = evRange,
+                    focusDistanceRange           = focusRange,
+                    zoomRange                    = zoomRange,
+                    fpsRanges                    = fpsRanges,
+                    availableResolutions         = resolutions,
+                    supportedAFModes             = afModes,
+                    supportedAEModes             = aeModes,
+                    supportedAWBModes            = awbModes,
+                    hasFlash                     = hasFlash,
+                    hasOIS                       = hasOIS,
+                    focalLengths                 = focalLengths,
+                    apertures                    = apertures
                 )
             )
         }
@@ -195,36 +244,103 @@ class Camera2Controller {
         val srv = server
         if (srv == null) { Log.w(tag, "server nao inicializado"); return }
 
-        params["exposure"]?.let {
-            val ev = (it as Double).toInt().coerceIn(srv.minExposure, srv.maxExposure)
-            exposureLevel = ev
-            srv.setExposure(ev)
-            Log.d(tag, "Exposure EV=$ev")
-        }
-
-        params["iso"]?.let {
-            val iso = (it as Double).toInt()
-            isoValue = iso
-            val minEv = srv.minExposure
-            val maxEv = srv.maxExposure
-            val ev = (((iso - 50f) / (3200f - 50f)) * (maxEv - minEv) + minEv)
-                .toInt().coerceIn(minEv, maxEv)
-            exposureLevel = ev
-            srv.setExposure(ev)
-            Log.d(tag, "ISO $iso -> EV $ev")
-        }
-
+        // -----------------------------------------------------------------
+        // Toggle Sensor Manual: liga/desliga modo cinema
+        // -----------------------------------------------------------------
         params["manualSensor"]?.let {
             manualSensor = it as Boolean
-            if (!manualSensor) {
+            if (manualSensor) {
+                applyManualSensor()
+            } else {
+                applyAutoSensor()
                 srv.setExposure(0)
                 exposureLevel = 0
-                Log.d(tag, "manualSensor OFF -> EV reset")
+            }
+            Log.d(tag, "manualSensor -> $manualSensor")
+        }
+
+        // -----------------------------------------------------------------
+        // ISO real (SENSOR_SENSITIVITY) — só age se manualSensor = true
+        // -----------------------------------------------------------------
+        params["iso"]?.let {
+            isoValue = (it as Double).toInt()
+            if (manualSensor) {
+                applyManualSensor()
             } else {
-                Log.d(tag, "manualSensor ON")
+                // modo assistido: mapeia ISO -> EV como antes
+                val minEv = srv.minExposure
+                val maxEv = srv.maxExposure
+                val ev = (((isoValue - 50f) / (3200f - 50f)) * (maxEv - minEv) + minEv)
+                    .toInt().coerceIn(minEv, maxEv)
+                exposureLevel = ev
+                srv.setExposure(ev)
+            }
+            Log.d(tag, "ISO -> $isoValue (manualSensor=$manualSensor)")
+        }
+
+        // -----------------------------------------------------------------
+        // Shutter speed: recebe string "1/1000", "1/30", "1/4" ou nanosegundos como Double
+        // -----------------------------------------------------------------
+        params["shutterSpeed"]?.let { raw ->
+            exposureNs = when (raw) {
+                is String -> {
+                    // formato "1/N"
+                    val parts = raw.split("/")
+                    if (parts.size == 2) {
+                        val num = parts[0].trim().toDoubleOrNull() ?: 1.0
+                        val den = parts[1].trim().toDoubleOrNull() ?: 30.0
+                        ((num / den) * 1_000_000_000.0).toLong()
+                    } else {
+                        33_333_333L
+                    }
+                }
+                is Double -> raw.toLong()   // nanosegundos direto
+                is Long   -> raw
+                else      -> exposureNs
+            }
+            if (manualSensor) applyManualSensor()
+            Log.d(tag, "shutterSpeed -> ${exposureNs}ns")
+        }
+
+        // -----------------------------------------------------------------
+        // Frame Duration: controla FPS máximo real
+        // recebe Double em nanosegundos OU string "1/N" igual ao shutter
+        // -----------------------------------------------------------------
+        params["frameDuration"]?.let { raw ->
+            frameDurationNs = when (raw) {
+                is String -> {
+                    val parts = raw.split("/")
+                    if (parts.size == 2) {
+                        val num = parts[0].trim().toDoubleOrNull() ?: 1.0
+                        val den = parts[1].trim().toDoubleOrNull() ?: 30.0
+                        ((num / den) * 1_000_000_000.0).toLong()
+                    } else {
+                        33_333_333L
+                    }
+                }
+                is Double -> raw.toLong()
+                is Long   -> raw
+                else      -> frameDurationNs
+            }
+            if (manualSensor) applyManualSensor()
+            Log.d(tag, "frameDuration -> ${frameDurationNs}ns")
+        }
+
+        // -----------------------------------------------------------------
+        // Exposure EV assistido (só usado quando manualSensor = false)
+        // -----------------------------------------------------------------
+        params["exposure"]?.let {
+            if (!manualSensor) {
+                val ev = (it as Double).toInt().coerceIn(srv.minExposure, srv.maxExposure)
+                exposureLevel = ev
+                srv.setExposure(ev)
+                Log.d(tag, "Exposure EV=$ev")
             }
         }
 
+        // -----------------------------------------------------------------
+        // Foco
+        // -----------------------------------------------------------------
         params["focus"]?.let {
             val norm = (it as Double).toFloat().coerceIn(0f, 1f)
             if (norm == 0f) {
@@ -255,11 +371,13 @@ class Camera2Controller {
         }
 
         params["afTrigger"]?.let {
-            // Reativa AF continuo como equivalente ao trigger no contexto de streaming
             srv.enableAutoFocus()
-            Log.d(tag, "AF Trigger acionado via enableAutoFocus")
+            Log.d(tag, "AF Trigger via enableAutoFocus")
         }
 
+        // -----------------------------------------------------------------
+        // White Balance
+        // -----------------------------------------------------------------
         params["whiteBalance"]?.let {
             whiteBalanceMode = it as String
             val mode = when (whiteBalanceMode) {
@@ -273,17 +391,22 @@ class Camera2Controller {
             Log.d(tag, "WB -> $whiteBalanceMode")
         }
 
+        // -----------------------------------------------------------------
+        // Zoom
+        // -----------------------------------------------------------------
         params["zoom"]?.let {
             val z = (it as Double).toFloat().coerceIn(0f, 1f)
             zoomLevel = z
-            val zoomRange = srv.zoomRange
-            val minZ = zoomRange?.lower ?: 1f
-            val maxZ = zoomRange?.upper ?: 8f
-            val zoomValue = minZ + z * (maxZ - minZ)
-            srv.setZoom(zoomValue)
-            Log.d(tag, "Zoom -> $zoomValue (norm=$z)")
+            val zRange = srv.zoomRange
+            val minZ = zRange?.lower ?: 1f
+            val maxZ = zRange?.upper ?: 8f
+            srv.setZoom(minZ + z * (maxZ - minZ))
+            Log.d(tag, "Zoom -> ${minZ + z * (maxZ - minZ)} (norm=$z)")
         }
 
+        // -----------------------------------------------------------------
+        // Lanterna
+        // -----------------------------------------------------------------
         params["lantern"]?.let {
             val enable = it as Boolean
             lanternEnabled = enable
@@ -291,6 +414,9 @@ class Camera2Controller {
             Log.d(tag, "Lanterna -> $enable")
         }
 
+        // -----------------------------------------------------------------
+        // Estabilização
+        // -----------------------------------------------------------------
         params["ois"]?.let {
             val enable = it as Boolean
             oisEnabled = enable
@@ -307,44 +433,40 @@ class Camera2Controller {
             Log.d(tag, "EIS -> $enable")
         }
 
+        // -----------------------------------------------------------------
+        // AE / AWB Lock
+        // -----------------------------------------------------------------
         params["aeLock"]?.let {
             val lock = it as Boolean
             aeLocked = lock
-            // AE Lock: desliga/liga o AutoExposure como equivalente
-            if (lock) srv.disableAutoExposure()
-            else      srv.enableAutoExposure()
+            if (lock) srv.disableAutoExposure() else srv.enableAutoExposure()
             Log.d(tag, "AE Lock -> $lock")
         }
 
         params["awbLock"]?.let {
             val lock = it as Boolean
             awbLocked = lock
-            // AWB Lock: desliga/liga o AutoWhiteBalance como equivalente
             if (lock) srv.disableAutoWhiteBalance()
             else      srv.enableAutoWhiteBalance(CameraMetadata.CONTROL_AWB_MODE_AUTO)
             Log.d(tag, "AWB Lock -> $lock")
         }
 
+        // -----------------------------------------------------------------
+        // Flash Mode
+        // -----------------------------------------------------------------
         params["flashMode"]?.let {
             val mode = it as String
             flashMode = mode
             when (mode) {
-                "off" -> {
-                    srv.disableLantern()
-                    lanternEnabled = false
-                }
-                "torch" -> {
-                    srv.enableLantern()
-                    lanternEnabled = true
-                }
-                "single" -> {
-                    srv.disableLantern()
-                    lanternEnabled = false
-                }
+                "torch"  -> { srv.enableLantern();  lanternEnabled = true  }
+                else     -> { srv.disableLantern(); lanternEnabled = false }
             }
             Log.d(tag, "Flash Mode -> $mode")
         }
 
+        // -----------------------------------------------------------------
+        // Bitrate
+        // -----------------------------------------------------------------
         params["bitrate"]?.let {
             val br = (it as Double).toInt()
             currentBitrate = br
@@ -352,9 +474,14 @@ class Camera2Controller {
             Log.d(tag, "Bitrate -> ${br}kbps")
         }
 
+        // -----------------------------------------------------------------
+        // FPS (requer re-prepare)
+        // -----------------------------------------------------------------
         params["fps"]?.let { value ->
             val fps = (value as Double).toInt().coerceIn(15, 30)
             currentFps = fps
+            // Atualiza frame duration padrão para ficar consistente
+            if (!manualSensor) frameDurationNs = 1_000_000_000L / fps
             post {
                 val wasStreaming = srv.isStreaming
                 if (wasStreaming) srv.stopStream()
@@ -365,16 +492,24 @@ class Camera2Controller {
             }
         }
 
+        // -----------------------------------------------------------------
+        // Câmera
+        // -----------------------------------------------------------------
         params["camera"]?.let { value ->
             val id = value as String
             currentCameraId = id
             post {
                 srv.switchCamera(id)
-                if (!autoFocus && focusDistance > 0f) srv.setFocusDistance(focusDistance)
+                // Após troca de câmera, reaplicar modo manual se ativo
+                if (manualSensor) applyManualSensor()
+                else if (!autoFocus && focusDistance > 0f) srv.setFocusDistance(focusDistance)
                 Log.d(tag, "Camera -> $id")
             }
         }
 
+        // -----------------------------------------------------------------
+        // Resolução
+        // -----------------------------------------------------------------
         params["resolution"]?.let { value ->
             val res = value as String
             val (w, h, br) = when (res) {
