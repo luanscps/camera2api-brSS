@@ -5,7 +5,8 @@ data class CameraCapabilities(
     val hardwareLevel: String,  // LEGACY, LIMITED, FULL, LEVEL_3
     val facing: String,         // BACK, FRONT, EXTERNAL
     val name: String,           // Wide, Ultra Wide, Telephoto, Frontal
-    
+    val isDepth: Boolean,       // true = sensor Depth/ToF (ocultar da UI)
+
     // Capabilities flags
     val supportsManualSensor: Boolean,
     val supportsManualPostProcessing: Boolean,
@@ -13,21 +14,21 @@ data class CameraCapabilities(
     val supportsBurstCapture: Boolean,
     val supportsDepthOutput: Boolean,
     val supportsLogicalMultiCamera: Boolean,
-    
-    // Ranges disponíveis
-    val isoRange: Pair<Int, Int>?,           // min, max
-    val exposureTimeRange: Pair<Long, Long>?, // ns min, ns max
-    val evRange: Pair<Int, Int>?,            // min, max
-    val focusDistanceRange: Pair<Float, Float>?,
-    val zoomRange: Pair<Float, Float>?,
-    val fpsRanges: List<Pair<Int, Int>>,    // [(min, max), ...]
-    
+
+    // Ranges como List<Number> para serializar como array JSON [min, max]
+    val isoRange: List<Int>?,            // [min, max]
+    val exposureTimeRange: List<Long>?,  // [min_ns, max_ns]
+    val evRange: List<Int>?,             // [min, max]
+    val focusDistanceRange: List<Float>?,
+    val zoomRange: List<Float>?,
+    val fpsRanges: List<List<Int>>,      // [[min,max], ...]
+
     // Formatos e resoluções
-    val availableResolutions: List<String>,  // ["3840x2160", "1920x1080", ...]
+    val availableResolutions: List<String>,
     val supportedAFModes: List<String>,
     val supportedAEModes: List<String>,
     val supportedAWBModes: List<String>,
-    
+
     // Hardware físico
     val hasFlash: Boolean,
     val hasOIS: Boolean,

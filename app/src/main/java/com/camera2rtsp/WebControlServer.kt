@@ -121,7 +121,6 @@ class WebControlServer(
         return newFixedLengthResponse(Response.Status.OK, "text/html", html)
     }
 
-    // HTML gerado via concatenacao de strings para evitar conflito $ Kotlin vs JS
     private fun buildHtml(): String {
         val sb = StringBuilder()
         sb.append("<!DOCTYPE html>")
@@ -209,7 +208,6 @@ class WebControlServer(
         sb.append("<div class=\"container\">")
         sb.append("<div class=\"header\"><h1>Camera2 RTSP Control</h1>")
         sb.append("<p>Samsung Galaxy Note10+ - SM-N975F - Android 12</p></div>")
-        // statusbar
         sb.append("<div class=\"statusbar\">")
         sb.append("<div class=\"badge\"><span class=\"dot off\" id=\"dot-stream\"></span><span id=\"lbl-stream\">Conectando...</span></div>")
         sb.append("<div class=\"badge\">Cam: <span id=\"lbl-cam\">-</span></div>")
@@ -218,7 +216,6 @@ class WebControlServer(
         sb.append("<div class=\"badge\">Clientes: <span id=\"lbl-clients\">0</span></div>")
         sb.append("<div class=\"badge\">Lat: <span id=\"lbl-lat\" class=\"lat-ok\">-</span></div>")
         sb.append("</div>")
-        // info card
         sb.append("<div class=\"card\"><h3>Estado da Camera</h3><div class=\"info-row\">")
         sb.append("<div class=\"info-pill\">Foco: <span id=\"info-focusmode\">-</span></div>")
         sb.append("<div class=\"info-pill\">Dist: <span id=\"info-focusdist\">-</span></div>")
@@ -230,10 +227,8 @@ class WebControlServer(
         sb.append("<div class=\"info-pill\">OIS: <span id=\"info-ois\">-</span></div>")
         sb.append("<div class=\"info-pill\">FPS: <span id=\"info-fps\">-</span></div>")
         sb.append("</div></div>")
-        // camera buttons
         sb.append("<div class=\"card\" id=\"card-camera\"><h3>Camera</h3>")
         sb.append("<div class=\"btngroup\" id=\"btngroup-camera\">Carregando cameras...</div></div>")
-        // resolution + bitrate
         sb.append("<div class=\"grid2\">")
         sb.append("<div class=\"card\"><h3>Resolucao</h3>")
         sb.append("<div class=\"btngroup\" id=\"btngroup-resolution\" style=\"margin-bottom:10px\"></div>")
@@ -248,7 +243,6 @@ class WebControlServer(
         sb.append("<button onclick=\"setBitratePreset(8000)\">8M</button>")
         sb.append("<button onclick=\"setBitratePreset(20000)\">20M</button>")
         sb.append("</div></div></div>")
-        // zoom
         sb.append("<div class=\"card\" id=\"card-zoom\"><h3>Zoom <span class=\"val\" id=\"zoom-val\">1x</span></h3>")
         sb.append("<div class=\"slider-wrap\">")
         sb.append("<input type=\"range\" id=\"zoom\" min=\"0\" max=\"1\" value=\"0\" step=\"0.01\" oninput=\"updateZoom(this.value)\">")
@@ -259,13 +253,11 @@ class WebControlServer(
         sb.append("<button onclick=\"setZoomPreset(0.5)\">4x</button>")
         sb.append("<button onclick=\"setZoomPreset(1.0)\">Max</button>")
         sb.append("</div></div>")
-        // focus
         sb.append("<div class=\"card\" id=\"card-focus\"><h3>Foco <span class=\"val\" id=\"focus-val\">Auto</span></h3>")
         sb.append("<div class=\"slider-wrap\">")
         sb.append("<input type=\"range\" id=\"focus\" min=\"0\" max=\"10\" value=\"0\" step=\"0.1\" oninput=\"updateFocus(this.value)\">")
         sb.append("<div class=\"rlabels\"><span>Auto/inf</span><span>Macro(10D)</span></div></div>")
         sb.append("<div class=\"btngroup\" style=\"margin-top:8px\" id=\"btngroup-focusmode\"></div></div>")
-        // iso + ev
         sb.append("<div class=\"grid2\">")
         sb.append("<div class=\"card\" id=\"card-iso\"><h3>ISO <span class=\"val\" id=\"iso-val\">50</span></h3>")
         sb.append("<div class=\"slider-wrap\">")
@@ -284,17 +276,14 @@ class WebControlServer(
         sb.append("<button onclick=\"setEVPreset(0)\">0</button>")
         sb.append("<button onclick=\"setEVPreset(4)\">+4</button>")
         sb.append("</div></div></div>")
-        // white balance
         sb.append("<div class=\"card\" id=\"card-wb\"><h3>Balanco de Branco</h3>")
         sb.append("<div class=\"btngroup\" id=\"btngroup-wb\"></div></div>")
-        // extras
         sb.append("<div class=\"card\" id=\"card-extras\"><h3>Controles Extras</h3>")
         sb.append("<div id=\"extras-content\"></div></div>")
         sb.append("<p style=\"text-align:center;margin-top:16px;color:var(--muted);font-size:10px;padding-bottom:20px\">")
         sb.append("Camera2 API - RootEncoder - NanoHTTPD - v2.1</p>")
         sb.append("</div>")
         sb.append("<div id=\"toast\" class=\"ok\">OK</div>")
-        // --- SCRIPT ---
         sb.append("<script>")
         sb.append("var ISO_LIST=[50,81,112,143,174,205,236,267,298,329,360,391,422,453,484,")
         sb.append("515,546,577,608,639,670,701,732,763,794,825,856,887,918,949,980,1011,1042,")
@@ -308,40 +297,35 @@ class WebControlServer(
         sb.append("var _toastTimer;")
         sb.append("var _pollFail=0;")
         sb.append("var _brT,_zT,_fT,_iT,_eT;")
-        // showToast
         sb.append("function showToast(msg,isErr){")
         sb.append("var t=document.getElementById('toast');")
         sb.append("t.textContent=msg;t.className=isErr?'err':'ok';t.classList.add('show');")
         sb.append("clearTimeout(_toastTimer);_toastTimer=setTimeout(function(){t.classList.remove('show');},1800);}")
-        // feedback
         sb.append("function feedback(btn,ok){")
         sb.append("if(!btn)return;")
         sb.append("var cls=ok?'fb-ok':'fb-err';")
         sb.append("btn.classList.remove('fb-ok','fb-err');void btn.offsetWidth;")
         sb.append("btn.classList.add(cls);setTimeout(function(){btn.classList.remove(cls);},500);}")
-        // markActive
         sb.append("function markActive(attr,val){")
         sb.append("var els=document.querySelectorAll('['+attr+']');")
         sb.append("for(var i=0;i<els.length;i++){")
         sb.append("els[i].classList.toggle('active',els[i].getAttribute(attr)===String(val));}")
         sb.append("}")
-        // sendControl
         sb.append("function sendControl(data,btn,msg){")
         sb.append("fetch('/api/control',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(data)})")
         sb.append(".then(function(r){if(!r.ok)throw new Error('HTTP '+r.status);return r.json();})")
         sb.append(".then(function(){feedback(btn,true);showToast(msg||'OK',false);})")
         sb.append(".catch(function(e){feedback(btn,false);showToast('ERR:'+e.message,true);});}")
-        // getCap — usa camera_id (snake_case, Gson policy)
+        // getCap usa camera_id (snake_case)
         sb.append("function getCap(camId){")
         sb.append("if(!_caps)return null;")
         sb.append("for(var i=0;i<_caps.length;i++){if(_caps[i].camera_id===String(camId))return _caps[i];}")
         sb.append("return null;}")
-        // show/hide helper
         sb.append("function showCard(id,show){")
         sb.append("var el=document.getElementById(id);")
         sb.append("if(!el)return;")
         sb.append("if(show){el.classList.remove('hidden');}else{el.classList.add('hidden');}}")
-        // updateUIForCamera
+        // updateUIForCamera — ranges agora sao arrays [min,max]
         sb.append("function updateUIForCamera(camId){")
         sb.append("_currentCamId=String(camId);")
         sb.append("var cap=getCap(camId);")
@@ -350,11 +334,11 @@ class WebControlServer(
         sb.append("showCard('card-iso',true);showCard('card-ev',true);")
         sb.append("showCard('card-wb',true);showCard('card-extras',true);")
         sb.append("return;}")
-        // zoom — usa zoom_range (snake_case)
+        // zoom: zoom_range e array [min, max]
         sb.append("var hasZoom=cap.zoom_range&&cap.zoom_range[1]>1.0;")
         sb.append("showCard('card-zoom',hasZoom);")
         sb.append("var zs=document.getElementById('zoom');if(zs)zs.disabled=!hasZoom;")
-        // focus — usa focus_distance_range e supported_af_modes (snake_case)
+        // focus: focus_distance_range e array [0, maxDiopter]
         sb.append("var hasFocus=cap.focus_distance_range&&cap.focus_distance_range[1]>0;")
         sb.append("showCard('card-focus',hasFocus);")
         sb.append("var fs=document.getElementById('focus');if(fs)fs.disabled=!hasFocus;")
@@ -369,22 +353,22 @@ class WebControlServer(
         sb.append("b.textContent=mode==='off'?'Travar':mode==='auto'?'Auto':'Continuo';")
         sb.append("b.setAttribute('data-fm',mode);")
         sb.append("b.onclick=function(){markActive('data-fm',mode);setFocusMode(mode);};")
-        sb.append("fg.appendChild(b);}})(afModes[i]);}")
-        sb.append("}")
-        // iso — usa supports_manual_sensor e iso_range (snake_case)
+        sb.append("fg.appendChild(b);}})(afModes[i]);}}")
+        // iso: supports_manual_sensor + iso_range array [min,max]
         sb.append("var hasISO=cap.supports_manual_sensor&&cap.iso_range;")
         sb.append("showCard('card-iso',hasISO);")
-        sb.append("var is=document.getElementById('iso'),tm=document.getElementById('toggle-manual');")
-        sb.append("if(is)is.disabled=!hasISO;if(tm)tm.disabled=!hasISO;")
-        // ev — usa ev_range (snake_case)
-        sb.append("var hasEV=cap.ev_range!=null;")
+        sb.append("var is2=document.getElementById('iso'),tm=document.getElementById('toggle-manual');")
+        sb.append("if(is2)is2.disabled=!hasISO;if(tm)tm.disabled=!hasISO;")
+        // ev: ev_range e array [min,max]
+        sb.append("var hasEV=Array.isArray(cap.ev_range)&&cap.ev_range.length===2;")
         sb.append("showCard('card-ev',hasEV);")
         sb.append("if(hasEV){")
-        sb.append("var ev=document.getElementById('ev');")
-        sb.append("ev.min=cap.ev_range[0];ev.max=cap.ev_range[1];ev.value=0;")
+        sb.append("var evMin=cap.ev_range[0],evMax=cap.ev_range[1];")
+        sb.append("var evEl=document.getElementById('ev');")
+        sb.append("evEl.min=evMin;evEl.max=evMax;evEl.value=0;")
         sb.append("document.getElementById('ev-labels').innerHTML=")
-        sb.append("'<span>'+cap.ev_range[0]+'</span><span>0</span><span>+'+cap.ev_range[1]+'</span>';}")
-        // wb — usa supported_awb_modes (snake_case)
+        sb.append("'<span>'+evMin+'</span><span>0</span><span>+'+(evMax>0?evMax:8)+'</span>';}")
+        // wb
         sb.append("if(cap.supported_awb_modes&&cap.supported_awb_modes.length>0){")
         sb.append("showCard('card-wb',true);")
         sb.append("var wg=document.getElementById('btngroup-wb');wg.innerHTML='';")
@@ -398,9 +382,8 @@ class WebControlServer(
         sb.append("b.textContent=wbNames[mode]||mode;")
         sb.append("b.onclick=function(){markActive('data-wb',mode);sendControl({whiteBalance:mode},b,'WB '+mode);};")
         sb.append("wg.appendChild(b);})(awb[j]);}")
-        sb.append("}")
-        sb.append("else{showCard('card-wb',false);}")
-        // extras: flash + ois — usa has_flash e has_ois (snake_case)
+        sb.append("}else{showCard('card-wb',false);}")
+        // extras: has_flash e has_ois
         sb.append("var ec=document.getElementById('extras-content');ec.innerHTML='';")
         sb.append("if(cap.has_flash){")
         sb.append("var r1=document.createElement('div');r1.className='toggle-row';")
@@ -414,17 +397,14 @@ class WebControlServer(
         sb.append("+'<label class=\"switch\"><input type=\"checkbox\" id=\"toggle-ois\" onchange=\"toggleOIS(this)\">'")
         sb.append("+'<span class=\"sw\"></span></label>';")
         sb.append("ec.appendChild(r2);}")
-        sb.append("showCard('card-extras',cap.has_flash||cap.has_ois);")
+        sb.append("showCard('card-extras',!!(cap.has_flash||cap.has_ois));")
         sb.append("}")
-        // switchCamera
         sb.append("function switchCamera(id){")
         sb.append("markActive('data-cam',id);")
         sb.append("updateUIForCamera(id);")
         sb.append("sendControl({camera:id},null,'Cam '+id);}")
-        // resolution / fps
         sb.append("function setResolution(res,btn){markActive('data-res',res);sendControl({resolution:res},btn,res);}")
         sb.append("function setFPS(fps,btn){markActive('data-fps',fps);sendControl({fps:fps},btn,fps+' fps');}")
-        // bitrate
         sb.append("function updateBitrate(v){")
         sb.append("document.getElementById('br-value').textContent=v;")
         sb.append("clearTimeout(_brT);_brT=setTimeout(function(){sendControl({bitrate:+v},null,v+'kbps');},400);}")
@@ -432,41 +412,34 @@ class WebControlServer(
         sb.append("document.getElementById('bitrate').value=v;")
         sb.append("document.getElementById('br-value').textContent=v;")
         sb.append("sendControl({bitrate:v},null,v+'kbps');}")
-        // zoom
         sb.append("function updateZoom(v){")
         sb.append("var pct=parseFloat(v);")
         sb.append("var mult=(1+pct*7).toFixed(1);")
         sb.append("document.getElementById('zoom-val').textContent=mult+'x';")
         sb.append("clearTimeout(_zT);_zT=setTimeout(function(){sendControl({zoom:pct},null,'Zoom '+mult+'x');},150);}")
         sb.append("function setZoomPreset(v){document.getElementById('zoom').value=v;updateZoom(v);}")
-        // focus
         sb.append("function updateFocus(v){")
         sb.append("var f=parseFloat(v);")
         sb.append("document.getElementById('focus-val').textContent=f===0?'Auto':f.toFixed(1)+'D';")
         sb.append("clearTimeout(_fT);_fT=setTimeout(function(){sendControl({focus:f/10},null,(f===0?'Auto':f.toFixed(1)+'D'));},200);}")
         sb.append("function setFocusMode(mode){sendControl({focusmode:mode},null,'Foco '+mode);}")
-        // iso
         sb.append("function updateISO(v){")
         sb.append("var iso=ISO_LIST[Math.min(+v,ISO_LIST.length-1)];")
         sb.append("document.getElementById('iso-val').textContent=iso;")
         sb.append("clearTimeout(_iT);_iT=setTimeout(function(){sendControl({iso:iso},null,'ISO '+iso);},350);}")
-        // ev
         sb.append("function updateEV(v){")
         sb.append("var n=+v;")
         sb.append("document.getElementById('ev-val').textContent=(n>0?'+':'')+n;")
         sb.append("clearTimeout(_eT);_eT=setTimeout(function(){sendControl({exposure:n},null,'EV '+n);},300);}")
         sb.append("function setEVPreset(v){document.getElementById('ev').value=v;updateEV(v);}")
-        // toggles
         sb.append("function toggleManual(chk){sendControl({manualSensor:chk.checked},null,chk.checked?'Manual ON':'Auto');}")
         sb.append("function toggleLantern(chk){sendControl({lantern:chk.checked},null,chk.checked?'Torch ON':'Torch OFF');}")
         sb.append("function toggleOIS(chk){sendControl({ois:chk.checked},null,chk.checked?'OIS ON':'OIS OFF');}")
-        // helpers
         sb.append("function nsToShutter(ns){if(ns<=0)return '-';var s=ns/1e9;return s>=1?s.toFixed(1)+'s':'1/'+Math.round(1/s)+'s';}")
         sb.append("function latClass(ms){return ms<100?'lat-ok':ms<300?'lat-warn':'lat-bad';}")
         sb.append("function syncChk(id,val){var el=document.getElementById(id);if(el&&el.checked!==val)el.checked=val;}")
         sb.append("function syncSlider(id,val,mn,mx){if(!val)return;var el=document.getElementById(id);if(!el)return;")
         sb.append("var v=Math.max(mn,Math.min(mx,+val));if(document.activeElement!==el)el.value=v;}")
-        // pollStatus
         sb.append("function pollStatus(){")
         sb.append("var t0=Date.now();")
         sb.append("fetch('/api/status')")
@@ -504,7 +477,7 @@ class WebControlServer(
         sb.append("_pollFail++;")
         sb.append("if(_pollFail>=3){document.getElementById('dot-stream').className='dot off';")
         sb.append("document.getElementById('lbl-stream').textContent='Sem conexao';}});}")
-        // initCapabilities
+        // initCapabilities — filtra is_depth=true
         sb.append("function initCapabilities(){")
         sb.append("fetch('/api/capabilities')")
         sb.append(".then(function(r){if(!r.ok)throw new Error('HTTP '+r.status);return r.json();})")
@@ -512,17 +485,18 @@ class WebControlServer(
         sb.append("_caps=caps;")
         sb.append("var cg=document.getElementById('btngroup-camera');")
         sb.append("cg.innerHTML='';")
-        // usa cap.name diretamente (snake_case nao altera name pois ja e minusculo)
+        // filtra cameras depth/ToF
         sb.append("for(var i=0;i<caps.length;i++){")
         sb.append("(function(cap){")
+        sb.append("if(cap.is_depth)return;")
         sb.append("var b=document.createElement('button');")
         sb.append("b.setAttribute('data-cam',cap.camera_id);")
         sb.append("b.textContent=cap.name||('Cam '+cap.camera_id);")
         sb.append("b.onclick=function(){switchCamera(cap.camera_id);};")
         sb.append("cg.appendChild(b);})(caps[i]);}")
-        // resolution buttons from firstCam — usa available_resolutions (snake_case)
+        // resolution buttons
         sb.append("var rg=document.getElementById('btngroup-resolution');rg.innerHTML='';")
-        sb.append("var fc=caps[0];")
+        sb.append("var fc=null;for(var i=0;i<caps.length;i++){if(!caps[i].is_depth){fc=caps[i];break;}}")
         sb.append("if(fc&&fc.available_resolutions){")
         sb.append("var rl=fc.available_resolutions;")
         sb.append("var ps=[{res:'720p',key:'1280x720',lbl:'HD 720p'},")
@@ -536,8 +510,7 @@ class WebControlServer(
         sb.append("b.className='pq-btn';b.setAttribute('data-res',p.res);")
         sb.append("b.textContent=p.lbl;")
         sb.append("b.onclick=function(){setResolution(p.res,b);};")
-        sb.append("rg.appendChild(b);}})(ps[j]);}")
-        sb.append("}")
+        sb.append("rg.appendChild(b);}})(ps[j]);}}")
         // fps buttons
         sb.append("var fg=document.getElementById('btngroup-fps');fg.innerHTML='';")
         sb.append("var fpsOpts=[15,24,30];")
@@ -549,12 +522,10 @@ class WebControlServer(
         sb.append("if(fps===30)b.classList.add('active');")
         sb.append("b.onclick=function(){setFPS(fps,b);};")
         sb.append("fg.appendChild(b);})(fpsOpts[k]);}")
-        // init UI
         sb.append("markActive('data-cam','0');")
         sb.append("updateUIForCamera('0');")
         sb.append("})")
         sb.append(".catch(function(e){")
-        // fallback
         sb.append("console.error('caps err:',e);")
         sb.append("var cg=document.getElementById('btngroup-camera');")
         sb.append("cg.innerHTML='';")
@@ -582,7 +553,6 @@ class WebControlServer(
         sb.append("+'<button onclick=\"setFocusMode(\\'off\\');\">Travar</button>';")
         sb.append("markActive('data-cam','0');")
         sb.append("});}")
-        // boot
         sb.append("initCapabilities();")
         sb.append("pollStatus();")
         sb.append("setInterval(pollStatus,2000);")
