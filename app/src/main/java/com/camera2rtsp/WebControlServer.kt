@@ -1,7 +1,8 @@
 package com.camera2rtsp
 
 import android.content.Context
-import com.google.gson.Gson
+import com.google.gson.FieldNamingPolicy
+import com.google.gson.GsonBuilder
 import com.google.gson.reflect.TypeToken
 import com.pedro.rtspserver.RtspServerCamera2
 import fi.iki.elonen.NanoHTTPD
@@ -12,7 +13,10 @@ class WebControlServer(
     private val context: Context
 ) : NanoHTTPD(port) {
 
-    private val gson = Gson()
+    // snake_case: cameraId -> camera_id, hasFlash -> has_flash, etc.
+    private val gson = GsonBuilder()
+        .setFieldNamingPolicy(FieldNamingPolicy.LOWER_CASE_WITH_UNDERSCORES)
+        .create()
 
     override fun serve(session: IHTTPSession): Response {
         val uri = session.uri
@@ -97,7 +101,7 @@ class WebControlServer(
             val json = map["postData"] ?: return newFixedLengthResponse(
                 Response.Status.BAD_REQUEST, "text/plain", "No data"
             )
-            val params = gson.fromJson<Map<String, Any>>(
+            val params = com.google.gson.Gson().fromJson<Map<String, Any>>(
                 json, object : TypeToken<Map<String, Any>>() {}.type
             )
             cameraController.updateSettings(params)
@@ -327,7 +331,7 @@ class WebControlServer(
         sb.append(".then(function(r){if(!r.ok)throw new Error('HTTP '+r.status);return r.json();})")
         sb.append(".then(function(){feedback(btn,true);showToast(msg||'OK',false);})")
         sb.append(".catch(function(e){feedback(btn,false);showToast('ERR:'+e.message,true);});}")
-        // getCap
+        // getCap — usa camera_id (snake_case, Gson policy)
         sb.append("function getCap(camId){")
         sb.append("if(!_caps)return null;")
         sb.append("for(var i=0;i<_caps.length;i++){if(_caps[i].camera_id===String(camId))return _caps[i];}")
@@ -337,21 +341,20 @@ class WebControlServer(
         sb.append("var el=document.getElementById(id);")
         sb.append("if(!el)return;")
         sb.append("if(show){el.classList.remove('hidden');}else{el.classList.add('hidden');}}")
-        // updateUIForCamera — usa cap ou mostra tudo se sem caps
+        // updateUIForCamera
         sb.append("function updateUIForCamera(camId){")
         sb.append("_currentCamId=String(camId);")
         sb.append("var cap=getCap(camId);")
         sb.append("if(!cap){")
-        // sem capabilities: mostra tudo
         sb.append("showCard('card-zoom',true);showCard('card-focus',true);")
         sb.append("showCard('card-iso',true);showCard('card-ev',true);")
         sb.append("showCard('card-wb',true);showCard('card-extras',true);")
         sb.append("return;}")
-        // zoom
+        // zoom — usa zoom_range (snake_case)
         sb.append("var hasZoom=cap.zoom_range&&cap.zoom_range[1]>1.0;")
         sb.append("showCard('card-zoom',hasZoom);")
         sb.append("var zs=document.getElementById('zoom');if(zs)zs.disabled=!hasZoom;")
-        // focus
+        // focus — usa focus_distance_range e supported_af_modes (snake_case)
         sb.append("var hasFocus=cap.focus_distance_range&&cap.focus_distance_range[1]>0;")
         sb.append("showCard('card-focus',hasFocus);")
         sb.append("var fs=document.getElementById('focus');if(fs)fs.disabled=!hasFocus;")
@@ -366,13 +369,14 @@ class WebControlServer(
         sb.append("b.textContent=mode==='off'?'Travar':mode==='auto'?'Auto':'Continuo';")
         sb.append("b.setAttribute('data-fm',mode);")
         sb.append("b.onclick=function(){markActive('data-fm',mode);setFocusMode(mode);};")
-        sb.append("fg.appendChild(b);}})(afModes[i]);}}")
-        // iso
+        sb.append("fg.appendChild(b);}})(afModes[i]);}")
+        sb.append("}")
+        // iso — usa supports_manual_sensor e iso_range (snake_case)
         sb.append("var hasISO=cap.supports_manual_sensor&&cap.iso_range;")
         sb.append("showCard('card-iso',hasISO);")
         sb.append("var is=document.getElementById('iso'),tm=document.getElementById('toggle-manual');")
         sb.append("if(is)is.disabled=!hasISO;if(tm)tm.disabled=!hasISO;")
-        // ev
+        // ev — usa ev_range (snake_case)
         sb.append("var hasEV=cap.ev_range!=null;")
         sb.append("showCard('card-ev',hasEV);")
         sb.append("if(hasEV){")
@@ -380,7 +384,7 @@ class WebControlServer(
         sb.append("ev.min=cap.ev_range[0];ev.max=cap.ev_range[1];ev.value=0;")
         sb.append("document.getElementById('ev-labels').innerHTML=")
         sb.append("'<span>'+cap.ev_range[0]+'</span><span>0</span><span>+'+cap.ev_range[1]+'</span>';}")
-        // wb
+        // wb — usa supported_awb_modes (snake_case)
         sb.append("if(cap.supported_awb_modes&&cap.supported_awb_modes.length>0){")
         sb.append("showCard('card-wb',true);")
         sb.append("var wg=document.getElementById('btngroup-wb');wg.innerHTML='';")
@@ -393,9 +397,10 @@ class WebControlServer(
         sb.append("b.setAttribute('data-wb',mode);")
         sb.append("b.textContent=wbNames[mode]||mode;")
         sb.append("b.onclick=function(){markActive('data-wb',mode);sendControl({whiteBalance:mode},b,'WB '+mode);};")
-        sb.append("wg.appendChild(b);})(awb[j]);}}")
+        sb.append("wg.appendChild(b);})(awb[j]);}")
+        sb.append("}")
         sb.append("else{showCard('card-wb',false);}")
-        // extras: flash + ois
+        // extras: flash + ois — usa has_flash e has_ois (snake_case)
         sb.append("var ec=document.getElementById('extras-content');ec.innerHTML='';")
         sb.append("if(cap.has_flash){")
         sb.append("var r1=document.createElement('div');r1.className='toggle-row';")
@@ -490,7 +495,6 @@ class WebControlServer(
         sb.append("syncChk('toggle-lantern',c.torch==='on');")
         sb.append("syncChk('toggle-ois',c.ois==='on');")
         sb.append("syncChk('toggle-manual',c.manual_sensor==='on');")
-        // nao chama markActive data-cam aqui para nao sobrescrever selecao do usuario
         sb.append("if(c.whitebalance)markActive('data-wb',c.whitebalance);")
         sb.append("if(c.fps)markActive('data-fps',+c.fps);")
         sb.append("syncSlider('bitrate',c.bitrate_kbps,500,25000);")
@@ -508,15 +512,15 @@ class WebControlServer(
         sb.append("_caps=caps;")
         sb.append("var cg=document.getElementById('btngroup-camera');")
         sb.append("cg.innerHTML='';")
-        sb.append("var labels={'0':'Wide','1':'Frontal','2':'Ultra Wide','3':'Telephoto'};")
+        // usa cap.name diretamente (snake_case nao altera name pois ja e minusculo)
         sb.append("for(var i=0;i<caps.length;i++){")
         sb.append("(function(cap){")
         sb.append("var b=document.createElement('button');")
         sb.append("b.setAttribute('data-cam',cap.camera_id);")
-        sb.append("b.textContent=(labels[cap.camera_id]||('Cam '+cap.camera_id));")
+        sb.append("b.textContent=cap.name||('Cam '+cap.camera_id);")
         sb.append("b.onclick=function(){switchCamera(cap.camera_id);};")
         sb.append("cg.appendChild(b);})(caps[i]);}")
-        // resolution buttons from firstCam
+        // resolution buttons from firstCam — usa available_resolutions (snake_case)
         sb.append("var rg=document.getElementById('btngroup-resolution');rg.innerHTML='';")
         sb.append("var fc=caps[0];")
         sb.append("if(fc&&fc.available_resolutions){")
@@ -532,7 +536,8 @@ class WebControlServer(
         sb.append("b.className='pq-btn';b.setAttribute('data-res',p.res);")
         sb.append("b.textContent=p.lbl;")
         sb.append("b.onclick=function(){setResolution(p.res,b);};")
-        sb.append("rg.appendChild(b);}})(ps[j]);}}")
+        sb.append("rg.appendChild(b);}})(ps[j]);}")
+        sb.append("}")
         // fps buttons
         sb.append("var fg=document.getElementById('btngroup-fps');fg.innerHTML='';")
         sb.append("var fpsOpts=[15,24,30];")
@@ -544,12 +549,12 @@ class WebControlServer(
         sb.append("if(fps===30)b.classList.add('active');")
         sb.append("b.onclick=function(){setFPS(fps,b);};")
         sb.append("fg.appendChild(b);})(fpsOpts[k]);}")
-        // init UI com camera 0 marcada como ativa
+        // init UI
         sb.append("markActive('data-cam','0');")
         sb.append("updateUIForCamera('0');")
         sb.append("})")
         sb.append(".catch(function(e){")
-        // fallback: mostra tudo se capabilities falhar
+        // fallback
         sb.append("console.error('caps err:',e);")
         sb.append("var cg=document.getElementById('btngroup-camera');")
         sb.append("cg.innerHTML='';")
@@ -572,9 +577,9 @@ class WebControlServer(
         sb.append("b.onclick=function(){markActive('data-wb',mode);sendControl({whiteBalance:mode},b,'WB '+mode);};")
         sb.append("wg.appendChild(b);})(wbDef[j]);}")
         sb.append("var fg2=document.getElementById('btngroup-focusmode');")
-        sb.append("fg2.innerHTML='<button onclick=\"setFocusMode('+\"'auto'\"+');\">Auto</button>'")
-        sb.append("+'<button onclick=\"setFocusMode('+\"'continuous-video'\"+');\">Continuo</button>'")
-        sb.append("+'<button onclick=\"setFocusMode('+\"'off'\"+');\">Travar</button>';")
+        sb.append("fg2.innerHTML='<button onclick=\"setFocusMode(\\'auto\\');\">Auto</button>'")
+        sb.append("+'<button onclick=\"setFocusMode(\\'continuous-video\\');\">Continuo</button>'")
+        sb.append("+'<button onclick=\"setFocusMode(\\'off\\');\">Travar</button>';")
         sb.append("markActive('data-cam','0');")
         sb.append("});}")
         // boot
