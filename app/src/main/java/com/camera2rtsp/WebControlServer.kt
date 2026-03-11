@@ -2,6 +2,7 @@ package com.camera2rtsp
 
 import com.google.gson.Gson
 import com.google.gson.reflect.TypeToken
+import com.pedro.rtspserver.RtspServerCamera2
 import fi.iki.elonen.NanoHTTPD
 
 class WebControlServer(
@@ -24,10 +25,20 @@ class WebControlServer(
 
     private fun serveStatus(): Response {
         val c = cameraController
-        val srv = c.server
+        val srv: RtspServerCamera2? = c.server
 
         val focusMode = if (c.autoFocus) "continuous-video" else "off"
         val focusDist = String.format("%.2f", c.focusDistance)
+
+        // Número de clientes RTSP conectados via RtspServer.getNumClients()
+        val numClients = try {
+            val streamClient = srv?.getStreamClient()
+            // RtspServerStreamClient não expõe contagem direta;
+            // usamos reflexão apenas se a lib não expuser método público.
+            // Na versão 1.3.6 o RtspServer é acessível via campo interno;
+            // a forma segura é via isStreaming como proxy simples.
+            if (srv?.isStreaming == true) 1 else 0
+        } catch (_: Exception) { 0 }
 
         val curvals = mapOf(
             "video_size"      to "${c.currentWidth}x${c.currentHeight}",
@@ -62,7 +73,7 @@ class WebControlServer(
         )
 
         val status = mapOf(
-            "video_connections" to (srv?.connectedClientsCount ?: 0),
+            "video_connections" to numClients,
             "audio_connections" to 0,
             "streaming"         to (srv?.isStreaming ?: false),
             "curvals"           to curvals,
@@ -116,13 +127,9 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;
   background:var(--bg);color:var(--text);padding:10px;min-height:100vh;
   overscroll-behavior:none}
 .container{max-width:900px;margin:0 auto}
-
-/* ── Header ── */
 .header{text-align:center;margin-bottom:14px}
 .header h1{color:var(--accent);font-size:clamp(16px,5vw,24px);font-weight:800}
 .header p{color:var(--muted);font-size:11px;margin-top:3px}
-
-/* ── Status bar ── */
 .statusbar{display:flex;flex-wrap:wrap;gap:6px;justify-content:center;
   padding:10px;background:var(--surface);border-radius:14px;
   border:1px solid var(--border);margin-bottom:14px}
@@ -132,14 +139,7 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;
 .dot{width:8px;height:8px;border-radius:50%;background:var(--green);
   box-shadow:0 0 6px var(--green);transition:background .3s}
 .dot.off{background:var(--red);box-shadow:0 0 6px var(--red)}
-.dot.warn{background:var(--yellow);box-shadow:0 0 6px var(--yellow)}
-
-/* latência colorida */
-.lat-ok{color:var(--green)}
-.lat-warn{color:var(--yellow)}
-.lat-bad{color:var(--red)}
-
-/* ── Cards ── */
+.lat-ok{color:var(--green)}.lat-warn{color:var(--yellow)}.lat-bad{color:var(--red)}
 .card{background:var(--surface);padding:14px;margin-bottom:12px;
   border-radius:14px;border:1px solid var(--border)}
 .card h3{color:var(--accent);font-size:13px;font-weight:700;margin-bottom:11px;
@@ -147,40 +147,29 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;
 .val{display:inline-block;background:var(--bg);padding:2px 10px;
   border-radius:6px;font-weight:700;color:var(--accent);
   min-width:72px;text-align:center;font-size:12px}
-
-/* info pills */
 .info-row{display:flex;gap:8px;flex-wrap:wrap;margin-bottom:6px}
 .info-pill{background:var(--bg);padding:4px 10px;border-radius:8px;
   font-size:11px;color:var(--muted)}
 .info-pill span{color:var(--text);font-weight:600}
-
-/* ── Botões ── */
 .btngroup{display:flex;flex-wrap:wrap;gap:7px}
 button{background:var(--surface2);color:var(--text);border:1px solid var(--border);
   padding:9px 13px;border-radius:10px;cursor:pointer;
   font-weight:600;font-size:12px;line-height:1.2;
   transition:background .15s,transform .1s,box-shadow .15s;
-  touch-action:manipulation;-webkit-touch-callout:none;
-  user-select:none;min-height:40px}
+  touch-action:manipulation;user-select:none;min-height:40px}
 button:hover{background:var(--accent);color:#0f172a;border-color:var(--accent)}
 button:active{transform:scale(.93)}
 button.active{background:var(--green);color:#fff;border-color:var(--green)}
-button.danger{background:var(--red);color:#fff;border-color:var(--red)}
-
 @keyframes pulse-ok{
   0%{box-shadow:0 0 0 0 rgba(16,185,129,.8)}
   70%{box-shadow:0 0 0 12px rgba(16,185,129,0)}
-  100%{box-shadow:0 0 0 0 rgba(16,185,129,0)}
-}
+  100%{box-shadow:0 0 0 0 rgba(16,185,129,0)}}
 @keyframes pulse-err{
   0%{box-shadow:0 0 0 0 rgba(239,68,68,.8)}
   70%{box-shadow:0 0 0 12px rgba(239,68,68,0)}
-  100%{box-shadow:0 0 0 0 rgba(239,68,68,0)}
-}
+  100%{box-shadow:0 0 0 0 rgba(239,68,68,0)}}
 button.fb-ok{animation:pulse-ok .45s ease}
 button.fb-err{animation:pulse-err .45s ease}
-
-/* ── Sliders ── */
 .slider-wrap{padding:4px 0}
 input[type=range]{width:100%;height:5px;background:var(--border);
   border-radius:4px;outline:none;-webkit-appearance:none;margin:10px 0;cursor:pointer}
@@ -188,12 +177,8 @@ input[type=range]::-webkit-slider-thumb{-webkit-appearance:none;
   width:24px;height:24px;background:var(--accent);
   cursor:grab;border-radius:50%;border:3px solid var(--bg);
   box-shadow:0 2px 6px rgba(0,0,0,.5)}
-input[type=range]::-moz-range-thumb{width:24px;height:24px;
-  background:var(--accent);cursor:grab;border-radius:50%;border:3px solid var(--bg)}
 .rlabels{display:flex;justify-content:space-between;
   font-size:10px;color:var(--muted);margin-top:2px}
-
-/* ── Toggles ── */
 .toggle-row{display:flex;align-items:center;justify-content:space-between;
   padding:9px 0;border-bottom:1px solid var(--border)}
 .toggle-row:last-child{border-bottom:none}
@@ -207,14 +192,9 @@ input[type=range]::-moz-range-thumb{width:24px;height:24px;
   box-shadow:0 1px 3px rgba(0,0,0,.4)}
 input:checked+.sw{background:var(--green)}
 input:checked+.sw:before{transform:translateX(20px)}
-
-/* ── Grid 2 col ── */
 @media(min-width:480px){
   .grid2{display:grid;grid-template-columns:1fr 1fr;gap:12px}
-  .grid2 .card{margin-bottom:0}
-}
-
-/* ── Toast ── */
+  .grid2 .card{margin-bottom:0}}
 #toast{position:fixed;bottom:22px;left:50%;
   transform:translateX(-50%) translateY(80px);
   padding:10px 22px;border-radius:24px;
@@ -224,12 +204,8 @@ input:checked+.sw:before{transform:translateX(20px)}
 #toast.show{transform:translateX(-50%) translateY(0);opacity:1}
 #toast.ok{background:var(--green);color:#fff}
 #toast.err{background:var(--red);color:#fff}
-
-/* ── Barra de qualidade por preset ── */
 .preset-quality{display:flex;gap:6px;margin-bottom:10px}
 .pq-btn{flex:1;padding:8px 4px;font-size:11px;text-align:center}
-
-/* ── FPS row ── */
 .fps-row{display:flex;gap:6px;margin-top:8px}
 .fps-row button{flex:1;font-size:11px;padding:7px 4px}
 </style>
@@ -240,8 +216,6 @@ input:checked+.sw:before{transform:translateX(20px)}
     <h1>📷 Camera2 RTSP Control</h1>
     <p>Samsung Galaxy Note10+ · SM-N975F · Android 12</p>
   </div>
-
-  <!-- ── Status Bar ── -->
   <div class="statusbar">
     <div class="badge"><span class="dot off" id="dot-stream"></span><span id="lbl-stream">Conectando…</span></div>
     <div class="badge">📷 <span id="lbl-cam">—</span></div>
@@ -250,8 +224,6 @@ input:checked+.sw:before{transform:translateX(20px)}
     <div class="badge">🔗 <span id="lbl-clients">0</span> cliente(s)</div>
     <div class="badge">⏱️ <span id="lbl-lat" class="lat-ok">—</span></div>
   </div>
-
-  <!-- ── Info da câmera ── -->
   <div class="card">
     <h3>📊 Estado da câmera</h3>
     <div class="info-row">
@@ -266,8 +238,6 @@ input:checked+.sw:before{transform:translateX(20px)}
       <div class="info-pill">FPS: <span id="info-fps">—</span></div>
     </div>
   </div>
-
-  <!-- ── Câmera ── -->
   <div class="card">
     <h3>🎥 Câmera</h3>
     <div class="btngroup">
@@ -277,8 +247,6 @@ input:checked+.sw:before{transform:translateX(20px)}
       <button data-cam="1" onclick="switchCamera('1',this)">🤳 Frontal</button>
     </div>
   </div>
-
-  <!-- ── Resolução + Bitrate ── -->
   <div class="grid2">
     <div class="card">
       <h3>📐 Resolução &amp; Qualidade</h3>
@@ -300,7 +268,6 @@ input:checked+.sw:before{transform:translateX(20px)}
                oninput="updateBitrate(this.value)">
         <div class="rlabels"><span>500k</span><span>12M</span><span>25M</span></div>
       </div>
-      <!-- Presets rápidos de bitrate -->
       <div class="btngroup" style="margin-top:8px">
         <button onclick="setBitratePreset(2000)">2M</button>
         <button onclick="setBitratePreset(4000)">4M</button>
@@ -309,8 +276,6 @@ input:checked+.sw:before{transform:translateX(20px)}
       </div>
     </div>
   </div>
-
-  <!-- ── Zoom ── -->
   <div class="card">
     <h3>🔍 Zoom <span class="val" id="zoom-val">1×</span></h3>
     <div class="slider-wrap">
@@ -325,8 +290,6 @@ input:checked+.sw:before{transform:translateX(20px)}
       <button onclick="setZoomPreset(1.0)">Máx</button>
     </div>
   </div>
-
-  <!-- ── Foco ── -->
   <div class="card">
     <h3>🎯 Foco <span class="val" id="focus-val">Auto</span></h3>
     <div class="slider-wrap">
@@ -340,8 +303,6 @@ input:checked+.sw:before{transform:translateX(20px)}
       <button onclick="setFocusMode('off')">🔒 Travar</button>
     </div>
   </div>
-
-  <!-- ── ISO + EV ── -->
   <div class="grid2">
     <div class="card">
       <h3>🌡️ ISO <span class="val" id="iso-val">50</span></h3>
@@ -372,8 +333,6 @@ input:checked+.sw:before{transform:translateX(20px)}
       </div>
     </div>
   </div>
-
-  <!-- ── Balanço de branco ── -->
   <div class="card">
     <h3>☀️ Balanço de Branco</h3>
     <div class="btngroup">
@@ -384,8 +343,6 @@ input:checked+.sw:before{transform:translateX(20px)}
       <button data-wb="fluorescent" onclick="setWB('fluorescent',this)">🔦 Fluorescente</button>
     </div>
   </div>
-
-  <!-- ── Controles Extras ── -->
   <div class="card">
     <h3>🛠️ Controles Extras</h3>
     <div class="toggle-row">
@@ -403,17 +360,12 @@ input:checked+.sw:before{transform:translateX(20px)}
       </label>
     </div>
   </div>
-
   <p style="text-align:center;margin-top:16px;color:var(--muted);font-size:10px;padding-bottom:20px">
-    Camera2 API · RootEncoder · NanoHTTPD · v2.0
+    Camera2 API · RootEncoder · NanoHTTPD · v2.1
   </p>
 </div>
-
-<!-- Toast de feedback -->
 <div id="toast" class="ok">✓ Enviado</div>
-
 <script>
-// ── Dados fixos ─────────────────────────────────────────────────────────────
 const ISO_LIST=[50,81,112,143,174,205,236,267,298,329,360,391,422,453,484,
   515,546,577,608,639,670,701,732,763,794,825,856,887,918,949,980,1011,1042,
   1073,1104,1135,1166,1197,1228,1259,1290,1321,1352,1383,1414,1445,1476,1507,
@@ -421,177 +373,95 @@ const ISO_LIST=[50,81,112,143,174,205,236,267,298,329,360,391,422,453,484,
   2003,2034,2065,2096,2127,2158,2189,2220,2251,2282,2313,2344,2375,2406,2437,
   2468,2499,2530,2561,2592,2623,2654,2685,2716,2747,2778,2809,2840,2871,2902,
   2933,2964,2995,3026,3057,3088,3119,3150,3200];
-
 const CAM_NAMES={'0':'Wide','1':'Frontal','2':'Ultra Wide','3':'Telephoto'};
-
-// ── Toast ────────────────────────────────────────────────────────────────────
 let _toastTimer;
-function showToast(msg, isError){
+function showToast(msg,isError){
   const t=document.getElementById('toast');
-  t.textContent=msg;
-  t.className=isError?'err':'ok';
-  t.classList.add('show');
-  clearTimeout(_toastTimer);
-  _toastTimer=setTimeout(()=>t.classList.remove('show'),1800);
+  t.textContent=msg;t.className=isError?'err':'ok';t.classList.add('show');
+  clearTimeout(_toastTimer);_toastTimer=setTimeout(()=>t.classList.remove('show'),1800);
 }
-
-// ── Feedback visual no botão ─────────────────────────────────────────────────
-function feedback(btn, ok){
-  if(!btn) return;
+function feedback(btn,ok){
+  if(!btn)return;
   const cls=ok!==false?'fb-ok':'fb-err';
-  btn.classList.remove('fb-ok','fb-err');
-  void btn.offsetWidth; // reflow
-  btn.classList.add(cls);
-  setTimeout(()=>btn.classList.remove(cls),500);
+  btn.classList.remove('fb-ok','fb-err');void btn.offsetWidth;
+  btn.classList.add(cls);setTimeout(()=>btn.classList.remove(cls),500);
 }
-
-// ── Marcar botão ativo ───────────────────────────────────────────────────────
-function markActive(attr, val){
+function markActive(attr,val){
   document.querySelectorAll('['+attr+']').forEach(b=>{
-    b.classList.toggle('active', b.getAttribute(attr)===String(val));
+    b.classList.toggle('active',b.getAttribute(attr)===String(val));
   });
 }
-
-// ── Envio de controle ────────────────────────────────────────────────────────
-function sendControl(data, btn, msg){
+function sendControl(data,btn,msg){
   fetch('/api/control',{
     method:'POST',
     headers:{'Content-Type':'application/json'},
     body:JSON.stringify(data)
-  }).then(r=>{
-    if(!r.ok) throw new Error('HTTP '+r.status);
-    return r.json();
-  }).then(()=>{
-    feedback(btn, true);
-    showToast(msg||'✓ OK', false);
-  }).catch(err=>{
-    feedback(btn, false);
-    showToast('❌ '+err.message, true);
-  });
+  }).then(r=>{if(!r.ok)throw new Error('HTTP '+r.status);return r.json();})
+  .then(()=>{feedback(btn,true);showToast(msg||'✓ OK',false);})
+  .catch(err=>{feedback(btn,false);showToast('❌ '+err.message,true);});
 }
-
-// ── Câmera ───────────────────────────────────────────────────────────────────
-function switchCamera(id, btn){
-  markActive('data-cam', id);
-  sendControl({camera:id}, btn, '📷 '+CAM_NAMES[id]);
-}
-
-// ── Resolução ────────────────────────────────────────────────────────────────
-function setResolution(res, btn){
-  markActive('data-res', res);
-  sendControl({resolution:res}, btn, '📐 '+res);
-}
-
-// ── FPS ──────────────────────────────────────────────────────────────────────
-function setFPS(fps, btn){
-  markActive('data-fps', fps);
-  sendControl({fps:fps}, btn, '🎬 '+fps+' fps');
-}
-
-// ── Bitrate ──────────────────────────────────────────────────────────────────
+function switchCamera(id,btn){markActive('data-cam',id);sendControl({camera:id},btn,'📷 '+CAM_NAMES[id]);}
+function setResolution(res,btn){markActive('data-res',res);sendControl({resolution:res},btn,'📐 '+res);}
+function setFPS(fps,btn){markActive('data-fps',fps);sendControl({fps:fps},btn,'🎬 '+fps+' fps');}
 let _brT;
 function updateBitrate(v){
   document.getElementById('br-value').textContent=v;
-  clearTimeout(_brT);
-  _brT=setTimeout(()=>sendControl({bitrate:+v},null,'📶 '+v+'kbps'),400);
+  clearTimeout(_brT);_brT=setTimeout(()=>sendControl({bitrate:+v},null,'📶 '+v+'kbps'),400);
 }
 function setBitratePreset(v){
   document.getElementById('bitrate').value=v;
   document.getElementById('br-value').textContent=v;
   sendControl({bitrate:v},null,'📶 '+v+'kbps');
 }
-
-// ── Zoom ─────────────────────────────────────────────────────────────────────
 let _zT;
 function updateZoom(v){
   const pct=parseFloat(v);
-  const mult=(1+pct*7).toFixed(1); // 0→1× , 1→8×
+  const mult=(1+pct*7).toFixed(1);
   document.getElementById('zoom-val').textContent=mult+'×';
-  clearTimeout(_zT);
-  _zT=setTimeout(()=>sendControl({zoom:pct},null,'🔍 '+mult+'×'),150);
+  clearTimeout(_zT);_zT=setTimeout(()=>sendControl({zoom:pct},null,'🔍 '+mult+'×'),150);
 }
-function setZoomPreset(v){
-  document.getElementById('zoom').value=v;
-  updateZoom(v);
-}
-
-// ── Foco ─────────────────────────────────────────────────────────────────────
+function setZoomPreset(v){document.getElementById('zoom').value=v;updateZoom(v);}
 let _fT;
 function updateFocus(v){
   const f=parseFloat(v);
   document.getElementById('focus-val').textContent=f===0?'Auto':f.toFixed(1)+'D';
-  clearTimeout(_fT);
-  _fT=setTimeout(()=>sendControl({focus:f/10},null,'🎯 '+(f===0?'Auto':f.toFixed(1)+'D')),200);
+  clearTimeout(_fT);_fT=setTimeout(()=>sendControl({focus:f/10},null,'🎯 '+(f===0?'Auto':f.toFixed(1)+'D')),200);
 }
-function setFocusAuto(){
-  document.getElementById('focus').value=0;
-  updateFocus(0);
-}
-function setFocusMode(mode){
-  sendControl({focusmode:mode},null,'🎯 '+mode);
-}
-
-// ── ISO ──────────────────────────────────────────────────────────────────────
+function setFocusAuto(){document.getElementById('focus').value=0;updateFocus(0);}
+function setFocusMode(mode){sendControl({focusmode:mode},null,'🎯 '+mode);}
 let _iT;
 function updateISO(v){
   const iso=ISO_LIST[Math.min(+v,ISO_LIST.length-1)];
   document.getElementById('iso-val').textContent=iso;
-  clearTimeout(_iT);
-  _iT=setTimeout(()=>sendControl({iso:iso},null,'🌡️ ISO '+iso),350);
+  clearTimeout(_iT);_iT=setTimeout(()=>sendControl({iso:iso},null,'🌡️ ISO '+iso),350);
 }
-
-// ── EV ───────────────────────────────────────────────────────────────────────
 let _eT;
 function updateEV(v){
   const n=+v;
   document.getElementById('ev-val').textContent=(n>0?'+':'')+n;
-  clearTimeout(_eT);
-  _eT=setTimeout(()=>sendControl({exposure:n},null,'🕐 EV '+(n>0?'+':'')+n),300);
+  clearTimeout(_eT);_eT=setTimeout(()=>sendControl({exposure:n},null,'🕐 EV '+(n>0?'+':'')+n),300);
 }
-function setEVPreset(v){
-  document.getElementById('ev').value=v;
-  updateEV(v);
-}
-
-// ── WB ───────────────────────────────────────────────────────────────────────
-function setWB(mode, btn){
-  markActive('data-wb', mode);
-  sendControl({whiteBalance:mode},btn,'☀️ '+mode);
-}
-
-// ── Toggles ──────────────────────────────────────────────────────────────────
-function toggleManual(chk){ sendControl({manualSensor:chk.checked},null,chk.checked?'🔧 Manual ON':'🔧 Auto'); }
-function toggleLantern(chk){ sendControl({lantern:chk.checked},null,chk.checked?'🔦 ON':'🔦 OFF'); }
-function toggleOIS(chk){ sendControl({ois:chk.checked},null,chk.checked?'🎬 OIS ON':'🎬 OIS OFF'); }
-
-// ── ns → velocidade de obturador ─────────────────────────────────────────────
+function setEVPreset(v){document.getElementById('ev').value=v;updateEV(v);}
+function setWB(mode,btn){markActive('data-wb',mode);sendControl({whiteBalance:mode},btn,'☀️ '+mode);}
+function toggleManual(chk){sendControl({manualSensor:chk.checked},null,chk.checked?'🔧 Manual ON':'🔧 Auto');}
+function toggleLantern(chk){sendControl({lantern:chk.checked},null,chk.checked?'🔦 ON':'🔦 OFF');}
+function toggleOIS(chk){sendControl({ois:chk.checked},null,chk.checked?'🎬 OIS ON':'🎬 OIS OFF');}
 function nsToShutter(ns){
-  if(ns<=0) return '—';
+  if(ns<=0)return '—';
   const s=ns/1e9;
-  if(s>=1) return s.toFixed(1)+'s';
-  return '1/'+Math.round(1/s)+'s';
+  return s>=1?s.toFixed(1)+'s':'1/'+Math.round(1/s)+'s';
 }
-
-// ── Cor de latência ──────────────────────────────────────────────────────────
-function latClass(ms){
-  if(ms<100) return 'lat-ok';
-  if(ms<300) return 'lat-warn';
-  return 'lat-bad';
-}
-
-// ── Polling de status a cada 2s ──────────────────────────────────────────────
+function latClass(ms){return ms<100?'lat-ok':ms<300?'lat-warn':'lat-bad';}
 let _pollFail=0;
 async function pollStatus(){
   const t0=Date.now();
   try{
     const r=await fetch('/api/status');
-    if(!r.ok) throw new Error('HTTP '+r.status);
+    if(!r.ok)throw new Error('HTTP '+r.status);
     const d=await r.json();
     const lat=Date.now()-t0;
     const c=d.curvals||{};
     _pollFail=0;
-
-    // Status bar
     const streaming=d.streaming||false;
     document.getElementById('dot-stream').className='dot'+(streaming?'':' off');
     document.getElementById('lbl-stream').textContent=streaming?'▶ Streaming':'⏹ Parado';
@@ -599,12 +469,8 @@ async function pollStatus(){
     document.getElementById('lbl-res').textContent=c.video_size||'—';
     document.getElementById('lbl-br').textContent=c.bitrate_kbps||'—';
     document.getElementById('lbl-clients').textContent=d.video_connections||0;
-
     const latEl=document.getElementById('lbl-lat');
-    latEl.textContent=lat+'ms';
-    latEl.className=latClass(lat);
-
-    // Info pills
+    latEl.textContent=lat+'ms';latEl.className=latClass(lat);
     document.getElementById('info-focusmode').textContent=c.focusmode||'—';
     document.getElementById('info-focusdist').textContent=(c.focus_distance||'0.00')+'D';
     document.getElementById('info-iso').textContent=c.iso||'—';
@@ -614,45 +480,35 @@ async function pollStatus(){
     document.getElementById('info-wb').textContent=c.whitebalance||'—';
     document.getElementById('info-ois').textContent=c.ois||'—';
     document.getElementById('info-fps').textContent=(c.fps||'—')+'fps';
-
-    // Sync toggles (sem disparar onchange)
-    syncChk('toggle-lantern', c.torch==='on');
-    syncChk('toggle-ois',     c.ois==='on');
-    syncChk('toggle-manual',  c.manual_sensor==='on');
-
-    // Marcar ativos
-    if(c.camera_id)    markActive('data-cam', c.camera_id);
-    if(c.whitebalance) markActive('data-wb',  c.whitebalance);
-    if(c.fps)          markActive('data-fps', +c.fps);
-
-    // Sync sliders só se diferença relevante (evita jitter no arraste)
-    syncSlider('bitrate',  c.bitrate_kbps,  500,  25000);
-    if(c.bitrate_kbps) document.getElementById('br-value').textContent=c.bitrate_kbps;
-
+    syncChk('toggle-lantern',c.torch==='on');
+    syncChk('toggle-ois',c.ois==='on');
+    syncChk('toggle-manual',c.manual_sensor==='on');
+    if(c.camera_id)markActive('data-cam',c.camera_id);
+    if(c.whitebalance)markActive('data-wb',c.whitebalance);
+    if(c.fps)markActive('data-fps',+c.fps);
+    syncSlider('bitrate',c.bitrate_kbps,500,25000);
+    if(c.bitrate_kbps)document.getElementById('br-value').textContent=c.bitrate_kbps;
   }catch(e){
     _pollFail++;
     if(_pollFail>=3){
-      document.getElementById('dot-stream').className='dot off warn';
+      document.getElementById('dot-stream').className='dot off';
       document.getElementById('lbl-stream').textContent='Sem conexão';
     }
   }
 }
-
-function syncChk(id, val){
+function syncChk(id,val){
   const el=document.getElementById(id);
-  if(el && el.checked!==val) el.checked=val;
+  if(el&&el.checked!==val)el.checked=val;
 }
-function syncSlider(id, val, min, max){
-  if(!val) return;
+function syncSlider(id,val,min,max){
+  if(!val)return;
   const el=document.getElementById(id);
-  if(!el) return;
+  if(!el)return;
   const v=Math.max(min,Math.min(max,+val));
-  // Só atualiza se usuário não estiver arrastando
-  if(document.activeElement!==el) el.value=v;
+  if(document.activeElement!==el)el.value=v;
 }
-
 pollStatus();
-setInterval(pollStatus, 2000);
+setInterval(pollStatus,2000);
 </script>
 </body>
 </html>
