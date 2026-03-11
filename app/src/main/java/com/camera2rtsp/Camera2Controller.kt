@@ -4,7 +4,6 @@ import android.content.Context
 import android.hardware.camera2.CameraCharacteristics
 import android.hardware.camera2.CameraManager
 import android.hardware.camera2.CameraMetadata
-import android.hardware.camera2.CaptureRequest
 import android.os.Handler
 import android.os.HandlerThread
 import android.util.Log
@@ -256,17 +255,9 @@ class Camera2Controller {
         }
 
         params["afTrigger"]?.let {
-            // Dispara um ciclo manual de autofoco via setCustomRequest
-            srv.setCustomRequest { builder ->
-                builder.set(CaptureRequest.CONTROL_AF_TRIGGER,
-                            CameraMetadata.CONTROL_AF_TRIGGER_START)
-            }
-            // Reset do trigger para IDLE logo em seguida
-            srv.setCustomRequest { builder ->
-                builder.set(CaptureRequest.CONTROL_AF_TRIGGER,
-                            CameraMetadata.CONTROL_AF_TRIGGER_IDLE)
-            }
-            Log.d(tag, "AF Trigger acionado")
+            // Reativa AF continuo como equivalente ao trigger no contexto de streaming
+            srv.enableAutoFocus()
+            Log.d(tag, "AF Trigger acionado via enableAutoFocus")
         }
 
         params["whiteBalance"]?.let {
@@ -319,20 +310,18 @@ class Camera2Controller {
         params["aeLock"]?.let {
             val lock = it as Boolean
             aeLocked = lock
-            // setAELock nao existe no RootEncoder: usa setCustomRequest
-            srv.setCustomRequest { builder ->
-                builder.set(CaptureRequest.CONTROL_AE_LOCK, lock)
-            }
+            // AE Lock: desliga/liga o AutoExposure como equivalente
+            if (lock) srv.disableAutoExposure()
+            else      srv.enableAutoExposure()
             Log.d(tag, "AE Lock -> $lock")
         }
 
         params["awbLock"]?.let {
             val lock = it as Boolean
             awbLocked = lock
-            // setAWBLock nao existe no RootEncoder: usa setCustomRequest
-            srv.setCustomRequest { builder ->
-                builder.set(CaptureRequest.CONTROL_AWB_LOCK, lock)
-            }
+            // AWB Lock: desliga/liga o AutoWhiteBalance como equivalente
+            if (lock) srv.disableAutoWhiteBalance()
+            else      srv.enableAutoWhiteBalance(CameraMetadata.CONTROL_AWB_MODE_AUTO)
             Log.d(tag, "AWB Lock -> $lock")
         }
 
