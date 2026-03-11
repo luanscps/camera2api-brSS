@@ -4,6 +4,7 @@ import android.content.Context
 import android.hardware.camera2.CameraCharacteristics
 import android.hardware.camera2.CameraManager
 import android.hardware.camera2.CameraMetadata
+import android.hardware.camera2.CaptureRequest
 import android.os.Handler
 import android.os.HandlerThread
 import android.util.Log
@@ -67,7 +68,6 @@ class Camera2Controller {
             val depth         = hasCap(CameraCharacteristics.REQUEST_AVAILABLE_CAPABILITIES_DEPTH_OUTPUT)
             val multiCam      = hasCap(CameraCharacteristics.REQUEST_AVAILABLE_CAPABILITIES_LOGICAL_MULTI_CAMERA)
 
-            // Ranges como List para serializar como array JSON [min, max]
             val isoRange = chars.get(CameraCharacteristics.SENSOR_INFO_SENSITIVITY_RANGE)?.let {
                 listOf(it.lower, it.upper)
             }
@@ -146,7 +146,6 @@ class Camera2Controller {
                 else -> "UNKNOWN"
             }
 
-            // isDepth = sensor que só produz mapa de profundidade, sem imagem RGB
             val isDepth = depth && resolutions.isEmpty()
 
             val name = when {
@@ -257,8 +256,16 @@ class Camera2Controller {
         }
 
         params["afTrigger"]?.let {
-            // Dispara um ciclo manual de autofoco
-            srv.triggerAutoFocus()
+            // Dispara um ciclo manual de autofoco via setCustomRequest
+            srv.setCustomRequest { builder ->
+                builder.set(CaptureRequest.CONTROL_AF_TRIGGER,
+                            CameraMetadata.CONTROL_AF_TRIGGER_START)
+            }
+            // Reset do trigger para IDLE logo em seguida
+            srv.setCustomRequest { builder ->
+                builder.set(CaptureRequest.CONTROL_AF_TRIGGER,
+                            CameraMetadata.CONTROL_AF_TRIGGER_IDLE)
+            }
             Log.d(tag, "AF Trigger acionado")
         }
 
@@ -312,14 +319,20 @@ class Camera2Controller {
         params["aeLock"]?.let {
             val lock = it as Boolean
             aeLocked = lock
-            srv.setAELock(lock)
+            // setAELock nao existe no RootEncoder: usa setCustomRequest
+            srv.setCustomRequest { builder ->
+                builder.set(CaptureRequest.CONTROL_AE_LOCK, lock)
+            }
             Log.d(tag, "AE Lock -> $lock")
         }
 
         params["awbLock"]?.let {
             val lock = it as Boolean
             awbLocked = lock
-            srv.setAWBLock(lock)
+            // setAWBLock nao existe no RootEncoder: usa setCustomRequest
+            srv.setCustomRequest { builder ->
+                builder.set(CaptureRequest.CONTROL_AWB_LOCK, lock)
+            }
             Log.d(tag, "AWB Lock -> $lock")
         }
 
@@ -336,9 +349,6 @@ class Camera2Controller {
                     lanternEnabled = true
                 }
                 "single" -> {
-                    // Flash single é controlado via CONTROL_AE_MODE no CaptureRequest
-                    // RootEncoder não tem método direto, mas podemos tentar via setFlashMode se existir
-                    // Por ora, lanterna OFF (single flash funciona melhor em foto, não streaming)
                     srv.disableLantern()
                     lanternEnabled = false
                 }
