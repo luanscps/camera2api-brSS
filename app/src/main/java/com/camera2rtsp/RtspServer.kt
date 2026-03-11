@@ -3,9 +3,9 @@ package com.camera2rtsp
 import android.content.Context
 import android.graphics.SurfaceTexture
 import android.util.Log
-import android.view.Surface
 import android.view.TextureView
 import com.pedro.common.ConnectChecker
+import com.pedro.encoder.input.video.CameraHelper
 import com.pedro.rtspserver.RtspServerCamera2
 
 class RtspServer(
@@ -18,13 +18,12 @@ class RtspServer(
 
     private val TAG  = "RtspServer"
     private val PORT = 8554
-
     private var stopped = false
 
     var connectedClients = 0
         private set
 
-    // ── Início normal (com TextureView visível) ────────────────────────────────
+    // ── Início normal com TextureView (primeiro plano) ──────────────────────────
     fun start(tv: TextureView) {
         stopped = false
         try {
@@ -32,59 +31,62 @@ class RtspServer(
             server = srv
             cameraController.server = srv
             prepareAndStart(srv)
-            // Inicia preview no TextureView visível
+            // Inicia o preview no TextureView se já estiver disponível
             if (tv.isAvailable) {
-                srv.startPreview(tv)
+                srv.startPreview(CameraHelper.Facing.BACK, tv.width, tv.height)
             }
         } catch (e: Exception) {
             Log.e(TAG, "Erro ao iniciar RTSP", e)
         }
     }
 
-    // ── Início offscreen (segundo plano / tela desligada) ──────────────────────
-    // Usa SurfaceTexture virtual (1x1) sem precisar de View na tela
-    fun startWithOffscreenSurface(surfaceTexture: SurfaceTexture) {
+    // ── Início em segundo plano (sem View na tela) ────────────────────────────
+    // Quando Camera2Base é instanciado com Context (não com OpenGlView),
+    // o flag isBackground=true é ativado internamente. Nesse modo a câmera
+    // abre automaticamente dentro de startStream(), sem precisar de startPreview().
+    fun startBackground() {
         stopped = false
         try {
             val srv = RtspServerCamera2(context, this, PORT)
             server = srv
             cameraController.server = srv
             prepareAndStart(srv)
-            // startPreview(SurfaceTexture, width, height) — API de StreamBase
-            val w = cameraController.currentWidth
-            val h = cameraController.currentHeight
-            srv.startPreview(surfaceTexture, w, h)
+            // Não chamamos startPreview() — Camera2Base no modo isBackground abre
+            // a câmera internamente quando startStream() é chamado.
         } catch (e: Exception) {
-            Log.e(TAG, "Erro ao iniciar RTSP offscreen", e)
+            Log.e(TAG, "Erro ao iniciar RTSP em background", e)
         }
     }
 
     private fun prepareAndStart(srv: RtspServerCamera2) {
         val w   = cameraController.currentWidth
         val h   = cameraController.currentHeight
-        val br  = cameraController.currentBitrate
         val fps = cameraController.currentFps
+        val br  = cameraController.currentBitrate  // kbps → bps
+        val rot = CameraHelper.getCameraOrientation(context)
 
-        val videoOk = srv.prepareVideo(w, h, br * 1024, fps)
-        val audioOk = srv.prepareAudio(44100, true, 128 * 1024)
+        // Camera2Base 2.6.1: prepareVideo(width, height, fps, bitrate_bps, rotation)
+        val videoOk = srv.prepareVideo(w, h, fps, br * 1024, rot)
+        // prepareAudio(bitrate_bps, sampleRate, isStereo)
+        val audioOk = srv.prepareAudio(128 * 1024, 44100, true)
 
         if (videoOk && audioOk) {
             srv.startStream()
-            Log.i(TAG, "RTSP iniciado ${w}x${h} @${br}kbps :$PORT")
+            Log.i(TAG, "RTSP iniciado ${w}x${h} @${fps}fps ${br}kbps :$PORT")
         } else {
             Log.w(TAG, "Falha prepareVideo=$videoOk prepareAudio=$audioOk, tentando fallback 1080p")
-            val fallback = srv.prepareVideo(1920, 1080, 4000 * 1024, 30)
+            val fallback = srv.prepareVideo(1920, 1080, 30, 4000 * 1024, rot)
             if (fallback && audioOk) srv.startStream()
             else Log.e(TAG, "Fallback também falhou")
         }
     }
 
-    // Reconecta o TextureView ao preview sem reiniciar o stream
+    // Reconecta o TextureView ao preview quando o app volta ao primeiro plano
     fun attachTextureView(tv: TextureView) {
         tv.surfaceTextureListener = this
         val srv = server ?: return
         if (tv.isAvailable && !srv.isOnPreview) {
-            srv.startPreview(tv)
+            srv.startPreview(CameraHelper.Facing.BACK, tv.width, tv.height)
         }
     }
 
@@ -103,14 +105,14 @@ class RtspServer(
 
     fun isStreaming(): Boolean = server?.isStreaming ?: false
 
-    // SurfaceTextureListener
+    // SurfaceTextureListener — usado só quando há TextureView na tela
     override fun onSurfaceTextureAvailable(surface: SurfaceTexture, w: Int, h: Int) {
         val srv = server ?: return
-        if (!srv.isOnPreview) srv.startPreview(Surface(surface), w, h)
+        if (!srv.isOnPreview) srv.startPreview(CameraHelper.Facing.BACK, w, h)
     }
     override fun onSurfaceTextureSizeChanged(surface: SurfaceTexture, w: Int, h: Int) {}
     override fun onSurfaceTextureDestroyed(surface: SurfaceTexture): Boolean {
-        server?.stopPreview()
+        if (server?.isStreaming == false) server?.stopCamera()
         return true
     }
     override fun onSurfaceTextureUpdated(surface: SurfaceTexture) {}

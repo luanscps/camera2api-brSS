@@ -6,7 +6,6 @@ import android.app.NotificationManager
 import android.app.PendingIntent
 import android.app.Service
 import android.content.Intent
-import android.graphics.SurfaceTexture
 import android.os.Build
 import android.os.IBinder
 import android.os.PowerManager
@@ -29,9 +28,6 @@ class StreamingService : Service() {
         private set
 
     private var wakeLock: PowerManager.WakeLock? = null
-
-    // SurfaceTexture virtual usada quando não há TextureView na tela
-    private var offscreenTexture: SurfaceTexture? = null
 
     companion object {
         const val ACTION_STOP = "com.camera2rtsp.STOP"
@@ -58,22 +54,18 @@ class StreamingService : Service() {
         val ip = getLocalIpAddress()
         startForeground(NOTIF_ID, buildNotification(ip, "Iniciando…"))
 
-        // WakeLock PARTIAL: mantém CPU ativa com tela desligada (não acende a tela)
+        // WakeLock PARTIAL: mantém CPU ativa com tela desligada
         val pm = getSystemService(POWER_SERVICE) as PowerManager
         wakeLock = pm.newWakeLock(PowerManager.PARTIAL_WAKE_LOCK, "camera2rtsp:streaming")
-            .apply { acquire(12 * 60 * 60 * 1000L) } // máx 12h de segurança
+            .apply { acquire(12 * 60 * 60 * 1000L) }
 
         try {
             cameraController = Camera2Controller()
             rtspServer       = RtspServer(this, cameraController)
 
-            // SurfaceTexture offscreen (sem tela): o encoder recebe frames da câmera
-            // através desta surface virtual, sem precisar de View renderizada
-            val w = cameraController.currentWidth
-            val h = cameraController.currentHeight
-            offscreenTexture = SurfaceTexture(0).also { it.setDefaultBufferSize(w, h) }
-
-            rtspServer.startWithOffscreenSurface(offscreenTexture!!)
+            // startBackground() — Camera2Base(Context) ativa modo isBackground=true.
+            // A câmera é aberta internamente pelo startStream() sem precisar de View.
+            rtspServer.startBackground()
 
             httpServer = WebControlServer(8080, cameraController)
             httpServer.start()
@@ -95,8 +87,6 @@ class StreamingService : Service() {
             if (::rtspServer.isInitialized)       rtspServer.stop()
             if (::httpServer.isInitialized)       httpServer.stop()
         } catch (e: Exception) { Log.e(TAG, "Erro ao parar", e) }
-        offscreenTexture?.release()
-        offscreenTexture = null
         wakeLock?.release()
         wakeLock = null
         Log.i(TAG, "Serviço encerrado")
@@ -109,8 +99,7 @@ class StreamingService : Service() {
     private fun createNotificationChannel() {
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
             val channel = NotificationChannel(
-                CHANNEL_ID,
-                "Camera RTSP Streaming",
+                CHANNEL_ID, "Camera RTSP Streaming",
                 NotificationManager.IMPORTANCE_LOW
             ).apply {
                 description = "Stream RTSP ativo em segundo plano"
