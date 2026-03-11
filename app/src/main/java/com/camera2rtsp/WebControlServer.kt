@@ -57,7 +57,7 @@ class WebControlServer(
             "focusmode"       to focusMode,
             "focus_distance"  to focusDist,
             "focal_length"    to "4.30",
-            "aperture"        to "1.50",
+            "aperture"        to "1.5 (fixo)",
             "whitebalance"    to c.whiteBalanceMode,
             "torch"           to if (c.lanternEnabled) "on" else "off",
             "iso"             to c.isoValue.toString(),
@@ -204,6 +204,7 @@ class WebControlServer(
         sb.append("input:checked+.sw{background:var(--green)}")
         sb.append("input:checked+.sw:before{transform:translateX(20px)}")
         sb.append("input:disabled+.sw{opacity:.3;cursor:not-allowed}")
+        sb.append(".ois-no-support{font-size:10px;color:var(--muted);font-style:italic;margin-left:8px}")
         sb.append(".ev-disabled-hint{font-size:10px;color:var(--muted);margin-top:4px;font-style:italic;display:none}")
         sb.append(".ev-disabled-hint.show{display:block}")
         sb.append("@media(min-width:480px){.grid2{display:grid;grid-template-columns:1fr 1fr;gap:12px}}")
@@ -270,6 +271,7 @@ class WebControlServer(
         sb.append("</div></div></div>")
 
         // ── Zoom ──────────────────────────────────────────────────────────────
+        // card-zoom é sempre renderizado; JS esconde só se zoom_range[1] <= 1.0
         sb.append("<div class=\"card\" id=\"card-zoom\"><h3>\uD83D\uDD0D Zoom <span class=\"val\" id=\"zoom-val\">1x</span></h3>")
         sb.append("<div class=\"slider-wrap\">")
         sb.append("<input type=\"range\" id=\"zoom\" min=\"0\" max=\"1\" value=\"0\" step=\"0.01\" oninput=\"updateZoom(this.value)\">")
@@ -356,11 +358,23 @@ class WebControlServer(
         sb.append("<span class=\"sw\"></span></label></div></div>")
 
         // ── Controles Extras ──────────────────────────────────────────────────
+        // OIS e EIS são SEMPRE renderizados aqui; JS habilita/desabilita conforme cap.has_ois
         sb.append("<div class=\"card\" id=\"card-extras\"><h3>Controles Extras</h3>")
-        sb.append("<div id=\"extras-content\"></div></div>")
+        sb.append("<div id=\"extras-flash\"></div>")
+        // OIS — sempre presente no DOM, disabled se sem suporte
+        sb.append("<div class=\"toggle-row\" id=\"row-ois\">")
+        sb.append("<span class=\"toggle-label\">OIS (\u00d3tica)<span class=\"ois-no-support\" id=\"ois-hint\"></span></span>")
+        sb.append("<label class=\"switch\"><input type=\"checkbox\" id=\"toggle-ois\" onchange=\"toggleOIS(this)\">")
+        sb.append("<span class=\"sw\"></span></label></div>")
+        // EIS — sempre presente
+        sb.append("<div class=\"toggle-row\" id=\"row-eis\">")
+        sb.append("<span class=\"toggle-label\">EIS (Digital)</span>")
+        sb.append("<label class=\"switch\"><input type=\"checkbox\" id=\"toggle-eis\" onchange=\"toggleEIS(this)\">")
+        sb.append("<span class=\"sw\"></span></label></div>")
+        sb.append("</div>")
 
         sb.append("<p style=\"text-align:center;margin-top:16px;color:var(--muted);font-size:10px;padding-bottom:20px\">")
-        sb.append("Camera2 API · RootEncoder · NanoHTTPD · v2.2 (Onda 2)</p>")
+        sb.append("Camera2 API · RootEncoder · NanoHTTPD · v2.3</p>")
         sb.append("</div>")
         sb.append("<div id=\"toast\" class=\"ok\">OK</div>")
 
@@ -375,9 +389,7 @@ class WebControlServer(
         sb.append("2003,2034,2065,2096,2127,2158,2189,2220,2251,2282,2313,2344,2375,2406,2437,")
         sb.append("2468,2499,2530,2561,2592,2623,2654,2685,2716,2747,2778,2809,2840,2871,2902,")
         sb.append("2933,2964,2995,3026,3057,3088,3119,3150,3200];")
-        // Shutter stops: do mais lento ao mais rápido (índice 0 = 1/24, índice 10 = 1/10000)
         sb.append("var SHUTTER_STOPS=['1/24','1/30','1/50','1/60','1/100','1/250','1/500','1/1000','1/2000','1/4000','1/10000'];")
-        // Frame time stops: do mais longo ao mais curto (FPS max inversamente proporcional)
         sb.append("var FRAME_STOPS=['1/15','1/24','1/30','1/60'];")
         sb.append("var _caps=null;")
         sb.append("var _currentCamId='0';")
@@ -415,19 +427,16 @@ class WebControlServer(
         sb.append("if(!el)return;")
         sb.append("if(show){el.classList.remove('hidden');}else{el.classList.add('hidden');}}")
 
-        // ── updateManualUI: aplica/reverte visual de modo manual ──────────────
+        // ── updateManualUI ────────────────────────────────────────────────────
         sb.append("function updateManualUI(isManual){")
         sb.append("_isManual=isManual;")
-        // Badge na status bar
         sb.append("var badge=document.getElementById('badge-manual');")
         sb.append("if(badge)badge.style.display=isManual?'flex':'none';")
-        // Borda amarela nos cards de sensor manual
         sb.append("['card-iso','card-shutter','card-frame'].forEach(function(id){")
         sb.append("var el=document.getElementById(id);")
         sb.append("if(!el)return;")
         sb.append("if(isManual)el.classList.add('manual-active');")
         sb.append("else el.classList.remove('manual-active');});")
-        // Desabilitar/habilitar EV quando manual ON/OFF
         sb.append("var evSlider=document.getElementById('ev');")
         sb.append("var evHint=document.getElementById('ev-hint');")
         sb.append("var evPresets=document.getElementById('ev-presets');")
@@ -439,6 +448,15 @@ class WebControlServer(
         sb.append("}")
         sb.append("}")
 
+        // ── updateOISCapability: habilita/desabilita OIS baseado na câmera ────
+        // FIX: OIS sempre existe no DOM, apenas desabilitamos o input se sem suporte
+        sb.append("function updateOISCapability(hasOIS){")
+        sb.append("var chk=document.getElementById('toggle-ois');")
+        sb.append("var hint=document.getElementById('ois-hint');")
+        sb.append("if(chk){chk.disabled=!hasOIS;}")
+        sb.append("if(hint){hint.textContent=hasOIS?'':'(sem suporte nesta câmera)';}")
+        sb.append("}")
+
         // ── updateUIForCamera ─────────────────────────────────────────────────
         sb.append("function updateUIForCamera(camId){")
         sb.append("_currentCamId=String(camId);")
@@ -448,10 +466,12 @@ class WebControlServer(
         sb.append("showCard('card-iso',true);showCard('card-ev',true);")
         sb.append("showCard('card-shutter',false);showCard('card-frame',false);")
         sb.append("showCard('card-wb',true);showCard('card-extras',true);")
+        // Sem caps: OIS desabilitado com aviso
+        sb.append("updateOISCapability(false);")
         sb.append("return;}")
-        // Zoom
+        // Zoom — esconde apenas se zoom_range[1] <= 1.0 explicitamente
         sb.append("var hasZoom=cap.zoom_range&&cap.zoom_range[1]>1.0;")
-        sb.append("showCard('card-zoom',hasZoom);")
+        sb.append("showCard('card-zoom',hasZoom!==false);")
         sb.append("var zs=document.getElementById('zoom');if(zs)zs.disabled=!hasZoom;")
         // Foco
         sb.append("var hasFocus=cap.focus_distance_range&&cap.focus_distance_range[1]>0;")
@@ -474,7 +494,7 @@ class WebControlServer(
         sb.append("showCard('card-iso',hasISO);")
         sb.append("var is2=document.getElementById('iso'),tm=document.getElementById('toggle-manual');")
         sb.append("if(is2)is2.disabled=!hasISO;if(tm)tm.disabled=!hasISO;")
-        // Shutter + Frame Time — só aparecem se MANUAL_SENSOR suportado
+        // Shutter + Frame Time
         sb.append("var hasManual=!!cap.supports_manual_sensor;")
         sb.append("showCard('card-shutter',hasManual);")
         sb.append("var sh=document.getElementById('shutter');if(sh)sh.disabled=!hasManual;")
@@ -504,8 +524,8 @@ class WebControlServer(
         sb.append("b.onclick=function(){markActive('data-wb',mode);sendControl({whiteBalance:mode},b,'WB '+mode);};")
         sb.append("wg.appendChild(b);})(awb[j]);}")
         sb.append("}else{showCard('card-wb',false);}")
-        // Extras: Flash + OIS + EIS
-        sb.append("var ec=document.getElementById('extras-content');ec.innerHTML='';")
+        // Flash — injetado no div #extras-flash
+        sb.append("var ef=document.getElementById('extras-flash');ef.innerHTML='';")
         sb.append("if(cap.has_flash){")
         sb.append("var flashDiv=document.createElement('div');flashDiv.style.marginBottom='12px';")
         sb.append("flashDiv.innerHTML='<h4 style=\"color:var(--text);font-size:12px;margin-bottom:6px\">Flash</h4>';")
@@ -519,19 +539,10 @@ class WebControlServer(
         sb.append("b.setAttribute('data-flash',mode);")
         sb.append("b.onclick=function(){markActive('data-flash',mode);sendControl({flashMode:mode},b,'Flash '+mode);};")
         sb.append("flashGroup.appendChild(b);})(fmodes[m]);}")
-        sb.append("flashDiv.appendChild(flashGroup);ec.appendChild(flashDiv);}")
-        sb.append("if(cap.has_ois){")
-        sb.append("var r2=document.createElement('div');r2.className='toggle-row';")
-        sb.append("r2.innerHTML='<span class=\"toggle-label\">OIS (\u00d3tica)</span>'")
-        sb.append("+'<label class=\"switch\"><input type=\"checkbox\" id=\"toggle-ois\" onchange=\"toggleOIS(this)\">'")
-        sb.append("+'<span class=\"sw\"></span></label>';")
-        sb.append("ec.appendChild(r2);}")
-        sb.append("var r3=document.createElement('div');r3.className='toggle-row';")
-        sb.append("r3.innerHTML='<span class=\"toggle-label\">EIS (Digital)</span>'")
-        sb.append("+'<label class=\"switch\"><input type=\"checkbox\" id=\"toggle-eis\" onchange=\"toggleEIS(this)\">'")
-        sb.append("+'<span class=\"sw\"></span></label>';")
-        sb.append("ec.appendChild(r3);")
-        sb.append("showCard('card-extras',!!(cap.has_flash||cap.has_ois||true));")
+        sb.append("flashDiv.appendChild(flashGroup);ef.appendChild(flashDiv);}")
+        // OIS: habilitar/desabilitar baseado em cap.has_ois (toggle sempre existe)
+        sb.append("updateOISCapability(!!cap.has_ois);")
+        sb.append("showCard('card-extras',true);")
         sb.append("}")
 
         // ── Funções de controle ───────────────────────────────────────────────
@@ -570,13 +581,9 @@ class WebControlServer(
         sb.append("document.getElementById('ev-val').textContent=(n>0?'+':'')+n;")
         sb.append("clearTimeout(_eT);_eT=setTimeout(function(){sendControl({exposure:n},null,'EV '+n);},300);}")
         sb.append("function setEVPreset(v){if(_isManual)return;document.getElementById('ev').value=v;updateEV(v);}")
-
-        // ── toggleManual: liga/desliga modo cinema ────────────────────────────
         sb.append("function toggleManual(chk){")
         sb.append("updateManualUI(chk.checked);")
         sb.append("sendControl({manualSensor:chk.checked},null,chk.checked?'\uD83C\uDFAC Manual ON':'Auto');}")
-
-        // ── Shutter Speed ────────────────────────────────────────────────────
         sb.append("function updateShutter(idx){")
         sb.append("var i=Math.max(0,Math.min(SHUTTER_STOPS.length-1,parseInt(idx,10)||0));")
         sb.append("var v=SHUTTER_STOPS[i];")
@@ -591,8 +598,6 @@ class WebControlServer(
         sb.append("var lbl=document.getElementById('shutter-val');")
         sb.append("if(lbl)lbl.textContent=v+'s';")
         sb.append("sendControl({shutterSpeed:v},null,'Shutter '+v);}")
-
-        // ── Frame Time ───────────────────────────────────────────────────────
         sb.append("function updateFrameTime(idx){")
         sb.append("var i=Math.max(0,Math.min(FRAME_STOPS.length-1,parseInt(idx,10)||0));")
         sb.append("var v=FRAME_STOPS[i];")
@@ -603,14 +608,10 @@ class WebControlServer(
         sb.append("var fr=document.getElementById('frame');")
         sb.append("if(fr)fr.value=idx;")
         sb.append("updateFrameTime(idx);}")
-
-        // ── Outros toggles ────────────────────────────────────────────────────
         sb.append("function toggleOIS(chk){sendControl({ois:chk.checked},null,chk.checked?'OIS ON':'OIS OFF');}")
         sb.append("function toggleEIS(chk){sendControl({eis:chk.checked},null,chk.checked?'EIS ON':'EIS OFF');}")
         sb.append("function toggleAELock(chk){sendControl({aeLock:chk.checked},null,chk.checked?'AE Travado':'AE Livre');}")
         sb.append("function toggleAWBLock(chk){sendControl({awbLock:chk.checked},null,chk.checked?'AWB Travado':'AWB Livre');}")
-
-        // ── Helpers ───────────────────────────────────────────────────────────
         sb.append("function nsToShutter(ns){if(ns<=0)return '-';var s=ns/1e9;return s>=1?s.toFixed(1)+'s':'1/'+Math.round(1/s)+'s';}")
         sb.append("function latClass(ms){return ms<100?'lat-ok':ms<300?'lat-warn':'lat-bad';}")
         sb.append("function syncChk(id,val){var el=document.getElementById(id);if(el&&el.checked!==val)el.checked=val;}")
@@ -637,7 +638,6 @@ class WebControlServer(
         sb.append("document.getElementById('info-focusmode').textContent=c.focusmode||'-';")
         sb.append("document.getElementById('info-focusdist').textContent=(c.focus_distance||'0.00')+'D';")
         sb.append("document.getElementById('info-iso').textContent=c.iso||'-';")
-        // Shutter: atualizar info-exp e card-shutter-val
         sb.append("if(c.exposure_ns){")
         sb.append("var shutStr=nsToShutter(+c.exposure_ns);")
         sb.append("document.getElementById('info-exp').textContent=shutStr;")
@@ -647,7 +647,6 @@ class WebControlServer(
         sb.append("var shutIdx=SHUTTER_STOPS.indexOf(shutPlain);")
         sb.append("if(shutIdx>=0){var sEl=document.getElementById('shutter');")
         sb.append("if(sEl&&document.activeElement!==sEl)sEl.value=shutIdx;}}")
-        // Frame Duration: atualizar info-frame e card-frame-val
         sb.append("if(c.frame_duration){")
         sb.append("var frameStr=nsToShutter(+c.frame_duration);")
         sb.append("document.getElementById('info-frame').textContent=frameStr;")
@@ -663,10 +662,10 @@ class WebControlServer(
         sb.append("document.getElementById('info-ois').textContent=c.ois||'-';")
         sb.append("document.getElementById('info-eis').textContent=c.eis||'-';")
         sb.append("document.getElementById('info-fps').textContent=(c.fps||'-')+'fps';")
-        // Sincronizar toggles e estado de manual
         sb.append("var isManual=c.manual_sensor==='on';")
         sb.append("syncChk('toggle-manual',isManual);")
         sb.append("updateManualUI(isManual);")
+        // syncChk agora sempre funciona porque toggle-ois está fixo no DOM
         sb.append("syncChk('toggle-ois',c.ois==='on');")
         sb.append("syncChk('toggle-eis',c.eis==='on');")
         sb.append("syncChk('toggle-ae-lock',c.ae_lock==='on');")
@@ -740,9 +739,9 @@ class WebControlServer(
         sb.append("cg.appendChild(b);})(defs[i]);}")
         sb.append("showCard('card-zoom',true);showCard('card-focus',true);")
         sb.append("showCard('card-iso',true);showCard('card-ev',true);")
-        // Fallback: mostrar shutter/frame (sem garantia de caps)
         sb.append("showCard('card-shutter',true);showCard('card-frame',true);")
         sb.append("showCard('card-wb',true);")
+        sb.append("updateOISCapability(false);")
         sb.append("var wg=document.getElementById('btngroup-wb');wg.innerHTML='';")
         sb.append("var wbDef=['auto','daylight','cloudy','tungsten','fluorescent'];")
         sb.append("var wbN={'auto':'Auto','daylight':'Dia','cloudy':'Nublado','tungsten':'Tungst','fluorescent':'Fluor'};")
