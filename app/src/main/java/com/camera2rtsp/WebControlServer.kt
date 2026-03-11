@@ -15,16 +15,13 @@ class WebControlServer(
         val uri = session.uri
         return when {
             uri == "/"           -> serveControlPanel()
-            uri == "/status"     -> serveStatus()          // compatível IPWebcam
+            uri == "/status"     -> serveStatus()
             uri == "/api/status" -> serveStatus()
             uri == "/api/control" && session.method == Method.POST -> handleControl(session)
             else -> newFixedLengthResponse(Response.Status.NOT_FOUND, "text/plain", "Not Found")
         }
     }
 
-    // ─────────────────────────────────────────────────────────────────────────
-    //  /status  —  estrutura inspirada no IPWebcam
-    // ─────────────────────────────────────────────────────────────────────────
     private fun serveStatus(): Response {
         val c = cameraController
         val srv = c.server
@@ -36,7 +33,7 @@ class WebControlServer(
             "video_size"      to "${c.currentWidth}x${c.currentHeight}",
             "ffc"             to if (c.currentCameraId == "1") "on" else "off",
             "camera_id"       to c.currentCameraId,
-            "zoom"            to "${(c.zoomLevel * 100).toInt() + 100}",  // 100..800 como IPWebcam
+            "zoom"            to "${(c.zoomLevel * 100).toInt() + 100}",
             "focusmode"       to focusMode,
             "focus_distance"  to focusDist,
             "focal_length"    to "4.30",
@@ -77,9 +74,6 @@ class WebControlServer(
         return resp
     }
 
-    // ─────────────────────────────────────────────────────────────────────────
-    //  /api/control
-    // ─────────────────────────────────────────────────────────────────────────
     private fun handleControl(session: IHTTPSession): Response {
         val map = mutableMapOf<String, String>()
         return try {
@@ -102,131 +96,178 @@ class WebControlServer(
         }
     }
 
-    // ─────────────────────────────────────────────────────────────────────────
-    //  HTML WebGUI
-    // ─────────────────────────────────────────────────────────────────────────
     private fun serveControlPanel(): Response {
         val html = """
 <!DOCTYPE html>
 <html lang="pt-BR">
 <head>
 <meta charset="UTF-8">
-<meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1">
+<meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no">
 <title>Camera2 RTSP Control</title>
 <style>
 :root{
-  --bg:#0f172a;--surface:#1e293b;--border:#334155;
+  --bg:#0f172a;--surface:#1e293b;--surface2:#263348;--border:#334155;
   --accent:#38bdf8;--accent2:#0ea5e9;--text:#f1f5f9;--muted:#94a3b8;
-  --green:#10b981;--red:#ef4444;--yellow:#f59e0b;
+  --green:#10b981;--red:#ef4444;--yellow:#f59e0b;--orange:#f97316;
 }
-*{margin:0;padding:0;box-sizing:border-box}
+*{margin:0;padding:0;box-sizing:border-box;-webkit-tap-highlight-color:transparent}
+html{font-size:14px}
 body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;
-  background:var(--bg);color:var(--text);padding:12px;min-height:100vh}
-.container{max-width:860px;margin:0 auto}
-h1{color:var(--accent);text-align:center;font-size:clamp(18px,5vw,26px);margin-bottom:4px}
-.sub{text-align:center;color:var(--muted);font-size:12px;margin-bottom:16px}
+  background:var(--bg);color:var(--text);padding:10px;min-height:100vh;
+  overscroll-behavior:none}
+.container{max-width:900px;margin:0 auto}
 
-.statusbar{display:flex;flex-wrap:wrap;gap:8px;justify-content:center;
-  padding:12px;background:var(--surface);border-radius:12px;
-  border:1px solid var(--border);margin-bottom:18px}
-.badge{display:flex;align-items:center;gap:5px;background:#0f172a;
-  padding:5px 12px;border-radius:20px;font-size:12px;font-weight:600}
-.dot{width:8px;height:8px;border-radius:50%;background:var(--green)}
-.dot.off{background:var(--red)}
+/* ── Header ── */
+.header{text-align:center;margin-bottom:14px}
+.header h1{color:var(--accent);font-size:clamp(16px,5vw,24px);font-weight:800}
+.header p{color:var(--muted);font-size:11px;margin-top:3px}
 
-.card{background:var(--surface);padding:16px;margin-bottom:14px;
-  border-radius:12px;border:1px solid var(--border)}
-.card h3{color:var(--accent);font-size:14px;margin-bottom:12px;
+/* ── Status bar ── */
+.statusbar{display:flex;flex-wrap:wrap;gap:6px;justify-content:center;
+  padding:10px;background:var(--surface);border-radius:14px;
+  border:1px solid var(--border);margin-bottom:14px}
+.badge{display:flex;align-items:center;gap:5px;background:var(--bg);
+  padding:5px 11px;border-radius:20px;font-size:11px;font-weight:600;
+  white-space:nowrap}
+.dot{width:8px;height:8px;border-radius:50%;background:var(--green);
+  box-shadow:0 0 6px var(--green);transition:background .3s}
+.dot.off{background:var(--red);box-shadow:0 0 6px var(--red)}
+.dot.warn{background:var(--yellow);box-shadow:0 0 6px var(--yellow)}
+
+/* latência colorida */
+.lat-ok{color:var(--green)}
+.lat-warn{color:var(--yellow)}
+.lat-bad{color:var(--red)}
+
+/* ── Cards ── */
+.card{background:var(--surface);padding:14px;margin-bottom:12px;
+  border-radius:14px;border:1px solid var(--border)}
+.card h3{color:var(--accent);font-size:13px;font-weight:700;margin-bottom:11px;
   display:flex;align-items:center;gap:6px}
-.val{display:inline-block;background:#0f172a;padding:3px 10px;
+.val{display:inline-block;background:var(--bg);padding:2px 10px;
   border-radius:6px;font-weight:700;color:var(--accent);
-  min-width:80px;text-align:center;font-size:13px}
-.info-row{display:flex;gap:12px;flex-wrap:wrap;margin-bottom:10px}
-.info-pill{background:#0f172a;padding:4px 10px;border-radius:8px;
+  min-width:72px;text-align:center;font-size:12px}
+
+/* info pills */
+.info-row{display:flex;gap:8px;flex-wrap:wrap;margin-bottom:6px}
+.info-pill{background:var(--bg);padding:4px 10px;border-radius:8px;
   font-size:11px;color:var(--muted)}
 .info-pill span{color:var(--text);font-weight:600}
 
-.btngroup{display:flex;flex-wrap:wrap;gap:8px}
-button{background:var(--accent);color:#0f172a;border:none;
-  padding:9px 14px;border-radius:8px;cursor:pointer;
-  font-weight:700;font-size:13px;
-  transition:background .15s,transform .1s;
-  touch-action:manipulation}
-button:hover{background:var(--accent2)}
-button:active{transform:scale(.95)}
-button.active{background:var(--green);color:#fff}
-button.danger{background:var(--red);color:#fff}
-@keyframes pulse{
-  0%{box-shadow:0 0 0 0 rgba(56,189,248,.7)}
-  70%{box-shadow:0 0 0 10px rgba(56,189,248,0)}
-  100%{box-shadow:0 0 0 0 rgba(56,189,248,0)}
+/* ── Botões ── */
+.btngroup{display:flex;flex-wrap:wrap;gap:7px}
+button{background:var(--surface2);color:var(--text);border:1px solid var(--border);
+  padding:9px 13px;border-radius:10px;cursor:pointer;
+  font-weight:600;font-size:12px;line-height:1.2;
+  transition:background .15s,transform .1s,box-shadow .15s;
+  touch-action:manipulation;-webkit-touch-callout:none;
+  user-select:none;min-height:40px}
+button:hover{background:var(--accent);color:#0f172a;border-color:var(--accent)}
+button:active{transform:scale(.93)}
+button.active{background:var(--green);color:#fff;border-color:var(--green)}
+button.danger{background:var(--red);color:#fff;border-color:var(--red)}
+
+@keyframes pulse-ok{
+  0%{box-shadow:0 0 0 0 rgba(16,185,129,.8)}
+  70%{box-shadow:0 0 0 12px rgba(16,185,129,0)}
+  100%{box-shadow:0 0 0 0 rgba(16,185,129,0)}
 }
-button.feedback{animation:pulse .4s ease}
+@keyframes pulse-err{
+  0%{box-shadow:0 0 0 0 rgba(239,68,68,.8)}
+  70%{box-shadow:0 0 0 12px rgba(239,68,68,0)}
+  100%{box-shadow:0 0 0 0 rgba(239,68,68,0)}
+}
+button.fb-ok{animation:pulse-ok .45s ease}
+button.fb-err{animation:pulse-err .45s ease}
 
-input[type=range]{width:100%;height:6px;background:var(--border);
-  border-radius:4px;outline:none;-webkit-appearance:none;margin:10px 0}
+/* ── Sliders ── */
+.slider-wrap{padding:4px 0}
+input[type=range]{width:100%;height:5px;background:var(--border);
+  border-radius:4px;outline:none;-webkit-appearance:none;margin:10px 0;cursor:pointer}
 input[type=range]::-webkit-slider-thumb{-webkit-appearance:none;
-  width:22px;height:22px;background:var(--accent);
-  cursor:pointer;border-radius:50%;box-shadow:0 0 4px rgba(0,0,0,.4)}
-input[type=range]::-moz-range-thumb{width:22px;height:22px;
-  background:var(--accent);cursor:pointer;border-radius:50%;border:none}
+  width:24px;height:24px;background:var(--accent);
+  cursor:grab;border-radius:50%;border:3px solid var(--bg);
+  box-shadow:0 2px 6px rgba(0,0,0,.5)}
+input[type=range]::-moz-range-thumb{width:24px;height:24px;
+  background:var(--accent);cursor:grab;border-radius:50%;border:3px solid var(--bg)}
 .rlabels{display:flex;justify-content:space-between;
-  font-size:11px;color:var(--muted);margin-top:2px}
+  font-size:10px;color:var(--muted);margin-top:2px}
 
-.toggle-row{display:flex;align-items:center;justify-content:space-between;margin:8px 0}
-.switch{position:relative;display:inline-block;width:44px;height:24px}
+/* ── Toggles ── */
+.toggle-row{display:flex;align-items:center;justify-content:space-between;
+  padding:9px 0;border-bottom:1px solid var(--border)}
+.toggle-row:last-child{border-bottom:none}
+.toggle-label{font-size:13px;display:flex;align-items:center;gap:7px}
+.switch{position:relative;display:inline-block;width:46px;height:26px;flex-shrink:0}
 .switch input{opacity:0;width:0;height:0}
-.sw{position:absolute;cursor:pointer;top:0;left:0;right:0;bottom:0;
-  background:var(--border);border-radius:24px;transition:.3s}
-.sw:before{content:"";position:absolute;height:18px;width:18px;
-  left:3px;bottom:3px;background:#fff;border-radius:50%;transition:.3s}
+.sw{position:absolute;cursor:pointer;inset:0;
+  background:var(--border);border-radius:26px;transition:.3s}
+.sw:before{content:"";position:absolute;height:20px;width:20px;
+  left:3px;bottom:3px;background:#fff;border-radius:50%;transition:.3s;
+  box-shadow:0 1px 3px rgba(0,0,0,.4)}
 input:checked+.sw{background:var(--green)}
 input:checked+.sw:before{transform:translateX(20px)}
 
-@media(min-width:520px){
-  .grid2{display:grid;grid-template-columns:1fr 1fr;gap:14px}
+/* ── Grid 2 col ── */
+@media(min-width:480px){
+  .grid2{display:grid;grid-template-columns:1fr 1fr;gap:12px}
   .grid2 .card{margin-bottom:0}
 }
 
-#toast{position:fixed;bottom:20px;left:50%;
-  transform:translateX(-50%) translateY(60px);
-  background:var(--green);color:#fff;padding:10px 22px;
-  border-radius:24px;font-size:13px;font-weight:600;
-  pointer-events:none;transition:transform .3s,opacity .3s;
-  opacity:0;z-index:999}
+/* ── Toast ── */
+#toast{position:fixed;bottom:22px;left:50%;
+  transform:translateX(-50%) translateY(80px);
+  padding:10px 22px;border-radius:24px;
+  font-size:13px;font-weight:700;
+  pointer-events:none;transition:transform .25s cubic-bezier(.34,1.56,.64,1),opacity .25s;
+  opacity:0;z-index:999;white-space:nowrap}
 #toast.show{transform:translateX(-50%) translateY(0);opacity:1}
+#toast.ok{background:var(--green);color:#fff}
+#toast.err{background:var(--red);color:#fff}
+
+/* ── Barra de qualidade por preset ── */
+.preset-quality{display:flex;gap:6px;margin-bottom:10px}
+.pq-btn{flex:1;padding:8px 4px;font-size:11px;text-align:center}
+
+/* ── FPS row ── */
+.fps-row{display:flex;gap:6px;margin-top:8px}
+.fps-row button{flex:1;font-size:11px;padding:7px 4px}
 </style>
 </head>
 <body>
 <div class="container">
-  <h1>📷 Camera2 RTSP Control</h1>
-  <p class="sub">Samsung Galaxy Note10+ &middot; SM-N975F</p>
+  <div class="header">
+    <h1>📷 Camera2 RTSP Control</h1>
+    <p>Samsung Galaxy Note10+ · SM-N975F · Android 12</p>
+  </div>
 
-  <!-- Status bar -->
+  <!-- ── Status Bar ── -->
   <div class="statusbar">
-    <div class="badge"><span class="dot" id="dot-stream"></span><span id="lbl-stream">...</span></div>
+    <div class="badge"><span class="dot off" id="dot-stream"></span><span id="lbl-stream">Conectando…</span></div>
     <div class="badge">📷 <span id="lbl-cam">—</span></div>
     <div class="badge">🎞️ <span id="lbl-res">—</span></div>
     <div class="badge">📶 <span id="lbl-br">—</span> kbps</div>
-    <div class="badge">⏱️ <span id="lbl-lat">—</span></div>
+    <div class="badge">🔗 <span id="lbl-clients">0</span> cliente(s)</div>
+    <div class="badge">⏱️ <span id="lbl-lat" class="lat-ok">—</span></div>
   </div>
 
-  <!-- Info da câmera atual (estilo status.json) -->
+  <!-- ── Info da câmera ── -->
   <div class="card">
-    <h3>📊 Status da câmera</h3>
+    <h3>📊 Estado da câmera</h3>
     <div class="info-row">
       <div class="info-pill">Foco: <span id="info-focusmode">—</span></div>
       <div class="info-pill">Dist: <span id="info-focusdist">—</span></div>
       <div class="info-pill">ISO: <span id="info-iso">—</span></div>
       <div class="info-pill">Exp: <span id="info-exp">—</span></div>
       <div class="info-pill">Focal: <span id="info-focal">—</span> mm</div>
-      <div class="info-pill">Apertura: f/<span id="info-ap">—</span></div>
+      <div class="info-pill">f/<span id="info-ap">—</span></div>
       <div class="info-pill">WB: <span id="info-wb">—</span></div>
       <div class="info-pill">OIS: <span id="info-ois">—</span></div>
+      <div class="info-pill">FPS: <span id="info-fps">—</span></div>
     </div>
   </div>
 
-  <!-- Câmera -->
+  <!-- ── Câmera ── -->
   <div class="card">
     <h3>🎥 Câmera</h3>
     <div class="btngroup">
@@ -237,56 +278,80 @@ input:checked+.sw:before{transform:translateX(20px)}
     </div>
   </div>
 
-  <!-- Resolução + Bitrate -->
+  <!-- ── Resolução + Bitrate ── -->
   <div class="grid2">
     <div class="card">
-      <h3>📐 Resolução</h3>
-      <div class="btngroup">
-        <button data-res="720p"  onclick="setResolution('720p',this)">HD 720p</button>
-        <button data-res="1080p" onclick="setResolution('1080p',this)">FHD 1080p</button>
-        <button data-res="4k"    onclick="setResolution('4k',this)">4K UHD</button>
+      <h3>📐 Resolução &amp; Qualidade</h3>
+      <div class="btngroup preset-quality">
+        <button class="pq-btn" data-res="720p"  onclick="setResolution('720p',this)">HD<br><small>720p · 4M</small></button>
+        <button class="pq-btn" data-res="1080p" onclick="setResolution('1080p',this)">FHD<br><small>1080p · 8M</small></button>
+        <button class="pq-btn" data-res="4k"    onclick="setResolution('4k',this)">4K<br><small>2160p · 20M</small></button>
+      </div>
+      <div class="fps-row">
+        <button data-fps="15" onclick="setFPS(15,this)">15 fps</button>
+        <button data-fps="24" onclick="setFPS(24,this)">24 fps</button>
+        <button data-fps="30" onclick="setFPS(30,this)" class="active">30 fps</button>
       </div>
     </div>
     <div class="card">
       <h3>📶 Bitrate <span class="val" id="br-value">4000</span> kbps</h3>
-      <input type="range" id="bitrate" min="500" max="25000" value="4000" step="500"
-             oninput="updateBitrate(this.value)">
-      <div class="rlabels"><span>500k</span><span>25M</span></div>
+      <div class="slider-wrap">
+        <input type="range" id="bitrate" min="500" max="25000" value="4000" step="500"
+               oninput="updateBitrate(this.value)">
+        <div class="rlabels"><span>500k</span><span>12M</span><span>25M</span></div>
+      </div>
+      <!-- Presets rápidos de bitrate -->
+      <div class="btngroup" style="margin-top:8px">
+        <button onclick="setBitratePreset(2000)">2M</button>
+        <button onclick="setBitratePreset(4000)">4M</button>
+        <button onclick="setBitratePreset(8000)">8M</button>
+        <button onclick="setBitratePreset(20000)">20M</button>
+      </div>
     </div>
   </div>
 
-  <!-- Zoom -->
+  <!-- ── Zoom ── -->
   <div class="card">
-    <h3>🔍 Zoom <span class="val" id="zoom-val">100%</span></h3>
-    <input type="range" id="zoom" min="0" max="1" value="0" step="0.01"
-           oninput="updateZoom(this.value)">
-    <div class="rlabels"><span>1× (sem zoom)</span><span>Máximo</span></div>
+    <h3>🔍 Zoom <span class="val" id="zoom-val">1×</span></h3>
+    <div class="slider-wrap">
+      <input type="range" id="zoom" min="0" max="1" value="0" step="0.01"
+             oninput="updateZoom(this.value)">
+      <div class="rlabels"><span>1× (sem zoom)</span><span>Máximo</span></div>
+    </div>
+    <div class="btngroup" style="margin-top:8px">
+      <button onclick="setZoomPreset(0)">1×</button>
+      <button onclick="setZoomPreset(0.25)">~2×</button>
+      <button onclick="setZoomPreset(0.5)">~4×</button>
+      <button onclick="setZoomPreset(1.0)">Máx</button>
+    </div>
   </div>
 
-  <!-- Foco -->
+  <!-- ── Foco ── -->
   <div class="card">
     <h3>🎯 Foco <span class="val" id="focus-val">Auto</span></h3>
-    <!-- range 0.0 (auto/infinito) a 10.0 diopters (macro) — igual ao status.json IPWebcam -->
-    <input type="range" id="focus" min="0" max="10" value="0" step="0.1"
-           oninput="updateFocus(this.value)">
-    <div class="rlabels"><span>Auto / ∞</span><span>Macro (10D)</span></div>
-    <div class="btngroup" style="margin-top:10px">
-      <button onclick="setFocusAuto()">♻️ Auto Focus</button>
+    <div class="slider-wrap">
+      <input type="range" id="focus" min="0" max="10" value="0" step="0.1"
+             oninput="updateFocus(this.value)">
+      <div class="rlabels"><span>Auto / ∞</span><span>Macro (10D)</span></div>
+    </div>
+    <div class="btngroup" style="margin-top:8px">
+      <button onclick="setFocusAuto()">♻️ Auto</button>
       <button onclick="setFocusMode('continuous-video')">🎬 Contínuo</button>
       <button onclick="setFocusMode('off')">🔒 Travar</button>
     </div>
   </div>
 
-  <!-- ISO + Exposição manual -->
+  <!-- ── ISO + EV ── -->
   <div class="grid2">
     <div class="card">
       <h3>🌡️ ISO <span class="val" id="iso-val">50</span></h3>
-      <!-- valores reais do IPWebcam: 50..3200 em passos de 31 -->
-      <input type="range" id="iso" min="0" max="100" value="0" step="1"
-             oninput="updateISO(this.value)">
-      <div class="rlabels"><span>50 (mín ruído)</span><span>3200 (máx sens)</span></div>
-      <div class="toggle-row" style="margin-top:8px">
-        <span style="font-size:13px">Sensor Manual</span>
+      <div class="slider-wrap">
+        <input type="range" id="iso" min="0" max="100" value="0" step="1"
+               oninput="updateISO(this.value)">
+        <div class="rlabels"><span>50</span><span>1600</span><span>3200</span></div>
+      </div>
+      <div class="toggle-row" style="margin-top:6px">
+        <span class="toggle-label">🔧 Sensor Manual</span>
         <label class="switch">
           <input type="checkbox" id="toggle-manual" onchange="toggleManual(this)">
           <span class="sw"></span>
@@ -294,27 +359,33 @@ input:checked+.sw:before{transform:translateX(20px)}
       </div>
     </div>
     <div class="card">
-      <h3>🕐 Exposure (EV) <span class="val" id="ev-val">0</span></h3>
-      <!-- EV de -8 a +8 -->
-      <input type="range" id="ev" min="-8" max="8" value="0" step="1"
-             oninput="updateEV(this.value)">
-      <div class="rlabels"><span>-8 (escuro)</span><span>+8 (claro)</span></div>
+      <h3>🕐 Exposure (EV) <span class="val" id="ev-val">±0</span></h3>
+      <div class="slider-wrap">
+        <input type="range" id="ev" min="-8" max="8" value="0" step="1"
+               oninput="updateEV(this.value)">
+        <div class="rlabels"><span>-8</span><span>0</span><span>+8</span></div>
+      </div>
+      <div class="btngroup" style="margin-top:8px">
+        <button onclick="setEVPreset(-4)">-4</button>
+        <button onclick="setEVPreset(0)">±0</button>
+        <button onclick="setEVPreset(4)">+4</button>
+      </div>
     </div>
   </div>
 
-  <!-- Balanço de branco -->
+  <!-- ── Balanço de branco ── -->
   <div class="card">
     <h3>☀️ Balanço de Branco</h3>
     <div class="btngroup">
-      <button data-wb="auto"       onclick="setWB('auto',this)">Auto</button>
-      <button data-wb="daylight"   onclick="setWB('daylight',this)">☀️ Dia</button>
-      <button data-wb="cloudy"     onclick="setWB('cloudy',this)">☁️ Nublado</button>
-      <button data-wb="tungsten"   onclick="setWB('tungsten',this)">💡 Tungstênio</button>
+      <button data-wb="auto"        onclick="setWB('auto',this)">🔄 Auto</button>
+      <button data-wb="daylight"    onclick="setWB('daylight',this)">☀️ Dia</button>
+      <button data-wb="cloudy"      onclick="setWB('cloudy',this)">☁️ Nublado</button>
+      <button data-wb="tungsten"    onclick="setWB('tungsten',this)">💡 Tungstênio</button>
       <button data-wb="fluorescent" onclick="setWB('fluorescent',this)">🔦 Fluorescente</button>
     </div>
   </div>
 
-  <!-- Controles extras -->
+  <!-- ── Controles Extras ── -->
   <div class="card">
     <h3>🛠️ Controles Extras</h3>
     <div class="toggle-row">
@@ -333,14 +404,16 @@ input:checked+.sw:before{transform:translateX(20px)}
     </div>
   </div>
 
-  <p style="text-align:center;margin-top:18px;color:var(--muted);font-size:11px">
-    Camera2 API &middot; RootEncoder &middot; NanoHTTPD
+  <p style="text-align:center;margin-top:16px;color:var(--muted);font-size:10px;padding-bottom:20px">
+    Camera2 API · RootEncoder · NanoHTTPD · v2.0
   </p>
 </div>
-<div id="toast">✓ Enviado</div>
+
+<!-- Toast de feedback -->
+<div id="toast" class="ok">✓ Enviado</div>
 
 <script>
-// ─── Listas ISO reais do IPWebcam ────────────────────────────────────────────
+// ── Dados fixos ─────────────────────────────────────────────────────────────
 const ISO_LIST=[50,81,112,143,174,205,236,267,298,329,360,391,422,453,484,
   515,546,577,608,639,670,701,732,763,794,825,856,887,918,949,980,1011,1042,
   1073,1104,1135,1166,1197,1228,1259,1290,1321,1352,1383,1414,1445,1476,1507,
@@ -351,74 +424,103 @@ const ISO_LIST=[50,81,112,143,174,205,236,267,298,329,360,391,422,453,484,
 
 const CAM_NAMES={'0':'Wide','1':'Frontal','2':'Ultra Wide','3':'Telephoto'};
 
-// ─── Toast ───────────────────────────────────────────────────────────────────
-function showToast(msg){
+// ── Toast ────────────────────────────────────────────────────────────────────
+let _toastTimer;
+function showToast(msg, isError){
   const t=document.getElementById('toast');
-  t.textContent=msg||'✓ Enviado';
+  t.textContent=msg;
+  t.className=isError?'err':'ok';
   t.classList.add('show');
-  clearTimeout(t._t);
-  t._t=setTimeout(()=>t.classList.remove('show'),1600);
+  clearTimeout(_toastTimer);
+  _toastTimer=setTimeout(()=>t.classList.remove('show'),1800);
 }
-function feedback(btn){
-  if(!btn)return;
-  btn.classList.remove('feedback');
-  void btn.offsetWidth;
-  btn.classList.add('feedback');
+
+// ── Feedback visual no botão ─────────────────────────────────────────────────
+function feedback(btn, ok){
+  if(!btn) return;
+  const cls=ok!==false?'fb-ok':'fb-err';
+  btn.classList.remove('fb-ok','fb-err');
+  void btn.offsetWidth; // reflow
+  btn.classList.add(cls);
+  setTimeout(()=>btn.classList.remove(cls),500);
 }
-function markActive(attr,val){
+
+// ── Marcar botão ativo ───────────────────────────────────────────────────────
+function markActive(attr, val){
   document.querySelectorAll('['+attr+']').forEach(b=>{
-    b.classList.toggle('active',b.getAttribute(attr)===val);
+    b.classList.toggle('active', b.getAttribute(attr)===String(val));
   });
 }
 
-// ─── send ────────────────────────────────────────────────────────────────────
-function sendControl(data,btn,msg){
+// ── Envio de controle ────────────────────────────────────────────────────────
+function sendControl(data, btn, msg){
   fetch('/api/control',{
     method:'POST',
     headers:{'Content-Type':'application/json'},
     body:JSON.stringify(data)
-  }).then(r=>r.json()).then(()=>{
-    feedback(btn);
-    showToast(msg||'✓ OK');
-  }).catch(err=>showToast('❌ '+err.message));
+  }).then(r=>{
+    if(!r.ok) throw new Error('HTTP '+r.status);
+    return r.json();
+  }).then(()=>{
+    feedback(btn, true);
+    showToast(msg||'✓ OK', false);
+  }).catch(err=>{
+    feedback(btn, false);
+    showToast('❌ '+err.message, true);
+  });
 }
 
-// ─── Câmera ──────────────────────────────────────────────────────────────────
-function switchCamera(id,btn){
-  markActive('data-cam',id);
-  sendControl({camera:id},btn,'📷 '+CAM_NAMES[id]);
+// ── Câmera ───────────────────────────────────────────────────────────────────
+function switchCamera(id, btn){
+  markActive('data-cam', id);
+  sendControl({camera:id}, btn, '📷 '+CAM_NAMES[id]);
 }
 
-// ─── Resolução ───────────────────────────────────────────────────────────────
-function setResolution(res,btn){
-  markActive('data-res',res);
-  sendControl({resolution:res},btn,'📐 '+res);
+// ── Resolução ────────────────────────────────────────────────────────────────
+function setResolution(res, btn){
+  markActive('data-res', res);
+  sendControl({resolution:res}, btn, '📐 '+res);
 }
 
-// ─── Bitrate ─────────────────────────────────────────────────────────────────
+// ── FPS ──────────────────────────────────────────────────────────────────────
+function setFPS(fps, btn){
+  markActive('data-fps', fps);
+  sendControl({fps:fps}, btn, '🎬 '+fps+' fps');
+}
+
+// ── Bitrate ──────────────────────────────────────────────────────────────────
 let _brT;
 function updateBitrate(v){
   document.getElementById('br-value').textContent=v;
   clearTimeout(_brT);
-  _brT=setTimeout(()=>sendControl({bitrate:+v},null,'📶 '+v+'kbps'),300);
+  _brT=setTimeout(()=>sendControl({bitrate:+v},null,'📶 '+v+'kbps'),400);
+}
+function setBitratePreset(v){
+  document.getElementById('bitrate').value=v;
+  document.getElementById('br-value').textContent=v;
+  sendControl({bitrate:v},null,'📶 '+v+'kbps');
 }
 
-// ─── Zoom ────────────────────────────────────────────────────────────────────
+// ── Zoom ─────────────────────────────────────────────────────────────────────
 let _zT;
 function updateZoom(v){
-  document.getElementById('zoom-val').textContent=Math.round(parseFloat(v)*100)+'%';
+  const pct=parseFloat(v);
+  const mult=(1+pct*7).toFixed(1); // 0→1× , 1→8×
+  document.getElementById('zoom-val').textContent=mult+'×';
   clearTimeout(_zT);
-  _zT=setTimeout(()=>sendControl({zoom:parseFloat(v)},null,'🔍 '+Math.round(v*100)+'%'),150);
+  _zT=setTimeout(()=>sendControl({zoom:pct},null,'🔍 '+mult+'×'),150);
+}
+function setZoomPreset(v){
+  document.getElementById('zoom').value=v;
+  updateZoom(v);
 }
 
-// ─── Foco manual (0..10 diopters igual IPWebcam) ─────────────────────────────
-// O backend Camera2Controller já espera 0.0 = auto, >0 = distância em diopters
+// ── Foco ─────────────────────────────────────────────────────────────────────
 let _fT;
 function updateFocus(v){
   const f=parseFloat(v);
   document.getElementById('focus-val').textContent=f===0?'Auto':f.toFixed(1)+'D';
   clearTimeout(_fT);
-  // Normaliza 0..10 para 0..1 para o backend
   _fT=setTimeout(()=>sendControl({focus:f/10},null,'🎯 '+(f===0?'Auto':f.toFixed(1)+'D')),200);
 }
 function setFocusAuto(){
@@ -429,60 +531,80 @@ function setFocusMode(mode){
   sendControl({focusmode:mode},null,'🎯 '+mode);
 }
 
-// ─── ISO (índice 0..100 → valor real da lista) ───────────────────────────────
+// ── ISO ──────────────────────────────────────────────────────────────────────
 let _iT;
 function updateISO(v){
   const iso=ISO_LIST[Math.min(+v,ISO_LIST.length-1)];
   document.getElementById('iso-val').textContent=iso;
   clearTimeout(_iT);
-  _iT=setTimeout(()=>sendControl({iso:iso},null,'🌡️ ISO '+iso),300);
+  _iT=setTimeout(()=>sendControl({iso:iso},null,'🌡️ ISO '+iso),350);
 }
 
-// ─── EV (exposição) ──────────────────────────────────────────────────────────
+// ── EV ───────────────────────────────────────────────────────────────────────
 let _eT;
 function updateEV(v){
-  document.getElementById('ev-val').textContent=(+v>0?'+':'')+v;
+  const n=+v;
+  document.getElementById('ev-val').textContent=(n>0?'+':'')+n;
   clearTimeout(_eT);
-  _eT=setTimeout(()=>sendControl({exposure:+v},null,'🕐 EV '+(+v>0?'+':'')+v),300);
+  _eT=setTimeout(()=>sendControl({exposure:n},null,'🕐 EV '+(n>0?'+':'')+n),300);
+}
+function setEVPreset(v){
+  document.getElementById('ev').value=v;
+  updateEV(v);
 }
 
-// ─── WB ──────────────────────────────────────────────────────────────────────
-function setWB(mode,btn){
-  markActive('data-wb',mode);
+// ── WB ───────────────────────────────────────────────────────────────────────
+function setWB(mode, btn){
+  markActive('data-wb', mode);
   sendControl({whiteBalance:mode},btn,'☀️ '+mode);
 }
 
-// ─── Manual sensor toggle ────────────────────────────────────────────────────
-function toggleManual(chk){
-  sendControl({manualSensor:chk.checked},null,chk.checked?'Manual ON':'Manual OFF');
+// ── Toggles ──────────────────────────────────────────────────────────────────
+function toggleManual(chk){ sendControl({manualSensor:chk.checked},null,chk.checked?'🔧 Manual ON':'🔧 Auto'); }
+function toggleLantern(chk){ sendControl({lantern:chk.checked},null,chk.checked?'🔦 ON':'🔦 OFF'); }
+function toggleOIS(chk){ sendControl({ois:chk.checked},null,chk.checked?'🎬 OIS ON':'🎬 OIS OFF'); }
+
+// ── ns → velocidade de obturador ─────────────────────────────────────────────
+function nsToShutter(ns){
+  if(ns<=0) return '—';
+  const s=ns/1e9;
+  if(s>=1) return s.toFixed(1)+'s';
+  return '1/'+Math.round(1/s)+'s';
 }
 
-// ─── Lanterna ────────────────────────────────────────────────────────────────
-function toggleLantern(chk){
-  sendControl({lantern:chk.checked},null,chk.checked?'🔦 ON':'🔦 OFF');
+// ── Cor de latência ──────────────────────────────────────────────────────────
+function latClass(ms){
+  if(ms<100) return 'lat-ok';
+  if(ms<300) return 'lat-warn';
+  return 'lat-bad';
 }
 
-// ─── OIS ─────────────────────────────────────────────────────────────────────
-function toggleOIS(chk){
-  sendControl({ois:chk.checked},null,chk.checked?'🎬 OIS ON':'🎬 OFF');
-}
-
-// ─── Polling de status ───────────────────────────────────────────────────────
+// ── Polling de status a cada 2s ──────────────────────────────────────────────
+let _pollFail=0;
 async function pollStatus(){
   const t0=Date.now();
   try{
-    const d=await(await fetch('/api/status')).json();
+    const r=await fetch('/api/status');
+    if(!r.ok) throw new Error('HTTP '+r.status);
+    const d=await r.json();
     const lat=Date.now()-t0;
     const c=d.curvals||{};
+    _pollFail=0;
 
-    document.getElementById('dot-stream').className='dot'+(d.streaming?'':' off');
-    document.getElementById('lbl-stream').textContent=d.streaming?'Streaming ▶':'Parado ⏹';
+    // Status bar
+    const streaming=d.streaming||false;
+    document.getElementById('dot-stream').className='dot'+(streaming?'':' off');
+    document.getElementById('lbl-stream').textContent=streaming?'▶ Streaming':'⏹ Parado';
     document.getElementById('lbl-cam').textContent=CAM_NAMES[c.camera_id]||c.camera_id||'—';
     document.getElementById('lbl-res').textContent=c.video_size||'—';
     document.getElementById('lbl-br').textContent=c.bitrate_kbps||'—';
-    document.getElementById('lbl-lat').textContent=lat+'ms';
+    document.getElementById('lbl-clients').textContent=d.video_connections||0;
 
-    // Painel de info
+    const latEl=document.getElementById('lbl-lat');
+    latEl.textContent=lat+'ms';
+    latEl.className=latClass(lat);
+
+    // Info pills
     document.getElementById('info-focusmode').textContent=c.focusmode||'—';
     document.getElementById('info-focusdist').textContent=(c.focus_distance||'0.00')+'D';
     document.getElementById('info-iso').textContent=c.iso||'—';
@@ -491,34 +613,46 @@ async function pollStatus(){
     document.getElementById('info-ap').textContent=c.aperture||'—';
     document.getElementById('info-wb').textContent=c.whitebalance||'—';
     document.getElementById('info-ois').textContent=c.ois||'—';
+    document.getElementById('info-fps').textContent=(c.fps||'—')+'fps';
 
-    // Sync toggles
-    const lanternEl=document.getElementById('toggle-lantern');
-    if(lanternEl) lanternEl.checked=(c.torch==='on');
-    const oisEl=document.getElementById('toggle-ois');
-    if(oisEl) oisEl.checked=(c.ois==='on');
-    const manEl=document.getElementById('toggle-manual');
-    if(manEl) manEl.checked=(c.manual_sensor==='on');
+    // Sync toggles (sem disparar onchange)
+    syncChk('toggle-lantern', c.torch==='on');
+    syncChk('toggle-ois',     c.ois==='on');
+    syncChk('toggle-manual',  c.manual_sensor==='on');
 
-    // Marca câmera ativa
-    if(c.camera_id) markActive('data-cam',c.camera_id);
-    if(c.whitebalance) markActive('data-wb',c.whitebalance);
+    // Marcar ativos
+    if(c.camera_id)    markActive('data-cam', c.camera_id);
+    if(c.whitebalance) markActive('data-wb',  c.whitebalance);
+    if(c.fps)          markActive('data-fps', +c.fps);
+
+    // Sync sliders só se diferença relevante (evita jitter no arraste)
+    syncSlider('bitrate',  c.bitrate_kbps,  500,  25000);
+    if(c.bitrate_kbps) document.getElementById('br-value').textContent=c.bitrate_kbps;
 
   }catch(e){
-    document.getElementById('dot-stream').className='dot off';
-    document.getElementById('lbl-stream').textContent='Sem conexão';
+    _pollFail++;
+    if(_pollFail>=3){
+      document.getElementById('dot-stream').className='dot off warn';
+      document.getElementById('lbl-stream').textContent='Sem conexão';
+    }
   }
 }
 
-function nsToShutter(ns){
-  if(ns<=0) return '—';
-  const s=ns/1e9;
-  if(s>=1) return s.toFixed(1)+'s';
-  return '1/'+Math.round(1/s)+'s';
+function syncChk(id, val){
+  const el=document.getElementById(id);
+  if(el && el.checked!==val) el.checked=val;
+}
+function syncSlider(id, val, min, max){
+  if(!val) return;
+  const el=document.getElementById(id);
+  if(!el) return;
+  const v=Math.max(min,Math.min(max,+val));
+  // Só atualiza se usuário não estiver arrastando
+  if(document.activeElement!==el) el.value=v;
 }
 
 pollStatus();
-setInterval(pollStatus,2000);
+setInterval(pollStatus, 2000);
 </script>
 </body>
 </html>
