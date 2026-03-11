@@ -13,6 +13,7 @@ class WebControlServer(
 ) : NanoHTTPD(port) {
 
     private val gson = Gson()
+    private val S = "$"
 
     override fun serve(session: IHTTPSession): Response {
         val uri = session.uri
@@ -41,13 +42,7 @@ class WebControlServer(
         val focusMode = if (c.autoFocus) "continuous-video" else "off"
         val focusDist = String.format("%.2f", c.focusDistance)
 
-        // Número de clientes RTSP conectados via RtspServer.getNumClients()
         val numClients = try {
-            val streamClient = srv?.getStreamClient()
-            // RtspServerStreamClient não expõe contagem direta;
-            // usamos reflexão apenas se a lib não expuser método público.
-            // Na versão 1.3.6 o RtspServer é acessível via campo interno;
-            // a forma segura é via isStreaming como proxy simples.
             if (srv?.isStreaming == true) 1 else 0
         } catch (_: Exception) { 0 }
 
@@ -119,6 +114,7 @@ class WebControlServer(
     }
 
     private fun serveControlPanel(): Response {
+        // Usamos S = "$" para evitar conflito entre template literals JS e string interpolation Kotlin
         val html = """
 <!DOCTYPE html>
 <html lang="pt-BR">
@@ -356,7 +352,7 @@ const ISO_LIST=[50,81,112,143,174,205,236,267,298,329,360,391,422,453,484,
 const CAM_NAMES={'0':'Wide','1':'Frontal','2':'Ultra Wide','3':'Telephoto'};
 
 let _caps = null;
-let _currentCamId = "0";
+let _currentCamId = '0';
 let _toastTimer;
 
 function showToast(msg,isError){
@@ -384,223 +380,199 @@ function sendControl(data,btn,msg){
     headers:{'Content-Type':'application/json'},
     body:JSON.stringify(data)
   }).then(r=>{if(!r.ok)throw new Error('HTTP '+r.status);return r.json();})
-  .then(()=>{feedback(btn,true);showToast(msg||'✓ OK',false);})
-  .catch(err=>{feedback(btn,false);showToast('❌ '+err.message,true);});
+  .then(()=>{feedback(btn,true);showToast(msg||'OK',false);})
+  .catch(err=>{feedback(btn,false);showToast('ERR '+err.message,true);});
 }
 
-function getCameraCapabilities(camId) {
-  if (!_caps) return null;
-  return _caps.find(c => c.camera_id === camId);
+function getCameraCapabilities(camId){
+  if(!_caps)return null;
+  return _caps.find(function(c){return c.camera_id===camId;});
 }
 
-function updateUIForCamera(camId) {
-  _currentCamId = camId;
-  const cap = getCameraCapabilities(camId);
-  if (!cap) return;
+function updateUIForCamera(camId){
+  _currentCamId=camId;
+  var cap=getCameraCapabilities(camId);
+  if(!cap)return;
 
-  // Zoom
-  const zoomCard = document.getElementById('card-zoom');
-  const zoomSlider = document.getElementById('zoom');
-  if (cap.zoom_range && cap.zoom_range[1] > 1.0) {
+  var zoomCard=document.getElementById('card-zoom');
+  var zoomSlider=document.getElementById('zoom');
+  if(cap.zoom_range&&cap.zoom_range[1]>1.0){
     zoomCard.classList.remove('hidden');
-    zoomSlider.disabled = false;
-  } else {
+    zoomSlider.disabled=false;
+  }else{
     zoomCard.classList.add('hidden');
-    zoomSlider.disabled = true;
+    zoomSlider.disabled=true;
   }
 
-  // Foco manual
-  const focusCard = document.getElementById('card-focus');
-  const focusSlider = document.getElementById('focus');
-  const focusModeGroup = document.getElementById('btngroup-focusmode');
-  if (cap.focus_distance_range && cap.focus_distance_range[1] > 0) {
+  var focusCard=document.getElementById('card-focus');
+  var focusSlider=document.getElementById('focus');
+  var focusModeGroup=document.getElementById('btngroup-focusmode');
+  if(cap.focus_distance_range&&cap.focus_distance_range[1]>0){
     focusCard.classList.remove('hidden');
-    focusSlider.disabled = false;
-    // Rebuild focus mode buttons
-    focusModeGroup.innerHTML = '';
-    cap.supported_af_modes.forEach(mode => {
-      const btn = document.createElement('button');
-      if (mode === 'auto' || mode === 'continuous-video') {
-        btn.textContent = mode === 'auto' ? '♻️ Auto' : '🎬 Contínuo';
-        btn.onclick = () => setFocusMode(mode);
+    focusSlider.disabled=false;
+    focusModeGroup.innerHTML='';
+    cap.supported_af_modes.forEach(function(mode){
+      var btn=document.createElement('button');
+      if(mode==='auto'||mode==='continuous-video'){
+        btn.textContent=mode==='auto'?'Auto':'Continuo';
+        btn.onclick=function(){setFocusMode(mode);};
         focusModeGroup.appendChild(btn);
-      } else if (mode === 'off') {
-        btn.textContent = '🔒 Travar';
-        btn.onclick = () => setFocusMode('off');
+      }else if(mode==='off'){
+        btn.textContent='Travar';
+        btn.onclick=function(){setFocusMode('off');};
         focusModeGroup.appendChild(btn);
       }
     });
-  } else {
+  }else{
     focusCard.classList.add('hidden');
-    focusSlider.disabled = true;
+    focusSlider.disabled=true;
   }
 
-  // ISO / Manual Sensor
-  const isoCard = document.getElementById('card-iso');
-  const isoSlider = document.getElementById('iso');
-  const toggleManual = document.getElementById('toggle-manual');
-  if (cap.supports_manual_sensor && cap.iso_range) {
+  var isoCard=document.getElementById('card-iso');
+  var isoSlider=document.getElementById('iso');
+  var toggleManualEl=document.getElementById('toggle-manual');
+  if(cap.supports_manual_sensor&&cap.iso_range){
     isoCard.classList.remove('hidden');
-    isoSlider.disabled = false;
-    toggleManual.disabled = false;
-  } else {
+    isoSlider.disabled=false;
+    toggleManualEl.disabled=false;
+  }else{
     isoCard.classList.add('hidden');
-    isoSlider.disabled = true;
-    toggleManual.disabled = true;
+    isoSlider.disabled=true;
+    toggleManualEl.disabled=true;
   }
 
-  // EV
-  const evCard = document.getElementById('card-ev');
-  const evSlider = document.getElementById('ev');
-  if (cap.ev_range) {
+  var evCard=document.getElementById('card-ev');
+  var evSlider=document.getElementById('ev');
+  if(cap.ev_range){
     evCard.classList.remove('hidden');
-    evSlider.disabled = false;
-    evSlider.min = cap.ev_range[0];
-    evSlider.max = cap.ev_range[1];
-    const labels = evCard.querySelector('.rlabels');
-    labels.innerHTML = `<span>${cap.ev_range[0]}</span><span>0</span><span>+${cap.ev_range[1]}</span>`;
-  } else {
+    evSlider.disabled=false;
+    evSlider.min=cap.ev_range[0];
+    evSlider.max=cap.ev_range[1];
+    var labels=evCard.querySelector('.rlabels');
+    labels.innerHTML='<span>'+cap.ev_range[0]+'</span><span>0</span><span>+'+cap.ev_range[1]+'</span>';
+  }else{
     evCard.classList.add('hidden');
-    evSlider.disabled = true;
+    evSlider.disabled=true;
   }
 
-  // White Balance
-  const wbGroup = document.getElementById('btngroup-wb');
-  wbGroup.innerHTML = '';
-  cap.supported_awb_modes.forEach(mode => {
-    const btn = document.createElement('button');
-    btn.setAttribute('data-wb', mode);
-    const icons = {
-      'auto': '🔄 Auto',
-      'daylight': '☀️ Dia',
-      'cloudy': '☁️ Nublado',
-      'tungsten': '💡 Tungstênio',
-      'incandescent': '💡 Tungstênio',
-      'fluorescent': '🔦 Fluorescente'
-    };
-    btn.textContent = icons[mode] || mode;
-    btn.onclick = () => setWB(mode, btn);
+  var wbGroup=document.getElementById('btngroup-wb');
+  wbGroup.innerHTML='';
+  var wbIcons={'auto':'Auto','daylight':'Dia','cloudy':'Nublado','tungsten':'Tungst',
+               'incandescent':'Incand','fluorescent':'Fluor'};
+  cap.supported_awb_modes.forEach(function(mode){
+    var btn=document.createElement('button');
+    btn.setAttribute('data-wb',mode);
+    btn.textContent=wbIcons[mode]||mode;
+    btn.onclick=function(){setWB(mode,btn);};
     wbGroup.appendChild(btn);
   });
 
-  // Extras: Flash / OIS
-  const extrasContent = document.getElementById('extras-content');
-  extrasContent.innerHTML = '';
-  
-  if (cap.has_flash) {
-    const row = document.createElement('div');
-    row.className = 'toggle-row';
-    row.innerHTML = `
-      <span class="toggle-label">🔦 Lanterna (Torch)</span>
-      <label class="switch">
-        <input type="checkbox" id="toggle-lantern" onchange="toggleLantern(this)">
-        <span class="sw"></span>
-      </label>
-    `;
+  var extrasContent=document.getElementById('extras-content');
+  extrasContent.innerHTML='';
+  if(cap.has_flash){
+    var row=document.createElement('div');
+    row.className='toggle-row';
+    row.innerHTML='<span class="toggle-label">Lanterna (Torch)</span>'
+      +'<label class="switch"><input type="checkbox" id="toggle-lantern" onchange="toggleLantern(this)">'
+      +'<span class="sw"></span></label>';
     extrasContent.appendChild(row);
   }
-
-  if (cap.has_ois) {
-    const row = document.createElement('div');
-    row.className = 'toggle-row';
-    row.innerHTML = `
-      <span class="toggle-label">🎬 Estabilização OIS</span>
-      <label class="switch">
-        <input type="checkbox" id="toggle-ois" onchange="toggleOIS(this)">
-        <span class="sw"></span>
-      </label>
-    `;
-    extrasContent.appendChild(row);
+  if(cap.has_ois){
+    var row2=document.createElement('div');
+    row2.className='toggle-row';
+    row2.innerHTML='<span class="toggle-label">Estabilizacao OIS</span>'
+      +'<label class="switch"><input type="checkbox" id="toggle-ois" onchange="toggleOIS(this)">'
+      +'<span class="sw"></span></label>';
+    extrasContent.appendChild(row2);
   }
-
-  if (!cap.has_flash && !cap.has_ois) {
+  if(!cap.has_flash&&!cap.has_ois){
     document.getElementById('card-extras').classList.add('hidden');
-  } else {
+  }else{
     document.getElementById('card-extras').classList.remove('hidden');
   }
 }
 
-function switchCamera(id,btn){markActive('data-cam',id);updateUIForCamera(id);sendControl({camera:id},btn,'📷 '+CAM_NAMES[id]);}
-function setResolution(res,btn){markActive('data-res',res);sendControl({resolution:res},btn,'📏 '+res);}
-function setFPS(fps,btn){markActive('data-fps',fps);sendControl({fps:fps},btn,'🎬 '+fps+' fps');}
-let _brT;
+function switchCamera(id,btn){markActive('data-cam',id);updateUIForCamera(id);sendControl({camera:id},btn,'Cam '+CAM_NAMES[id]);}
+function setResolution(res,btn){markActive('data-res',res);sendControl({resolution:res},btn,'Res '+res);}
+function setFPS(fps,btn){markActive('data-fps',fps);sendControl({fps:fps},btn,'FPS '+fps);}
+var _brT;
 function updateBitrate(v){
   document.getElementById('br-value').textContent=v;
-  clearTimeout(_brT);_brT=setTimeout(()=>sendControl({bitrate:+v},null,'📶 '+v+'kbps'),400);
+  clearTimeout(_brT);_brT=setTimeout(function(){sendControl({bitrate:+v},null,v+'kbps');},400);
 }
 function setBitratePreset(v){
   document.getElementById('bitrate').value=v;
   document.getElementById('br-value').textContent=v;
-  sendControl({bitrate:v},null,'📶 '+v+'kbps');
+  sendControl({bitrate:v},null,v+'kbps');
 }
-let _zT;
+var _zT;
 function updateZoom(v){
-  const pct=parseFloat(v);
-  const mult=(1+pct*7).toFixed(1);
-  document.getElementById('zoom-val').textContent=mult+'×';
-  clearTimeout(_zT);_zT=setTimeout(()=>sendControl({zoom:pct},null,'🔍 '+mult+'×'),150);
+  var pct=parseFloat(v);
+  var mult=(1+pct*7).toFixed(1);
+  document.getElementById('zoom-val').textContent=mult+'x';
+  clearTimeout(_zT);_zT=setTimeout(function(){sendControl({zoom:pct},null,'Zoom '+mult+'x');},150);
 }
 function setZoomPreset(v){document.getElementById('zoom').value=v;updateZoom(v);}
-let _fT;
+var _fT;
 function updateFocus(v){
-  const f=parseFloat(v);
+  var f=parseFloat(v);
   document.getElementById('focus-val').textContent=f===0?'Auto':f.toFixed(1)+'D';
-  clearTimeout(_fT);_fT=setTimeout(()=>sendControl({focus:f/10},null,'🎯 '+(f===0?'Auto':f.toFixed(1)+'D')),200);
+  clearTimeout(_fT);_fT=setTimeout(function(){sendControl({focus:f/10},null,'Foco '+(f===0?'Auto':f.toFixed(1)+'D'));},200);
 }
 function setFocusAuto(){document.getElementById('focus').value=0;updateFocus(0);}
-function setFocusMode(mode){sendControl({focusmode:mode},null,'🎯 '+mode);}
-let _iT;
+function setFocusMode(mode){sendControl({focusmode:mode},null,'Foco '+mode);}
+var _iT;
 function updateISO(v){
-  const iso=ISO_LIST[Math.min(+v,ISO_LIST.length-1)];
+  var iso=ISO_LIST[Math.min(+v,ISO_LIST.length-1)];
   document.getElementById('iso-val').textContent=iso;
-  clearTimeout(_iT);_iT=setTimeout(()=>sendControl({iso:iso},null,'🌡️ ISO '+iso),350);
+  clearTimeout(_iT);_iT=setTimeout(function(){sendControl({iso:iso},null,'ISO '+iso);},350);
 }
-let _eT;
+var _eT;
 function updateEV(v){
-  const n=+v;
+  var n=+v;
   document.getElementById('ev-val').textContent=(n>0?'+':'')+n;
-  clearTimeout(_eT);_eT=setTimeout(()=>sendControl({exposure:n},null,'🕐 EV '+(n>0?'+':'')+n),300);
+  clearTimeout(_eT);_eT=setTimeout(function(){sendControl({exposure:n},null,'EV '+(n>0?'+':'')+n);},300);
 }
 function setEVPreset(v){document.getElementById('ev').value=v;updateEV(v);}
-function setWB(mode,btn){markActive('data-wb',mode);sendControl({whiteBalance:mode},btn,'☀️ '+mode);}
-function toggleManual(chk){sendControl({manualSensor:chk.checked},null,chk.checked?'🔧 Manual ON':'🔧 Auto');}
-function toggleLantern(chk){sendControl({lantern:chk.checked},null,chk.checked?'🔦 ON':'🔦 OFF');}
-function toggleOIS(chk){sendControl({ois:chk.checked},null,chk.checked?'🎬 OIS ON':'🎬 OIS OFF');}
+function setWB(mode,btn){markActive('data-wb',mode);sendControl({whiteBalance:mode},btn,'WB '+mode);}
+function toggleManual(chk){sendControl({manualSensor:chk.checked},null,chk.checked?'Manual ON':'Auto');}
+function toggleLantern(chk){sendControl({lantern:chk.checked},null,chk.checked?'Torch ON':'Torch OFF');}
+function toggleOIS(chk){sendControl({ois:chk.checked},null,chk.checked?'OIS ON':'OIS OFF');}
 function nsToShutter(ns){
-  if(ns<=0)return '—';
-  const s=ns/1e9;
+  if(ns<=0)return '-';
+  var s=ns/1e9;
   return s>=1?s.toFixed(1)+'s':'1/'+Math.round(1/s)+'s';
 }
 function latClass(ms){return ms<100?'lat-ok':ms<300?'lat-warn':'lat-bad';}
-let _pollFail=0;
+var _pollFail=0;
 
 async function pollStatus(){
-  const t0=Date.now();
+  var t0=Date.now();
   try{
-    const r=await fetch('/api/status');
+    var r=await fetch('/api/status');
     if(!r.ok)throw new Error('HTTP '+r.status);
-    const d=await r.json();
-    const lat=Date.now()-t0;
-    const c=d.curvals||{};
+    var d=await r.json();
+    var lat=Date.now()-t0;
+    var c=d.curvals||{};
     _pollFail=0;
-    const streaming=d.streaming||false;
+    var streaming=d.streaming||false;
     document.getElementById('dot-stream').className='dot'+(streaming?'':' off');
-    document.getElementById('lbl-stream').textContent=streaming?'▶ Streaming':'⏹ Parado';
-    document.getElementById('lbl-cam').textContent=CAM_NAMES[c.camera_id]||c.camera_id||'—';
-    document.getElementById('lbl-res').textContent=c.video_size||'—';
-    document.getElementById('lbl-br').textContent=c.bitrate_kbps||'—';
+    document.getElementById('lbl-stream').textContent=streaming?'Streaming':'Parado';
+    document.getElementById('lbl-cam').textContent=CAM_NAMES[c.camera_id]||c.camera_id||'-';
+    document.getElementById('lbl-res').textContent=c.video_size||'-';
+    document.getElementById('lbl-br').textContent=c.bitrate_kbps||'-';
     document.getElementById('lbl-clients').textContent=d.video_connections||0;
-    const latEl=document.getElementById('lbl-lat');
+    var latEl=document.getElementById('lbl-lat');
     latEl.textContent=lat+'ms';latEl.className=latClass(lat);
-    document.getElementById('info-focusmode').textContent=c.focusmode||'—';
+    document.getElementById('info-focusmode').textContent=c.focusmode||'-';
     document.getElementById('info-focusdist').textContent=(c.focus_distance||'0.00')+'D';
-    document.getElementById('info-iso').textContent=c.iso||'—';
-    document.getElementById('info-exp').textContent=c.exposure_ns?nsToShutter(+c.exposure_ns):'—';
-    document.getElementById('info-focal').textContent=c.focal_length||'—';
-    document.getElementById('info-ap').textContent=c.aperture||'—';
-    document.getElementById('info-wb').textContent=c.whitebalance||'—';
-    document.getElementById('info-ois').textContent=c.ois||'—';
-    document.getElementById('info-fps').textContent=(c.fps||'—')+'fps';
+    document.getElementById('info-iso').textContent=c.iso||'-';
+    document.getElementById('info-exp').textContent=c.exposure_ns?nsToShutter(+c.exposure_ns):'-';
+    document.getElementById('info-focal').textContent=c.focal_length||'-';
+    document.getElementById('info-ap').textContent=c.aperture||'-';
+    document.getElementById('info-wb').textContent=c.whitebalance||'-';
+    document.getElementById('info-ois').textContent=c.ois||'-';
+    document.getElementById('info-fps').textContent=(c.fps||'-')+'fps';
     syncChk('toggle-lantern',c.torch==='on');
     syncChk('toggle-ois',c.ois==='on');
     syncChk('toggle-manual',c.manual_sensor==='on');
@@ -613,80 +585,74 @@ async function pollStatus(){
     _pollFail++;
     if(_pollFail>=3){
       document.getElementById('dot-stream').className='dot off';
-      document.getElementById('lbl-stream').textContent='Sem conexão';
+      document.getElementById('lbl-stream').textContent='Sem conexao';
     }
   }
 }
 
 function syncChk(id,val){
-  const el=document.getElementById(id);
+  var el=document.getElementById(id);
   if(el&&el.checked!==val)el.checked=val;
 }
 
 function syncSlider(id,val,min,max){
   if(!val)return;
-  const el=document.getElementById(id);
+  var el=document.getElementById(id);
   if(!el)return;
-  const v=Math.max(min,Math.min(max,+val));
+  var v=Math.max(min,Math.min(max,+val));
   if(document.activeElement!==el)el.value=v;
 }
 
-async function initCapabilities() {
-  try {
-    const r = await fetch('/api/capabilities');
-    if (!r.ok) throw new Error('HTTP ' + r.status);
-    _caps = await r.json();
-    console.log('Capabilities loaded:', _caps);
+async function initCapabilities(){
+  try{
+    var r=await fetch('/api/capabilities');
+    if(!r.ok)throw new Error('HTTP '+r.status);
+    _caps=await r.json();
 
-    // Build camera buttons
-    const camGroup = document.getElementById('btngroup-camera');
-    _caps.forEach(cap => {
-      const btn = document.createElement('button');
-      btn.setAttribute('data-cam', cap.camera_id);
-      const icons = {'0': '📷', '1': '🤳', '2': '🌊', '3': '🔭'};
-      btn.textContent = (icons[cap.camera_id] || '📷') + ' ' + cap.name;
-      btn.onclick = () => switchCamera(cap.camera_id, btn);
+    var camGroup=document.getElementById('btngroup-camera');
+    var camIcons={'0':'Cam0','1':'Front','2':'UW','3':'Tele'};
+    _caps.forEach(function(cap){
+      var btn=document.createElement('button');
+      btn.setAttribute('data-cam',cap.camera_id);
+      btn.textContent=(camIcons[cap.camera_id]||'Cam')+' '+cap.name;
+      btn.onclick=function(){switchCamera(cap.camera_id,btn);};
       camGroup.appendChild(btn);
     });
 
-    // Build resolution buttons dynamically
-    const resGroup = document.getElementById('btngroup-resolution');
-    const firstCam = _caps[0];
-    if (firstCam && firstCam.available_resolutions) {
-      const resolutions = firstCam.available_resolutions;
-      const presets = [
-        { res: '720p', width: 1280, height: 720, bitrate: 4000, label: 'HD<br><small>720p · 4M</small>' },
-        { res: '1080p', width: 1920, height: 1080, bitrate: 8000, label: 'FHD<br><small>1080p · 8M</small>' },
-        { res: '4k', width: 3840, height: 2160, bitrate: 20000, label: '4K<br><small>2160p · 20M</small>' }
+    var resGroup=document.getElementById('btngroup-resolution');
+    var firstCam=_caps[0];
+    if(firstCam&&firstCam.available_resolutions){
+      var resolutions=firstCam.available_resolutions;
+      var presets=[
+        {res:'720p', w:1280, h:720,  br:4000, label:'HD 720p 4M'},
+        {res:'1080p',w:1920, h:1080, br:8000, label:'FHD 1080p 8M'},
+        {res:'4k',   w:3840, h:2160, br:20000,label:'4K 2160p 20M'}
       ];
-      presets.forEach(p => {
-        if (resolutions.includes(`${p.width}x${p.height}`)) {
-          const btn = document.createElement('button');
-          btn.className = 'pq-btn';
-          btn.setAttribute('data-res', p.res);
-          btn.innerHTML = p.label;
-          btn.onclick = () => setResolution(p.res, btn);
+      presets.forEach(function(p){
+        if(resolutions.indexOf(p.w+'x'+p.h)>=0){
+          var btn=document.createElement('button');
+          btn.className='pq-btn';
+          btn.setAttribute('data-res',p.res);
+          btn.textContent=p.label;
+          btn.onclick=function(){setResolution(p.res,btn);};
           resGroup.appendChild(btn);
         }
       });
     }
 
-    // Build FPS buttons
-    const fpsGroup = document.getElementById('btngroup-fps');
-    const fpsOptions = [15, 24, 30];
-    fpsOptions.forEach(fps => {
-      const btn = document.createElement('button');
-      btn.setAttribute('data-fps', fps);
-      btn.textContent = fps + ' fps';
-      if (fps === 30) btn.classList.add('active');
-      btn.onclick = () => setFPS(fps, btn);
+    var fpsGroup=document.getElementById('btngroup-fps');
+    [15,24,30].forEach(function(fps){
+      var btn=document.createElement('button');
+      btn.setAttribute('data-fps',fps);
+      btn.textContent=fps+' fps';
+      if(fps===30)btn.classList.add('active');
+      btn.onclick=function(){setFPS(fps,btn);};
       fpsGroup.appendChild(btn);
     });
 
-    // Initialize UI for camera 0
     updateUIForCamera('0');
-  } catch (err) {
-    console.error('Failed to load capabilities:', err);
+  }catch(err){
+    console.error('Capabilities error:',err);
   }
 }
 
