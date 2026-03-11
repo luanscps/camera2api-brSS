@@ -15,15 +15,15 @@ class Camera2Controller {
 
     // Estado atual (exposto para o /status)
     var currentCameraId   = "0"
-    var exposureLevel     = 0       // EV compensation
-    var exposureNs        = 85000L  // nanoseconds (lido do sensor)
+    var exposureLevel     = 0
+    var exposureNs        = 85000L
     var frameDurationNs   = 16665880L
     var isoValue          = 50
     var manualSensor      = false
     var whiteBalanceMode  = "auto"
     var autoFocus         = true
-    var focusDistance     = 0f      // diopters; 0 = auto/infinito
-    var zoomLevel         = 0f      // 0..1
+    var focusDistance     = 0f
+    var zoomLevel         = 0f
     var lanternEnabled    = false
     var oisEnabled        = false
     var currentWidth      = 1920
@@ -41,21 +41,18 @@ class Camera2Controller {
         val srv = server
         if (srv == null) { Log.w(TAG, "server nao inicializado"); return }
 
-        // ── EV (exposição direta) ─────────────────────────────────────────────
+        // ── EV ───────────────────────────────────────────────────────────────
         params["exposure"]?.let {
             val ev = (it as Double).toInt().coerceIn(srv.minExposure, srv.maxExposure)
             exposureLevel = ev
             srv.setExposure(ev)
-            Log.d(TAG, "Exposure EV=$ev (range ${srv.minExposure}..${srv.maxExposure})")
+            Log.d(TAG, "Exposure EV=$ev")
         }
 
         // ── ISO ───────────────────────────────────────────────────────────────
-        // O painel envia o valor real (ex: 400). Mapeamos para EV como fallback
-        // pois RootEncoder não expõe ISO direto (precisa manual_sensor).
         params["iso"]?.let {
             val iso = (it as Double).toInt()
             isoValue = iso
-            // Tenta setar via setExposure se manualSensor estiver off
             if (!manualSensor) {
                 val minEv = srv.minExposure
                 val maxEv = srv.maxExposure
@@ -63,28 +60,25 @@ class Camera2Controller {
                     .toInt().coerceIn(minEv, maxEv)
                 exposureLevel = ev
                 srv.setExposure(ev)
-                Log.d(TAG, "ISO $iso (modo auto-EV) → EV $ev")
+                Log.d(TAG, "ISO $iso (auto-EV) → EV $ev")
             } else {
-                // Com manual_sensor: usa cameraManager para setar ISO direto
-                val cm = srv.cameraManager
-                cm.setISO(iso)
-                Log.d(TAG, "ISO $iso (modo manual_sensor)")
+                srv.cameraManager.setISO(iso)
+                Log.d(TAG, "ISO $iso (manual_sensor)")
             }
         }
 
-        // ── Manual sensor on/off ──────────────────────────────────────────────
+        // ── Manual sensor ─────────────────────────────────────────────────────
         params["manualSensor"]?.let {
             manualSensor = it as Boolean
             if (!manualSensor) {
                 srv.setAutoExposure()
-                Log.d(TAG, "manualSensor OFF -> auto exposure")
+                Log.d(TAG, "manualSensor OFF")
             } else {
                 Log.d(TAG, "manualSensor ON")
             }
         }
 
-        // ── Foco manual (0..1 normalizado, 0=auto) ────────────────────────────
-        // O painel envia 0..1 (normalizado de 0..10 diopters)
+        // ── Foco manual ───────────────────────────────────────────────────────
         params["focus"]?.let {
             val norm = (it as Double).toFloat().coerceIn(0f, 1f)
             if (norm == 0f) {
@@ -95,16 +89,16 @@ class Camera2Controller {
             } else {
                 autoFocus = false
                 val cm = srv.cameraManager
-                val maxDist = cm.maxFocus   // diopters máximos do sensor
+                val maxDist = cm.maxFocus
                 val dist    = norm * maxDist
                 focusDistance = dist
                 srv.disableAutoFocus()
                 cm.setFocusDistance(dist)
-                Log.d(TAG, "Foco MANUAL dist=${dist}D (norm=$norm, max=${maxDist}D)")
+                Log.d(TAG, "Foco MANUAL dist=${dist}D")
             }
         }
 
-        // ── Modo de foco (continuous, off, auto) ──────────────────────────────
+        // ── Modo de foco ──────────────────────────────────────────────────────
         params["focusmode"]?.let {
             when (it as String) {
                 "continuous-video", "continuous-picture" -> {
@@ -112,12 +106,8 @@ class Camera2Controller {
                     focusDistance = 0f
                     srv.enableAutoFocus()
                 }
-                "off" -> {
-                    srv.disableAutoFocus()
-                }
-                "auto" -> {
-                    srv.enableAutoFocus()
-                }
+                "off"  -> srv.disableAutoFocus()
+                "auto" -> srv.enableAutoFocus()
             }
             Log.d(TAG, "focusmode -> $it")
         }
@@ -126,15 +116,14 @@ class Camera2Controller {
         params["whiteBalance"]?.let {
             whiteBalanceMode = it as String
             val mode = when (whiteBalanceMode) {
-                "daylight"    -> CameraMetadata.CONTROL_AWB_MODE_DAYLIGHT
-                "cloudy"      -> CameraMetadata.CONTROL_AWB_MODE_CLOUDY_DAYLIGHT
-                "tungsten",
-                "incandescent"-> CameraMetadata.CONTROL_AWB_MODE_INCANDESCENT
-                "fluorescent" -> CameraMetadata.CONTROL_AWB_MODE_FLUORESCENT
-                else          -> CameraMetadata.CONTROL_AWB_MODE_AUTO
+                "daylight"              -> CameraMetadata.CONTROL_AWB_MODE_DAYLIGHT
+                "cloudy"               -> CameraMetadata.CONTROL_AWB_MODE_CLOUDY_DAYLIGHT
+                "tungsten","incandescent" -> CameraMetadata.CONTROL_AWB_MODE_INCANDESCENT
+                "fluorescent"          -> CameraMetadata.CONTROL_AWB_MODE_FLUORESCENT
+                else                   -> CameraMetadata.CONTROL_AWB_MODE_AUTO
             }
             srv.enableAutoWhiteBalance(mode)
-            Log.d(TAG, "WB -> $whiteBalanceMode (mode=$mode)")
+            Log.d(TAG, "WB -> $whiteBalanceMode")
         }
 
         // ── Zoom ──────────────────────────────────────────────────────────────
@@ -168,6 +157,21 @@ class Camera2Controller {
             currentBitrate = br
             srv.setVideoBitrateOnFly(br * 1024)
             Log.d(TAG, "Bitrate -> ${br}kbps")
+        }
+
+        // ── FPS on-the-fly ────────────────────────────────────────────────────
+        // Requer restart do stream para surtir efeito (Camera2 API)
+        params["fps"]?.let { value ->
+            val fps = (value as Double).toInt().coerceIn(15, 30)
+            currentFps = fps
+            post {
+                val wasStreaming = srv.isStreaming
+                if (wasStreaming) srv.stopStream()
+                val videoOk = srv.prepareVideo(currentWidth, currentHeight, fps, currentBitrate * 1024, 0)
+                val audioOk = srv.prepareAudio(128 * 1024, 44100, true)
+                if (wasStreaming && videoOk && audioOk) srv.startStream()
+                Log.d(TAG, "FPS -> $fps videoOk=$videoOk")
+            }
         }
 
         // ── Troca de câmera ───────────────────────────────────────────────────
