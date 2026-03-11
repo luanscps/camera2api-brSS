@@ -27,6 +27,10 @@ class Camera2Controller {
     var zoomLevel         = 0f
     var lanternEnabled    = false
     var oisEnabled        = false
+    var eisEnabled        = false
+    var aeLocked          = false
+    var awbLocked         = false
+    var flashMode         = "off"  // off, torch, single
     var currentWidth      = 1920
     var currentHeight     = 1080
     var currentBitrate    = 4000
@@ -252,6 +256,12 @@ class Camera2Controller {
             Log.d(tag, "focusMode -> $it")
         }
 
+        params["afTrigger"]?.let {
+            // Dispara um ciclo manual de autofoco
+            srv.triggerAutoFocus()
+            Log.d(tag, "AF Trigger acionado")
+        }
+
         params["whiteBalance"]?.let {
             whiteBalanceMode = it as String
             val mode = when (whiteBalanceMode) {
@@ -289,6 +299,51 @@ class Camera2Controller {
             if (enable) srv.enableOpticalVideoStabilization()
             else        srv.disableOpticalVideoStabilization()
             Log.d(tag, "OIS -> $enable")
+        }
+
+        params["eis"]?.let {
+            val enable = it as Boolean
+            eisEnabled = enable
+            if (enable) srv.enableVideoStabilization()
+            else        srv.disableVideoStabilization()
+            Log.d(tag, "EIS -> $enable")
+        }
+
+        params["aeLock"]?.let {
+            val lock = it as Boolean
+            aeLocked = lock
+            srv.setAELock(lock)
+            Log.d(tag, "AE Lock -> $lock")
+        }
+
+        params["awbLock"]?.let {
+            val lock = it as Boolean
+            awbLocked = lock
+            srv.setAWBLock(lock)
+            Log.d(tag, "AWB Lock -> $lock")
+        }
+
+        params["flashMode"]?.let {
+            val mode = it as String
+            flashMode = mode
+            when (mode) {
+                "off" -> {
+                    srv.disableLantern()
+                    lanternEnabled = false
+                }
+                "torch" -> {
+                    srv.enableLantern()
+                    lanternEnabled = true
+                }
+                "single" -> {
+                    // Flash single é controlado via CONTROL_AE_MODE no CaptureRequest
+                    // RootEncoder não tem método direto, mas podemos tentar via setFlashMode se existir
+                    // Por ora, lanterna OFF (single flash funciona melhor em foto, não streaming)
+                    srv.disableLantern()
+                    lanternEnabled = false
+                }
+            }
+            Log.d(tag, "Flash Mode -> $mode")
         }
 
         params["bitrate"]?.let {
