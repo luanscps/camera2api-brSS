@@ -67,7 +67,8 @@ class StreamingService : Service() {
             // A câmera é aberta internamente pelo startStream() sem precisar de View.
             rtspServer.startBackground()
 
-            httpServer = WebControlServer(8080, cameraController)
+            // Passa applicationContext para WebControlServer acessar CameraManager
+            httpServer = WebControlServer(8080, cameraController, applicationContext)
             httpServer.start()
 
             updateNotification(ip, "● Streaming ativo")
