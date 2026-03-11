@@ -1,5 +1,8 @@
 package com.camera2rtsp
 
+import android.content.Context
+import android.hardware.camera2.CameraCharacteristics
+import android.hardware.camera2.CameraManager
 import android.hardware.camera2.CameraMetadata
 import android.os.Handler
 import android.os.HandlerThread
@@ -35,6 +38,170 @@ class Camera2Controller {
 
     private fun post(block: () -> Unit) =
         worker.post { runCatching(block).onFailure { Log.e(tag, "Erro na worker", it) } }
+
+    /**
+     * Descobre todas as câmeras disponíveis no dispositivo e retorna
+     * suas capabilities em um formato serializável para o WebControlServer.
+     */
+    fun discoverAllCameras(context: Context): List<CameraCapabilities> {
+        val manager = context.getSystemService(Context.CAMERA_SERVICE) as CameraManager
+        val cameras = mutableListOf<CameraCapabilities>()
+
+        for (id in manager.cameraIdList) {
+            val chars = manager.getCameraCharacteristics(id)
+
+            // Hardware level
+            val hwLevel = when (chars.get(CameraCharacteristics.INFO_SUPPORTED_HARDWARE_LEVEL)) {
+                CameraCharacteristics.INFO_SUPPORTED_HARDWARE_LEVEL_LEGACY -> "LEGACY"
+                CameraCharacteristics.INFO_SUPPORTED_HARDWARE_LEVEL_LIMITED -> "LIMITED"
+                CameraCharacteristics.INFO_SUPPORTED_HARDWARE_LEVEL_FULL -> "FULL"
+                CameraCharacteristics.INFO_SUPPORTED_HARDWARE_LEVEL_3 -> "LEVEL_3"
+                else -> "UNKNOWN"
+            }
+
+            // Capabilities
+            val caps = chars.get(CameraCharacteristics.REQUEST_AVAILABLE_CAPABILITIES) ?: intArrayOf()
+            fun hasCap(value: Int) = caps.contains(value)
+
+            val manualSensor = hasCap(CameraCharacteristics.REQUEST_AVAILABLE_CAPABILITIES_MANUAL_SENSOR)
+            val manualPost = hasCap(CameraCharacteristics.REQUEST_AVAILABLE_CAPABILITIES_MANUAL_POST_PROCESSING)
+            val raw = hasCap(CameraCharacteristics.REQUEST_AVAILABLE_CAPABILITIES_RAW)
+            val burst = hasCap(CameraCharacteristics.REQUEST_AVAILABLE_CAPABILITIES_BURST_CAPTURE)
+            val depth = hasCap(CameraCharacteristics.REQUEST_AVAILABLE_CAPABILITIES_DEPTH_OUTPUT)
+            val multiCam = hasCap(CameraCharacteristics.REQUEST_AVAILABLE_CAPABILITIES_LOGICAL_MULTI_CAMERA)
+
+            // Ranges
+            val isoRange = chars.get(CameraCharacteristics.SENSOR_INFO_SENSITIVITY_RANGE)?.let {
+                it.lower to it.upper
+            }
+
+            val expRange = chars.get(CameraCharacteristics.SENSOR_INFO_EXPOSURE_TIME_RANGE)?.let {
+                it.lower to it.upper
+            }
+
+            val evRange = chars.get(CameraCharacteristics.CONTROL_AE_COMPENSATION_RANGE)?.let {
+                it.lower to it.upper
+            }
+
+            val focusRange = chars.get(CameraCharacteristics.LENS_INFO_MINIMUM_FOCUS_DISTANCE)?.let {
+                0f to it
+            }
+
+            val zoomRatio = chars.get(CameraCharacteristics.SCALER_AVAILABLE_MAX_DIGITAL_ZOOM)?.let {
+                1.0f to it
+            }
+
+            // FPS ranges
+            val fpsRangeArray = chars.get(CameraCharacteristics.CONTROL_AE_AVAILABLE_TARGET_FPS_RANGES) ?: arrayOf()
+            val fpsRanges = fpsRangeArray.map { it.lower to it.upper }
+
+            // Resoluções disponíveis para YUV (base para streaming)
+            val streamConfig = chars.get(CameraCharacteristics.SCALER_STREAM_CONFIGURATION_MAP)
+            val resolutions = streamConfig?.getOutputSizes(android.graphics.ImageFormat.YUV_420_888)
+                ?.map { "${it.width}x${it.height}" }
+                ?.distinct()
+                ?.sortedBy {
+                    val parts = it.split("x")
+                    parts.getOrNull(0)?.toIntOrNull() ?: 0
+                }
+                ?: emptyList()
+
+            // Modos AF/AE/AWB
+            val afModes = chars.get(CameraCharacteristics.CONTROL_AF_AVAILABLE_MODES)?.map {
+                when (it) {
+                    CameraCharacteristics.CONTROL_AF_MODE_OFF -> "off"
+                    CameraCharacteristics.CONTROL_AF_MODE_AUTO -> "auto"
+                    CameraCharacteristics.CONTROL_AF_MODE_MACRO -> "macro"
+                    CameraCharacteristics.CONTROL_AF_MODE_CONTINUOUS_VIDEO -> "continuous-video"
+                    CameraCharacteristics.CONTROL_AF_MODE_CONTINUOUS_PICTURE -> "continuous-picture"
+                    CameraCharacteristics.CONTROL_AF_MODE_EDOF -> "edof"
+                    else -> "unknown"
+                }
+            } ?: emptyList()
+
+            val aeModes = chars.get(CameraCharacteristics.CONTROL_AE_AVAILABLE_MODES)?.map {
+                when (it) {
+                    CameraCharacteristics.CONTROL_AE_MODE_OFF -> "off"
+                    CameraCharacteristics.CONTROL_AE_MODE_ON -> "on"
+                    CameraCharacteristics.CONTROL_AE_MODE_ON_AUTO_FLASH -> "on-auto-flash"
+                    CameraCharacteristics.CONTROL_AE_MODE_ON_ALWAYS_FLASH -> "on-always-flash"
+                    CameraCharacteristics.CONTROL_AE_MODE_ON_AUTO_FLASH_REDEYE -> "on-auto-flash-redeye"
+                    else -> "unknown"
+                }
+            } ?: emptyList()
+
+            val awbModes = chars.get(CameraCharacteristics.CONTROL_AWB_AVAILABLE_MODES)?.map {
+                when (it) {
+                    CameraCharacteristics.CONTROL_AWB_MODE_OFF -> "off"
+                    CameraCharacteristics.CONTROL_AWB_MODE_AUTO -> "auto"
+                    CameraCharacteristics.CONTROL_AWB_MODE_INCANDESCENT -> "incandescent"
+                    CameraCharacteristics.CONTROL_AWB_MODE_FLUORESCENT -> "fluorescent"
+                    CameraCharacteristics.CONTROL_AWB_MODE_WARM_FLUORESCENT -> "warm-fluorescent"
+                    CameraCharacteristics.CONTROL_AWB_MODE_DAYLIGHT -> "daylight"
+                    CameraCharacteristics.CONTROL_AWB_MODE_CLOUDY_DAYLIGHT -> "cloudy"
+                    CameraCharacteristics.CONTROL_AWB_MODE_TWILIGHT -> "twilight"
+                    CameraCharacteristics.CONTROL_AWB_MODE_SHADE -> "shade"
+                    else -> "unknown"
+                }
+            } ?: emptyList()
+
+            // Hardware
+            val hasFlash = chars.get(CameraCharacteristics.FLASH_INFO_AVAILABLE) ?: false
+            val hasOIS = chars.get(CameraCharacteristics.LENS_INFO_AVAILABLE_OPTICAL_STABILIZATION)
+                ?.contains(CameraCharacteristics.LENS_OPTICAL_STABILIZATION_MODE_ON) ?: false
+
+            val focalLengths = chars.get(CameraCharacteristics.LENS_INFO_AVAILABLE_FOCAL_LENGTHS)?.toList() ?: emptyList()
+            val apertures = chars.get(CameraCharacteristics.LENS_INFO_AVAILABLE_APERTURES)?.toList() ?: emptyList()
+
+            // Facing e nome amigável
+            val facing = when (chars.get(CameraCharacteristics.LENS_FACING)) {
+                CameraCharacteristics.LENS_FACING_BACK -> "BACK"
+                CameraCharacteristics.LENS_FACING_FRONT -> "FRONT"
+                CameraCharacteristics.LENS_FACING_EXTERNAL -> "EXTERNAL"
+                else -> "UNKNOWN"
+            }
+
+            val name = when {
+                id == "0" && facing == "BACK" -> "Wide"
+                id == "1" && facing == "FRONT" -> "Frontal"
+                id == "2" && facing == "BACK" -> "Ultra Wide"
+                id == "3" && facing == "BACK" -> "Telephoto"
+                depth -> "Depth/ToF"
+                else -> "Camera $id"
+            }
+
+            cameras.add(
+                CameraCapabilities(
+                    cameraId = id,
+                    hardwareLevel = hwLevel,
+                    facing = facing,
+                    name = name,
+                    supportsManualSensor = manualSensor,
+                    supportsManualPostProcessing = manualPost,
+                    supportsRaw = raw,
+                    supportsBurstCapture = burst,
+                    supportsDepthOutput = depth,
+                    supportsLogicalMultiCamera = multiCam,
+                    isoRange = isoRange,
+                    exposureTimeRange = expRange,
+                    evRange = evRange,
+                    focusDistanceRange = focusRange,
+                    zoomRange = zoomRatio,
+                    fpsRanges = fpsRanges,
+                    availableResolutions = resolutions,
+                    supportedAFModes = afModes,
+                    supportedAEModes = aeModes,
+                    supportedAWBModes = awbModes,
+                    hasFlash = hasFlash,
+                    hasOIS = hasOIS,
+                    focalLengths = focalLengths,
+                    apertures = apertures
+                )
+            )
+        }
+
+        return cameras
+    }
 
     fun updateSettings(params: Map<String, Any>) {
         val srv = server
