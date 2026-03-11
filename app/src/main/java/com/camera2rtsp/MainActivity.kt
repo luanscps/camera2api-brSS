@@ -1,8 +1,10 @@
 package com.camera2rtsp
 
 import android.Manifest
+import android.content.Intent
 import android.content.pm.PackageManager
 import android.content.res.Configuration
+import android.os.Build
 import android.os.Bundle
 import android.util.Log
 import android.view.TextureView
@@ -10,18 +12,11 @@ import android.widget.TextView
 import androidx.appcompat.app.AppCompatActivity
 import androidx.core.app.ActivityCompat
 import androidx.core.content.ContextCompat
-import androidx.lifecycle.lifecycleScope
-import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.launch
-import kotlinx.coroutines.withContext
 import java.net.Inet4Address
 import java.net.NetworkInterface
 
 class MainActivity : AppCompatActivity() {
 
-    private lateinit var rtspServer: RtspServer
-    private lateinit var httpServer: WebControlServer
-    private lateinit var cameraController: Camera2Controller
     private lateinit var statusText: TextView
     private lateinit var rtspIndicator: TextView
     private lateinit var cameraPreview: TextureView
@@ -36,45 +31,39 @@ class MainActivity : AppCompatActivity() {
         rtspIndicator = findViewById(R.id.rtspIndicator)
         cameraPreview = findViewById(R.id.cameraPreview)
 
-        if (checkPermissions()) initializeServers()
+        if (checkPermissions()) startStreamingService()
         else requestPermissions()
+    }
+
+    override fun onResume() {
+        super.onResume()
+        // Quando o app volta ao primeiro plano, vincula o TextureView ao servidor
+        // para mostrar o preview ao vivo sem reiniciar o stream
+        StreamingService.instance?.rtspServer?.attachTextureView(cameraPreview)
+        updateStatusUI()
     }
 
     override fun onConfigurationChanged(newConfig: Configuration) {
         super.onConfigurationChanged(newConfig)
-        Log.d("MainActivity", "onConfigurationChanged — stream mantido, sem restart")
+        Log.d("MainActivity", "onConfigurationChanged — stream mantido")
     }
 
-    private fun initializeServers() {
-        lifecycleScope.launch(Dispatchers.IO) {
-            try {
-                val ip = getLocalIpAddress()
-
-                cameraController = Camera2Controller()
-                rtspServer = RtspServer(this@MainActivity, cameraController)
-                rtspServer.attachTextureView(cameraPreview)
-                rtspServer.start(cameraPreview)
-
-                httpServer = WebControlServer(8080, cameraController)
-                httpServer.start()
-
-                val rtspUrl = "rtsp://$ip:8554/live"
-                val webUrl  = "http://$ip:8080"
-
-                withContext(Dispatchers.Main) {
-                    statusText.text = "📡 $rtspUrl\n🌐 $webUrl"
-                    rtspIndicator.text = "● RTSP :8554"
-                    rtspIndicator.setTextColor(0xFF10b981.toInt())
-                }
-
-                Log.i("MainActivity", "RTSP : $rtspUrl")
-                Log.i("MainActivity", "Web  : $webUrl")
-
-            } catch (e: Exception) {
-                Log.e("MainActivity", "Erro ao inicializar", e)
-                withContext(Dispatchers.Main) { statusText.text = "❌ ${e.message}" }
-            }
+    private fun startStreamingService() {
+        val intent = Intent(this, StreamingService::class.java)
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+            startForegroundService(intent)
+        } else {
+            startService(intent)
         }
+    }
+
+    private fun updateStatusUI() {
+        val ip = getLocalIpAddress()
+        val rtspUrl = "rtsp://$ip:8554/live"
+        val webUrl  = "http://$ip:8080"
+        statusText.text    = "📡 $rtspUrl\n🌐 $webUrl"
+        rtspIndicator.text = "● RTSP :8554"
+        rtspIndicator.setTextColor(0xFF10b981.toInt())
     }
 
     private fun getLocalIpAddress(): String {
@@ -99,13 +88,18 @@ class MainActivity : AppCompatActivity() {
         ContextCompat.checkSelfPermission(this, Manifest.permission.RECORD_AUDIO) == PackageManager.PERMISSION_GRANTED
 
     private fun requestPermissions() {
-        ActivityCompat.requestPermissions(this, arrayOf(
+        val perms = mutableListOf(
             Manifest.permission.CAMERA,
             Manifest.permission.RECORD_AUDIO,
             Manifest.permission.INTERNET,
             Manifest.permission.ACCESS_NETWORK_STATE,
             Manifest.permission.ACCESS_WIFI_STATE
-        ), PERMISSION_CODE)
+        )
+        // Android 13+ requer permissão explícita para notificações
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+            perms.add(Manifest.permission.POST_NOTIFICATIONS)
+        }
+        ActivityCompat.requestPermissions(this, perms.toTypedArray(), PERMISSION_CODE)
     }
 
     override fun onRequestPermissionsResult(
@@ -115,20 +109,21 @@ class MainActivity : AppCompatActivity() {
     ) {
         super.onRequestPermissionsResult(requestCode, permissions, grantResults)
         if (requestCode == PERMISSION_CODE &&
-            grantResults.all { it == PackageManager.PERMISSION_GRANTED })
-            initializeServers()
-        else
-            statusText.text = "❌ Permissões negadas"
+            grantResults.isNotEmpty() &&
+            grantResults[0] == PackageManager.PERMISSION_GRANTED &&
+            grantResults[1] == PackageManager.PERMISSION_GRANTED
+        ) {
+            startStreamingService()
+        } else {
+            statusText.text = "❌ Permissões de câmera/áudio negadas"
+        }
     }
 
+    // onDestroy da Activity NÃO para o serviço.
+    // O stream continua vivo com tela desligada ou app em background.
+    // Para parar: usar o botão "Parar" na notificação.
     override fun onDestroy() {
         super.onDestroy()
-        try {
-            if (::cameraController.isInitialized) cameraController.release()  // libera HandlerThread
-            if (::rtspServer.isInitialized)       rtspServer.stop()
-            if (::httpServer.isInitialized)       httpServer.stop()
-        } catch (e: Exception) {
-            Log.e("MainActivity", "Erro ao encerrar", e)
-        }
+        Log.d("MainActivity", "Activity destruída — serviço continua rodando")
     }
 }

@@ -5,7 +5,6 @@ import android.graphics.SurfaceTexture
 import android.util.Log
 import android.view.TextureView
 import com.pedro.common.ConnectChecker
-import com.pedro.encoder.video.VideoEncoder
 import com.pedro.rtspserver.RtspServerCamera2
 
 class RtspServer(
@@ -19,60 +18,72 @@ class RtspServer(
     private val TAG  = "RtspServer"
     private val PORT = 8554
 
-    // Guard contra double-stop (causa GL already released + BufferQueue abandoned)
     private var stopped = false
 
     var connectedClients = 0
         private set
 
+    // ── Início normal (com TextureView visível) ────────────────────────────────
     fun start(tv: TextureView) {
         stopped = false
         try {
             val srv = RtspServerCamera2(context, this, PORT)
             server = srv
             cameraController.server = srv
-
-            val w   = cameraController.currentWidth
-            val h   = cameraController.currentHeight
-            val br  = cameraController.currentBitrate  // kbps
-            val fps = cameraController.currentFps
-
-            // prepareVideo(width, height, fps, bitrate_bps, rotation)
-            // RootEncoder 2.6.1 seleciona automaticamente o encoder HW (OMX.Exynos.AVC.Encoder)
-            // quando disponivel — o SW encoder (c2.android.avc.encoder) so e usado como fallback.
-            // O VQApply da Samsung eleva bitrate minimo de 2.5M para 3M em 720p no Exynos,
-            // por isso usamos 4Mbps como base para nao ser sobrescrito silenciosamente.
-            val videoOk = srv.prepareVideo(
-                w, h, fps,
-                br * 1024,  // bitrate em bps
-                0           // rotation
-            )
-            val audioOk = srv.prepareAudio(128 * 1024, 44100, true)
-
-            if (videoOk && audioOk) {
-                srv.startStream()
-                Log.i(TAG, "RTSP iniciado ${w}x${h} @${br}kbps :$PORT")
-            } else {
-                Log.w(TAG, "Falha prepareVideo=$videoOk prepareAudio=$audioOk, tentando fallback 1080p")
-                val fallback = srv.prepareVideo(1920, 1080, 30, 4000 * 1024, 0)
-                if (fallback && audioOk) srv.startStream()
-                else Log.e(TAG, "Fallback tambem falhou")
-            }
+            prepareAndStart(srv)
         } catch (e: Exception) {
             Log.e(TAG, "Erro ao iniciar RTSP", e)
         }
     }
 
-    fun attachTextureView(tv: TextureView) { tv.surfaceTextureListener = this }
+    // ── Início offscreen (segundo plano / tela desligada) ──────────────────────
+    // Usa SurfaceTexture diretamente, sem precisar de TextureView na tela
+    fun startWithOffscreenSurface(surfaceTexture: SurfaceTexture) {
+        stopped = false
+        try {
+            val srv = RtspServerCamera2(context, this, PORT)
+            server = srv
+            cameraController.server = srv
+            prepareAndStart(srv)
+            // Abre a câmera passando a SurfaceTexture offscreen
+            srv.startPreview(surfaceTexture)
+        } catch (e: Exception) {
+            Log.e(TAG, "Erro ao iniciar RTSP offscreen", e)
+        }
+    }
+
+    private fun prepareAndStart(srv: RtspServerCamera2) {
+        val w   = cameraController.currentWidth
+        val h   = cameraController.currentHeight
+        val br  = cameraController.currentBitrate
+        val fps = cameraController.currentFps
+
+        val videoOk = srv.prepareVideo(w, h, fps, br * 1024, 0)
+        val audioOk = srv.prepareAudio(128 * 1024, 44100, true)
+
+        if (videoOk && audioOk) {
+            srv.startStream()
+            Log.i(TAG, "RTSP iniciado ${w}x${h} @${br}kbps :$PORT")
+        } else {
+            Log.w(TAG, "Falha prepareVideo=$videoOk prepareAudio=$audioOk, tentando fallback 1080p")
+            val fallback = srv.prepareVideo(1920, 1080, 30, 4000 * 1024, 0)
+            if (fallback && audioOk) srv.startStream()
+            else Log.e(TAG, "Fallback também falhou")
+        }
+    }
+
+    fun attachTextureView(tv: TextureView) {
+        tv.surfaceTextureListener = this
+        // Se o servidor já está rodando, vincula a surface ao preview
+        server?.let { srv ->
+            if (tv.isAvailable) {
+                srv.startPreview(tv.surfaceTexture!!)
+            }
+        }
+    }
 
     fun stop() {
-        // Evita double-stop que causava:
-        //   SurfaceManager: GL already released
-        //   BufferQueueProducer: cancelBuffer BufferQueue has been abandoned
-        if (stopped) {
-            Log.d(TAG, "stop() chamado mais de uma vez, ignorando")
-            return
-        }
+        if (stopped) { Log.d(TAG, "stop() já chamado, ignorando"); return }
         stopped = true
         try {
             server?.stopStream()
@@ -86,9 +97,10 @@ class RtspServer(
 
     fun isStreaming(): Boolean = server?.isStreaming ?: false
 
-    // SurfaceTextureListener — NAO chama stop() aqui pois onDestroy ja chama
-    // Isso evitava o double-stop que aparecia no logcat
-    override fun onSurfaceTextureAvailable(surface: SurfaceTexture, w: Int, h: Int) {}
+    // SurfaceTextureListener
+    override fun onSurfaceTextureAvailable(surface: SurfaceTexture, w: Int, h: Int) {
+        server?.startPreview(surface)
+    }
     override fun onSurfaceTextureSizeChanged(surface: SurfaceTexture, w: Int, h: Int) {}
     override fun onSurfaceTextureDestroyed(surface: SurfaceTexture): Boolean { return true }
     override fun onSurfaceTextureUpdated(surface: SurfaceTexture) {}

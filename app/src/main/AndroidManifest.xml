@@ -2,13 +2,25 @@
 <manifest xmlns:android="http://schemas.android.com/apk/res/android"
     xmlns:tools="http://schemas.android.com/tools">
 
-    <!-- Permissões Necessárias -->
+    <!-- Permissões de rede e câmera -->
     <uses-permission android:name="android.permission.CAMERA" />
     <uses-permission android:name="android.permission.RECORD_AUDIO" />
     <uses-permission android:name="android.permission.INTERNET" />
     <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE" />
     <uses-permission android:name="android.permission.ACCESS_WIFI_STATE" />
+
+    <!-- Mantém CPU ativa com tela desligada -->
     <uses-permission android:name="android.permission.WAKE_LOCK" />
+
+    <!-- Necessário para ForegroundService no Android 9+ -->
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
+
+    <!-- Android 14+: tipo de foreground service obrigatório -->
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE_CAMERA" />
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE_MICROPHONE" />
+
+    <!-- Android 13+: permissão para mostrar notificação -->
+    <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
 
     <!-- Features -->
     <uses-feature android:name="android.hardware.camera" android:required="true" />
@@ -32,13 +44,17 @@
             android:exported="true"
             android:screenOrientation="fullSensor"
             android:configChanges="orientation|screenSize|screenLayout|keyboardHidden|uiMode">
-            <!-- configChanges evita que o Android destrua/recrie a Activity na rotação,
-                 o que derrubava o RTSP server e congelava a tela por ~1.5s -->
             <intent-filter>
                 <action android:name="android.intent.action.MAIN" />
                 <category android:name="android.intent.category.LAUNCHER" />
             </intent-filter>
         </activity>
+
+        <!-- ForegroundService que mantém câmera+RTSP vivos com tela desligada -->
+        <service
+            android:name=".StreamingService"
+            android:exported="false"
+            android:foregroundServiceType="camera|microphone" />
 
     </application>
 
