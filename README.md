@@ -81,17 +81,17 @@ cd camera2api-brSS
 ```
 
 2. **Abra no Android Studio:**
-   - File → Open → Selecione a pasta do projeto
+    - File → Open → Selecione a pasta do projeto
 
 3. **Sync Gradle:**
-   - Aguarde o Android Studio baixar as dependências
+    - Aguarde o Android Studio baixar as dependências
 
 4. **Conecte o Note10+ via USB:**
-   - Ative **Depuração USB** nas Opções do Desenvolvedor
+    - Ative **Depuração USB** nas Opções do Desenvolvedor
 
 5. **Build e Instale:**
-   - Clique em **Run** (Shift+F10)
-   - Ou use: `./gradlew installDebug`
+    - Clique em **Run** (Shift+F10)
+    - Ou use: `./gradlew installDebug`
 
 ---
 
@@ -112,11 +112,11 @@ cd camera2api-brSS
 1. Abra o navegador (Chrome/Edge/Firefox)
 2. Digite: `http://192.168.0.XXX:8080`
 3. Você verá o painel de controle:
-   - Seleção de câmera
-   - Ajuste de ISO
-   - Controle de exposição
-   - Ajuste de foco
-   - Balanço de branco
+    - Seleção de câmera
+    - Ajuste de ISO
+    - Controle de exposição
+    - Ajuste de foco
+    - Balanço de branco
 
 ### 3️⃣ No PC - Ver Stream
 

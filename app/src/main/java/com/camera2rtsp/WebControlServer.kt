@@ -30,34 +30,34 @@ class WebControlServer(
         val focusMode = if (c.autoFocus) "continuous-video" else "off"
         val focusDist = String.format("%.2f", c.focusDistance)
 
+        // Número de clientes RTSP conectados via RtspServer.getNumClients()
         val numClients = try {
+            val streamClient = srv?.getStreamClient()
+            // RtspServerStreamClient não expõe contagem direta;
+            // usamos reflexão apenas se a lib não expuser método público.
+            // Na versão 1.3.6 o RtspServer é acessível via campo interno;
+            // a forma segura é via isStreaming como proxy simples.
             if (srv?.isStreaming == true) 1 else 0
         } catch (_: Exception) { 0 }
 
         val curvals = mapOf(
-            "video_size"        to "${c.currentWidth}x${c.currentHeight}",
-            "ffc"               to if (c.currentCameraId == "1") "on" else "off",
-            "camera_id"         to c.currentCameraId,
-            "zoom"              to "${(c.zoomLevel * 100).toInt() + 100}",
-            "focusmode"         to focusMode,
-            "focus_distance"    to focusDist,
-            "focal_length"      to "4.30",
-            "aperture"          to "1.50",
-            "whitebalance"      to c.whiteBalanceMode,
-            "torch"             to if (c.lanternEnabled) "on" else "off",
-            "iso"               to c.isoValue.toString(),
-            "exposure_ns"       to c.exposureNs.toString(),
-            "frame_duration"    to c.frameDurationNs.toString(),
-            "manual_sensor"     to if (c.manualSensor) "on" else "off",
-            "bitrate_kbps"      to c.currentBitrate.toString(),
-            "fps"               to c.currentFps.toString(),
-            "ois"               to if (c.oisEnabled) "on" else "off",
-            // Onda 3
-            "edge_mode"         to c.edgeMode.toString(),
-            "noise_reduction"   to c.noiseReductionMode.toString(),
-            "tonemap_mode"      to c.tonemapMode.toString(),
-            "tonemap_gamma"     to c.tonemapGamma.toString(),
-            "hot_pixel"         to c.hotPixelMode.toString()
+            "video_size"      to "${c.currentWidth}x${c.currentHeight}",
+            "ffc"             to if (c.currentCameraId == "1") "on" else "off",
+            "camera_id"       to c.currentCameraId,
+            "zoom"            to "${(c.zoomLevel * 100).toInt() + 100}",
+            "focusmode"       to focusMode,
+            "focus_distance"  to focusDist,
+            "focal_length"    to "4.30",
+            "aperture"        to "1.50",
+            "whitebalance"    to c.whiteBalanceMode,
+            "torch"           to if (c.lanternEnabled) "on" else "off",
+            "iso"             to c.isoValue.toString(),
+            "exposure_ns"     to c.exposureNs.toString(),
+            "frame_duration"  to c.frameDurationNs.toString(),
+            "manual_sensor"   to if (c.manualSensor) "on" else "off",
+            "bitrate_kbps"    to c.currentBitrate.toString(),
+            "fps"             to c.currentFps.toString(),
+            "ois"             to if (c.oisEnabled) "on" else "off"
         )
 
         val avail = mapOf(
@@ -120,7 +120,6 @@ class WebControlServer(
   --bg:#0f172a;--surface:#1e293b;--surface2:#263348;--border:#334155;
   --accent:#38bdf8;--accent2:#0ea5e9;--text:#f1f5f9;--muted:#94a3b8;
   --green:#10b981;--red:#ef4444;--yellow:#f59e0b;--orange:#f97316;
-  --purple:#a78bfa;
 }
 *{margin:0;padding:0;box-sizing:border-box;-webkit-tap-highlight-color:transparent}
 html{font-size:14px}
@@ -145,7 +144,6 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;
   border-radius:14px;border:1px solid var(--border)}
 .card h3{color:var(--accent);font-size:13px;font-weight:700;margin-bottom:11px;
   display:flex;align-items:center;gap:6px}
-.card.pp h3{color:var(--purple)}
 .val{display:inline-block;background:var(--bg);padding:2px 10px;
   border-radius:6px;font-weight:700;color:var(--accent);
   min-width:72px;text-align:center;font-size:12px}
@@ -162,8 +160,6 @@ button{background:var(--surface2);color:var(--text);border:1px solid var(--borde
 button:hover{background:var(--accent);color:#0f172a;border-color:var(--accent)}
 button:active{transform:scale(.93)}
 button.active{background:var(--green);color:#fff;border-color:var(--green)}
-button.pp-btn{border-color:var(--purple)}
-button.pp-btn.active{background:var(--purple);border-color:var(--purple)}
 @keyframes pulse-ok{
   0%{box-shadow:0 0 0 0 rgba(16,185,129,.8)}
   70%{box-shadow:0 0 0 12px rgba(16,185,129,0)}
@@ -196,9 +192,6 @@ input[type=range]::-webkit-slider-thumb{-webkit-appearance:none;
   box-shadow:0 1px 3px rgba(0,0,0,.4)}
 input:checked+.sw{background:var(--green)}
 input:checked+.sw:before{transform:translateX(20px)}
-.pp-section{margin-bottom:10px}
-.pp-section label{display:block;font-size:11px;color:var(--muted);
-  margin-bottom:6px;font-weight:600;text-transform:uppercase;letter-spacing:.5px}
 @media(min-width:480px){
   .grid2{display:grid;grid-template-columns:1fr 1fr;gap:12px}
   .grid2 .card{margin-bottom:0}}
@@ -367,58 +360,8 @@ input:checked+.sw:before{transform:translateX(20px)}
       </label>
     </div>
   </div>
-
-  <!-- ═══════════════ ONDA 3: POST-PROCESSING ═══════════════ -->
-  <div class="card pp">
-    <h3>🎨 Pós-Processamento (Onda 3)</h3>
-
-    <div class="pp-section">
-      <label>🔪 Edge Enhancement (Nitidez)</label>
-      <div class="btngroup">
-        <button class="pp-btn" data-edge="0" onclick="setEdge(0,this)">OFF</button>
-        <button class="pp-btn" data-edge="1" onclick="setEdge(1,this)">FAST</button>
-        <button class="pp-btn" data-edge="2" onclick="setEdge(2,this)">HIGH QUALITY</button>
-      </div>
-    </div>
-
-    <div class="pp-section">
-      <label>🌫️ Noise Reduction (Redução de Ruído)</label>
-      <div class="btngroup">
-        <button class="pp-btn" data-nr="0" onclick="setNR(0,this)">OFF</button>
-        <button class="pp-btn" data-nr="1" onclick="setNR(1,this)">FAST</button>
-        <button class="pp-btn" data-nr="2" onclick="setNR(2,this)">HIGH QUALITY</button>
-        <button class="pp-btn" data-nr="3" onclick="setNR(3,this)">MINIMAL</button>
-      </div>
-    </div>
-
-    <div class="pp-section">
-      <label>🌈 Tonemap (Curva de Cor)</label>
-      <div class="btngroup">
-        <button class="pp-btn" data-tm="2" onclick="setTonemap(2,this)">FAST</button>
-        <button class="pp-btn" data-tm="3" onclick="setTonemap(3,this)">HIGH QUALITY</button>
-        <button class="pp-btn" data-tm="4" onclick="setTonemap(4,this)">GAMMA</button>
-      </div>
-      <div class="slider-wrap" id="gamma-wrap" style="display:none;margin-top:10px">
-        <label style="font-size:11px;color:var(--muted)">Gamma: <span id="gamma-val" style="color:var(--purple);font-weight:700">2.2</span></label>
-        <input type="range" id="gamma" min="1.0" max="5.0" value="2.2" step="0.1"
-               oninput="updateGamma(this.value)" style="--thumb-color:var(--purple)">
-        <div class="rlabels"><span>1.0 (claro)</span><span>2.2 (std)</span><span>5.0 (escuro)</span></div>
-      </div>
-    </div>
-
-    <div class="pp-section" style="margin-bottom:0">
-      <label>✨ Hot Pixel Correction</label>
-      <div class="btngroup">
-        <button class="pp-btn" data-hp="0" onclick="setHP(0,this)">OFF</button>
-        <button class="pp-btn" data-hp="1" onclick="setHP(1,this)">FAST</button>
-        <button class="pp-btn" data-hp="2" onclick="setHP(2,this)">HIGH QUALITY</button>
-      </div>
-    </div>
-  </div>
-  <!-- ════════════════════════════════════════════════════════ -->
-
   <p style="text-align:center;margin-top:16px;color:var(--muted);font-size:10px;padding-bottom:20px">
-    Camera2 API · RootEncoder · NanoHTTPD · v3.0
+    Camera2 API · RootEncoder · NanoHTTPD · v2.1
   </p>
 </div>
 <div id="toast" class="ok">✓ Enviado</div>
@@ -503,42 +446,6 @@ function setWB(mode,btn){markActive('data-wb',mode);sendControl({whiteBalance:mo
 function toggleManual(chk){sendControl({manualSensor:chk.checked},null,chk.checked?'🔧 Manual ON':'🔧 Auto');}
 function toggleLantern(chk){sendControl({lantern:chk.checked},null,chk.checked?'🔦 ON':'🔦 OFF');}
 function toggleOIS(chk){sendControl({ois:chk.checked},null,chk.checked?'🎬 OIS ON':'🎬 OIS OFF');}
-
-// ── Onda 3: Post-Processing handlers ──────────────────────────────────────
-function setEdge(mode,btn){
-  markActive('data-edge',mode);
-  const labels=['OFF','FAST','HIGH QUALITY'];
-  sendControl({edgeMode:mode},btn,'🔪 Edge: '+labels[mode]);
-}
-function setNR(mode,btn){
-  markActive('data-nr',mode);
-  const labels=['OFF','FAST','HIGH QUALITY','MINIMAL'];
-  sendControl({noiseReduction:mode},btn,'🌫️ NR: '+labels[mode]);
-}
-let _gT;
-function setTonemap(mode,btn){
-  markActive('data-tm',mode);
-  const wrap=document.getElementById('gamma-wrap');
-  wrap.style.display=(mode===4)?'block':'none';
-  const gamma=parseFloat(document.getElementById('gamma').value);
-  const payload=(mode===4)?{tonemapMode:mode,tonemapGamma:gamma}:{tonemapMode:mode};
-  const labels={2:'FAST',3:'HIGH QUALITY',4:'GAMMA'};
-  sendControl(payload,btn,'🌈 Tonemap: '+labels[mode]);
-}
-function updateGamma(v){
-  document.getElementById('gamma-val').textContent=parseFloat(v).toFixed(1);
-  clearTimeout(_gT);
-  _gT=setTimeout(()=>{
-    sendControl({tonemapMode:4,tonemapGamma:parseFloat(v)},null,'🌈 Gamma: '+parseFloat(v).toFixed(1));
-  },300);
-}
-function setHP(mode,btn){
-  markActive('data-hp',mode);
-  const labels=['OFF','FAST','HIGH QUALITY'];
-  sendControl({hotPixel:mode},btn,'✨ HotPixel: '+labels[mode]);
-}
-// ──────────────────────────────────────────────────────────────────────────
-
 function nsToShutter(ns){
   if(ns<=0)return '—';
   const s=ns/1e9;
@@ -581,17 +488,6 @@ async function pollStatus(){
     if(c.fps)markActive('data-fps',+c.fps);
     syncSlider('bitrate',c.bitrate_kbps,500,25000);
     if(c.bitrate_kbps)document.getElementById('br-value').textContent=c.bitrate_kbps;
-    // Onda 3: sincroniza botões de pp com estado do servidor
-    if(c.edge_mode&&+c.edge_mode>=0)markActive('data-edge',+c.edge_mode);
-    if(c.noise_reduction&&+c.noise_reduction>=0)markActive('data-nr',+c.noise_reduction);
-    if(c.tonemap_mode&&+c.tonemap_mode>=1){markActive('data-tm',+c.tonemap_mode);}
-    if(c.hot_pixel&&+c.hot_pixel>=0)markActive('data-hp',+c.hot_pixel);
-    if(c.tonemap_gamma){
-      const gv=parseFloat(c.tonemap_gamma).toFixed(1);
-      document.getElementById('gamma-val').textContent=gv;
-      if(document.activeElement!==document.getElementById('gamma'))
-        document.getElementById('gamma').value=gv;
-    }
   }catch(e){
     _pollFail++;
     if(_pollFail>=3){

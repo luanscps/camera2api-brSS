@@ -30,13 +30,6 @@ class Camera2Controller {
     var currentBitrate    = 4000
     var currentFps        = 30
 
-    // ── Onda 3: Post-Processing state ────────────────────────────────────────
-    var edgeMode          = -1   // -1 = não definido (usa padrão do driver)
-    var noiseReductionMode = -1
-    var tonemapMode       = -1
-    var tonemapGamma      = 2.2f
-    var hotPixelMode      = -1
-
     private val workerThread = HandlerThread("CameraWorker").also { it.start() }
     private val worker = Handler(workerThread.looper)
 
@@ -59,6 +52,7 @@ class Camera2Controller {
         params["iso"]?.let {
             val iso = (it as Double).toInt()
             isoValue = iso
+            // Mapeia ISO linearmente para o range de EV disponível
             val minEv = srv.minExposure
             val maxEv = srv.maxExposure
             val ev = (((iso - 50f) / (3200f - 50f)) * (maxEv - minEv) + minEv)
@@ -72,6 +66,7 @@ class Camera2Controller {
         params["manualSensor"]?.let {
             manualSensor = it as Boolean
             if (!manualSensor) {
+                // Volta para auto-exposure via EV=0
                 srv.setExposure(0)
                 exposureLevel = 0
                 Log.d(tag, "manualSensor OFF → EV reset")
@@ -90,6 +85,7 @@ class Camera2Controller {
                 Log.d(tag, "Foco -> AUTO")
             } else {
                 autoFocus = false
+                // Mapeia 0..1 para 0..10 diopters (range prático do Note10+)
                 val dist = norm * 10f
                 focusDistance = dist
                 srv.disableAutoFocus()
@@ -129,6 +125,7 @@ class Camera2Controller {
         params["zoom"]?.let {
             val z = (it as Double).toFloat().coerceIn(0f, 1f)
             zoomLevel = z
+            // setZoom espera valor >= 1.0 (1× = sem zoom)
             val zoomRange = srv.zoomRange
             val minZ = zoomRange?.lower ?: 1f
             val maxZ = zoomRange?.upper ?: 8f
@@ -195,7 +192,7 @@ class Camera2Controller {
             val (w, h, br) = when (res) {
                 "4k"    -> Triple(3840, 2160, 20000)
                 "1080p" -> Triple(1920, 1080, 8000)
-                else    -> Triple(1280, 720,  4000)
+                else    -> Triple(1280, 720,  4000)  // 720p default
             }
             currentWidth   = w
             currentHeight  = h
@@ -208,48 +205,6 @@ class Camera2Controller {
                 if (wasStreaming && videoOk && audioOk) srv.startStream()
                 Log.d(tag, "Resolução -> ${w}x${h} @${br}kbps videoOk=$videoOk")
             }
-        }
-
-        // ── Onda 3: Edge Mode ─────────────────────────────────────────────────
-        // 0=OFF  1=FAST  2=HIGH_QUALITY
-        params["edgeMode"]?.let {
-            val mode = (it as Double).toInt().coerceIn(0, 2)
-            edgeMode = mode
-            srv.setEdgeMode(mode)
-            Log.d(tag, "edgeMode -> $mode")
-        }
-
-        // ── Onda 3: Noise Reduction ───────────────────────────────────────────
-        // 0=OFF  1=FAST  2=HIGH_QUALITY  3=MINIMAL
-        params["noiseReduction"]?.let {
-            val mode = (it as Double).toInt().coerceIn(0, 3)
-            noiseReductionMode = mode
-            srv.setNoiseReductionMode(mode)
-            Log.d(tag, "noiseReduction -> $mode")
-        }
-
-        // ── Onda 3: Tonemap ───────────────────────────────────────────────────
-        // 1=CONTRAST_CURVE  2=FAST  3=HIGH_QUALITY  4=GAMMA_VALUE
-        params["tonemapMode"]?.let {
-            val mode = (it as Double).toInt().coerceIn(1, 4)
-            tonemapMode = mode
-            val gamma = (params["tonemapGamma"] as? Double)?.toFloat() ?: tonemapGamma
-            tonemapGamma = gamma
-            if (mode == 4) {
-                srv.setTonemapMode(mode, gamma)
-            } else {
-                srv.setTonemapMode(mode)
-            }
-            Log.d(tag, "tonemapMode -> $mode gamma=$gamma")
-        }
-
-        // ── Onda 3: Hot Pixel ─────────────────────────────────────────────────
-        // 0=OFF  1=FAST  2=HIGH_QUALITY
-        params["hotPixel"]?.let {
-            val mode = (it as Double).toInt().coerceIn(0, 2)
-            hotPixelMode = mode
-            srv.setHotPixelMode(mode)
-            Log.d(tag, "hotPixel -> $mode")
         }
     }
 
