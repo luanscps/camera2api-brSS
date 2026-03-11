@@ -11,15 +11,14 @@ import android.os.Build
 import android.os.IBinder
 import android.os.PowerManager
 import android.util.Log
-import android.view.TextureView
 import androidx.core.app.NotificationCompat
 import java.net.Inet4Address
 import java.net.NetworkInterface
 
 class StreamingService : Service() {
 
-    private val TAG = "StreamingService"
-    private val NOTIF_ID = 1
+    private val TAG        = "StreamingService"
+    private val NOTIF_ID   = 1
     private val CHANNEL_ID = "camera2rtsp_channel"
 
     lateinit var rtspServer: RtspServer
@@ -29,17 +28,13 @@ class StreamingService : Service() {
     lateinit var cameraController: Camera2Controller
         private set
 
-    // WakeLock: mantém CPU ativa com tela desligada
     private var wakeLock: PowerManager.WakeLock? = null
 
-    // TextureView virtual: necessário porque RtspServerCamera2 precisa de uma Surface
-    // mesmo com tela desligada. Criamos uma SurfaceTexture fora de tela (1x1).
+    // SurfaceTexture virtual usada quando não há TextureView na tela
     private var offscreenTexture: SurfaceTexture? = null
-    private var offscreenView: TextureView? = null
 
     companion object {
-        const val ACTION_START = "com.camera2rtsp.START"
-        const val ACTION_STOP  = "com.camera2rtsp.STOP"
+        const val ACTION_STOP = "com.camera2rtsp.STOP"
         var instance: StreamingService? = null
             private set
     }
@@ -51,37 +46,32 @@ class StreamingService : Service() {
     }
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
-        when (intent?.action) {
-            ACTION_STOP -> {
-                stopSelf()
-                return START_NOT_STICKY
-            }
-            else -> startStreaming()
+        if (intent?.action == ACTION_STOP) {
+            stopSelf()
+            return START_NOT_STICKY
         }
+        startStreaming()
         return START_STICKY
     }
 
     private fun startStreaming() {
         val ip = getLocalIpAddress()
-
-        // Inicia como foreground imediatamente (obrigatório no Android 9+)
         startForeground(NOTIF_ID, buildNotification(ip, "Iniciando…"))
 
-        // WakeLock — mantém CPU viva quando a tela apaga
+        // WakeLock PARTIAL: mantém CPU ativa com tela desligada (não acende a tela)
         val pm = getSystemService(POWER_SERVICE) as PowerManager
-        wakeLock = pm.newWakeLock(
-            PowerManager.PARTIAL_WAKE_LOCK,
-            "camera2rtsp:streaming"
-        ).apply { acquire(12 * 60 * 60 * 1000L) } // máx 12h
+        wakeLock = pm.newWakeLock(PowerManager.PARTIAL_WAKE_LOCK, "camera2rtsp:streaming")
+            .apply { acquire(12 * 60 * 60 * 1000L) } // máx 12h de segurança
 
         try {
             cameraController = Camera2Controller()
-            rtspServer = RtspServer(this, cameraController)
+            rtspServer       = RtspServer(this, cameraController)
 
-            // Surface offscreen: o encoder precisa de uma Surface para receber frames
-            // da câmera mesmo sem TextureView visível na tela
-            offscreenTexture = SurfaceTexture(0).also { it.setDefaultBufferSize(1920, 1080) }
-            offscreenView = TextureView(this)
+            // SurfaceTexture offscreen (sem tela): o encoder recebe frames da câmera
+            // através desta surface virtual, sem precisar de View renderizada
+            val w = cameraController.currentWidth
+            val h = cameraController.currentHeight
+            offscreenTexture = SurfaceTexture(0).also { it.setDefaultBufferSize(w, h) }
 
             rtspServer.startWithOffscreenSurface(offscreenTexture!!)
 
@@ -89,11 +79,11 @@ class StreamingService : Service() {
             httpServer.start()
 
             updateNotification(ip, "● Streaming ativo")
-            Log.i(TAG, "Serviço iniciado — RTSP rtsp://$ip:8554/live  Web http://$ip:8080")
+            Log.i(TAG, "Serviço ativo — rtsp://$ip:8554/live | http://$ip:8080")
 
         } catch (e: Exception) {
             Log.e(TAG, "Erro ao iniciar streaming", e)
-            updateNotification(ip, "❌ Erro: ${e.message}")
+            updateNotification(ip, "❌ ${e.message}")
         }
     }
 
@@ -109,7 +99,7 @@ class StreamingService : Service() {
         offscreenTexture = null
         wakeLock?.release()
         wakeLock = null
-        Log.i(TAG, "Serviço destruído")
+        Log.i(TAG, "Serviço encerrado")
     }
 
     override fun onBind(intent: Intent?): IBinder? = null
@@ -121,13 +111,12 @@ class StreamingService : Service() {
             val channel = NotificationChannel(
                 CHANNEL_ID,
                 "Camera RTSP Streaming",
-                NotificationManager.IMPORTANCE_LOW  // sem som, não intrusivo
+                NotificationManager.IMPORTANCE_LOW
             ).apply {
                 description = "Stream RTSP ativo em segundo plano"
                 setShowBadge(false)
             }
-            getSystemService(NotificationManager::class.java)
-                .createNotificationChannel(channel)
+            getSystemService(NotificationManager::class.java).createNotificationChannel(channel)
         }
     }
 
@@ -155,15 +144,14 @@ class StreamingService : Service() {
     }
 
     private fun updateNotification(ip: String, status: String) {
-        val nm = getSystemService(NotificationManager::class.java)
-        nm.notify(NOTIF_ID, buildNotification(ip, status))
+        getSystemService(NotificationManager::class.java).notify(NOTIF_ID, buildNotification(ip, status))
     }
 
     private fun getLocalIpAddress(): String {
         try {
-            NetworkInterface.getNetworkInterfaces()?.let { interfaces ->
-                while (interfaces.hasMoreElements()) {
-                    val iface = interfaces.nextElement()
+            NetworkInterface.getNetworkInterfaces()?.let { ifaces ->
+                while (ifaces.hasMoreElements()) {
+                    val iface = ifaces.nextElement()
                     val addrs = iface.inetAddresses
                     while (addrs.hasMoreElements()) {
                         val addr = addrs.nextElement()
