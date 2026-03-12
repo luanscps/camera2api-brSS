@@ -39,6 +39,12 @@ class Camera2Controller {
     var currentBitrate   = 4000
     var currentFps       = 30
 
+    // ── Onda 3: pós-processamento ────────────────────────────────────────────
+    var edgeMode           = CameraMetadata.EDGE_MODE_HIGH_QUALITY
+    var noiseReductionMode = CameraMetadata.NOISE_REDUCTION_MODE_HIGH_QUALITY
+    var tonemapMode        = CameraMetadata.TONEMAP_MODE_HIGH_QUALITY
+    var hotPixelMode       = CameraMetadata.HOT_PIXEL_MODE_HIGH_QUALITY
+
     private val workerThread = HandlerThread("CameraWorker").also { it.start() }
     private val worker = Handler(workerThread.looper)
 
@@ -79,6 +85,17 @@ class Camera2Controller {
         }
     }
 
+    // ── Onda 3: aplica os 4 controles de pós-processamento ──────────────────
+    private fun applyPostProcessing() {
+        val ok = applyOnBuilder { b ->
+            b.set(CaptureRequest.EDGE_MODE,             edgeMode)
+            b.set(CaptureRequest.NOISE_REDUCTION_MODE,  noiseReductionMode)
+            b.set(CaptureRequest.TONEMAP_MODE,          tonemapMode)
+            b.set(CaptureRequest.HOT_PIXEL_MODE,        hotPixelMode)
+        }
+        Log.d(tag, "applyPostProcessing ok=$ok edge=$edgeMode nr=$noiseReductionMode tone=$tonemapMode hot=$hotPixelMode")
+    }
+
     private fun applyManualSensor() {
         val safeDuration = maxOf(frameDurationNs, exposureNs)
         val ok = applyOnBuilder { b ->
@@ -88,6 +105,8 @@ class Camera2Controller {
             b.set(CaptureRequest.SENSOR_EXPOSURE_TIME,  exposureNs)
             b.set(CaptureRequest.SENSOR_FRAME_DURATION, safeDuration)
         }
+        // Aplica pós-processamento junto para garantir persistência ao mudar modo AE
+        applyPostProcessing()
         val fpsMax = if (safeDuration > 0) (1_000_000_000.0 / safeDuration).toInt() else 0
         Log.d(tag, "applyManualSensor ok=$ok ISO=$isoValue exp=${exposureNs}ns dur=${safeDuration}ns fpsMax=$fpsMax")
     }
@@ -145,8 +164,6 @@ class Camera2Controller {
                 ?.sortedBy { it.split("x").getOrNull(0)?.toIntOrNull() ?: 0 }
                 ?: emptyList()
 
-            // afModes, aeModes, awbModes: variaveis locais com nome curto,
-            // referenciadas no construtor como supportedAfModes/supportedAeModes/supportedAwbModes
             val afModes = ch.get(CameraCharacteristics.CONTROL_AF_AVAILABLE_MODES)?.map {
                 when (it) {
                     CameraCharacteristics.CONTROL_AF_MODE_OFF                -> "off"
@@ -187,7 +204,6 @@ class Camera2Controller {
 
             val hasFlash = ch.get(CameraCharacteristics.FLASH_INFO_AVAILABLE) ?: false
 
-            // hasOis (nao hasOIS): Gson gera has_ois corretamente
             val hasOis = ch.get(CameraCharacteristics.LENS_INFO_AVAILABLE_OPTICAL_STABILIZATION)
                 ?.contains(CameraCharacteristics.LENS_OPTICAL_STABILIZATION_MODE_ON) ?: false
 
@@ -233,9 +249,9 @@ class Camera2Controller {
                     zoomRange                    = zomRange,
                     fpsRanges                    = fpsRanges,
                     availableResolutions         = resolutions,
-                    supportedAfModes             = afModes,   // corrigido: era supportedAFModes
-                    supportedAeModes             = aeModes,   // corrigido: era supportedAEModes
-                    supportedAwbModes            = awbModes,  // corrigido: era supportedAWBModes
+                    supportedAfModes             = afModes,
+                    supportedAeModes             = aeModes,
+                    supportedAwbModes            = awbModes,
                     hasFlash                     = hasFlash,
                     hasOis                       = hasOis,
                     focalLengths                 = focalLengths,
@@ -425,6 +441,53 @@ class Camera2Controller {
                 if (wasStreaming && vOk && aOk) srv.startStream()
                 Log.d(tag, "resolution -> ${w}x${h} br=${br}kbps vOk=$vOk")
             }
+        }
+
+        // ── Onda 3: Pós-processamento ────────────────────────────────────────
+        params["edgeMode"]?.let {
+            edgeMode = when ((it as String).lowercase()) {
+                "off"          -> CameraMetadata.EDGE_MODE_OFF
+                "fast"         -> CameraMetadata.EDGE_MODE_FAST
+                "high_quality" -> CameraMetadata.EDGE_MODE_HIGH_QUALITY
+                else           -> CameraMetadata.EDGE_MODE_HIGH_QUALITY
+            }
+            applyPostProcessing()
+            Log.d(tag, "edgeMode -> $edgeMode")
+        }
+
+        params["noiseReduction"]?.let {
+            noiseReductionMode = when ((it as String).lowercase()) {
+                "off"          -> CameraMetadata.NOISE_REDUCTION_MODE_OFF
+                "fast"         -> CameraMetadata.NOISE_REDUCTION_MODE_FAST
+                "high_quality" -> CameraMetadata.NOISE_REDUCTION_MODE_HIGH_QUALITY
+                "minimal"      -> CameraMetadata.NOISE_REDUCTION_MODE_MINIMAL
+                else           -> CameraMetadata.NOISE_REDUCTION_MODE_HIGH_QUALITY
+            }
+            applyPostProcessing()
+            Log.d(tag, "noiseReduction -> $noiseReductionMode")
+        }
+
+        params["tonemap"]?.let {
+            tonemapMode = when ((it as String).lowercase()) {
+                "contrast_curve" -> CameraMetadata.TONEMAP_MODE_CONTRAST_CURVE
+                "fast"           -> CameraMetadata.TONEMAP_MODE_FAST
+                "high_quality"   -> CameraMetadata.TONEMAP_MODE_HIGH_QUALITY
+                "gamma_value"    -> CameraMetadata.TONEMAP_MODE_GAMMA_VALUE
+                else             -> CameraMetadata.TONEMAP_MODE_HIGH_QUALITY
+            }
+            applyPostProcessing()
+            Log.d(tag, "tonemap -> $tonemapMode")
+        }
+
+        params["hotPixel"]?.let {
+            hotPixelMode = when ((it as String).lowercase()) {
+                "off"          -> CameraMetadata.HOT_PIXEL_MODE_OFF
+                "fast"         -> CameraMetadata.HOT_PIXEL_MODE_FAST
+                "high_quality" -> CameraMetadata.HOT_PIXEL_MODE_HIGH_QUALITY
+                else           -> CameraMetadata.HOT_PIXEL_MODE_HIGH_QUALITY
+            }
+            applyPostProcessing()
+            Log.d(tag, "hotPixel -> $hotPixelMode")
         }
     }
 
