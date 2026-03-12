@@ -103,7 +103,9 @@ class WebControlServer(
             "edge_mode"           to edgeModeStr(c.edgeMode),
             "noise_reduction_mode" to nrModeStr(c.noiseReductionMode),
             "tonemap_mode"        to tonemapModeStr(c.tonemapMode),
-            "hot_pixel_mode"      to hotPixelModeStr(c.hotPixelMode)
+            "hot_pixel_mode"      to hotPixelModeStr(c.hotPixelMode),
+            // ── Cinema: curva de tonemap selecionada ───────────────────────
+            "tonemap_curve"       to c.customTonemapCurve
         )
 
         val avail = mapOf(
@@ -121,7 +123,8 @@ class WebControlServer(
             "edge_mode"      to listOf("off", "fast", "high_quality"),
             "noise_reduction_mode" to listOf("off", "minimal", "fast", "high_quality"),
             "tonemap_mode"   to listOf("contrast_curve", "gamma_value", "fast", "high_quality"),
-            "hot_pixel_mode" to listOf("off", "fast", "high_quality")
+            "hot_pixel_mode" to listOf("off", "fast", "high_quality"),
+            "tonemap_curve"  to listOf("linear", "s-curve", "log", "cinematic")
         )
 
         val status = mapOf(
@@ -256,6 +259,12 @@ class WebControlServer(
         sb.append("text-transform:uppercase;letter-spacing:.06em;margin-bottom:7px}")
         sb.append(".postproc-presets{display:flex;gap:8px;margin-bottom:14px}")
         sb.append(".postproc-presets button{flex:1;font-size:11px;padding:8px 6px}")
+        // ── Cinema: Tonemap Curve card styles ─────────────────────────────────
+        sb.append(".curve-presets{display:flex;flex-wrap:wrap;gap:6px;margin-bottom:10px}")
+        sb.append(".curve-presets button{flex:1;min-width:60px;font-size:11px;padding:7px 4px}")
+        sb.append(".curve-canvas{width:100%;height:90px;background:#0a0f1e;border-radius:8px;")
+        sb.append("border:1px solid var(--border);display:block;margin-top:6px}")
+        sb.append(".curve-label{font-size:10px;color:var(--muted);margin-top:4px;text-align:center}")
         sb.append("@media(min-width:480px){.grid2{display:grid;grid-template-columns:1fr 1fr;gap:12px}}")
         sb.append("#toast{position:fixed;bottom:22px;left:50%;transform:translateX(-50%) translateY(80px);")
         sb.append("padding:10px 22px;border-radius:24px;font-size:13px;font-weight:700;")
@@ -424,10 +433,8 @@ class WebControlServer(
         sb.append("</div>")
 
         // ── Onda 3: Processamento de Imagem ───────────────────────────────────
-        // Card oculto por padrão; JS mostra só se supports_manual_post_processing === true
         sb.append("<div class=\"card hidden postproc-active\" id=\"card-postproc\">")
         sb.append("<h3>\uD83C\uDF9E Processamento de Imagem</h3>")
-        // Presets rápidos
         sb.append("<div class=\"postproc-presets\">")
         sb.append("<button class=\"preset-quality\" onclick=\"applyQualityMax(this)\">\u2B50 Qualidade M\u00e1xima</button>")
         sb.append("<button class=\"preset-fast\" onclick=\"applyLatencyMin(this)\">\u26A1 Lat\u00eancia M\u00ednima</button>")
@@ -458,6 +465,18 @@ class WebControlServer(
         sb.append("<button data-tone=\"fast\" onclick=\"setTone('fast',this)\">R\u00e1pido</button>")
         sb.append("<button data-tone=\"high_quality\" onclick=\"setTone('high_quality',this)\" class=\"active\">Qualidade</button>")
         sb.append("</div></div>")
+        // ── Cinema: Tonemap Curve Selector (aparece só quando Tonemap = Curva) ─
+        sb.append("<div class=\"card hidden\" id=\"card-tonecurve\" style=\"margin:10px 0 0 0;background:var(--bg);border-color:var(--purple)\">")
+        sb.append("<h3 style=\"color:var(--purple);font-size:12px\">\uD83D\uDCC8 Perfil de Curva</h3>")
+        sb.append("<div class=\"curve-presets\">")
+        sb.append("<button data-curve=\"linear\" onclick=\"setCurve('linear',this)\">Linear</button>")
+        sb.append("<button data-curve=\"s-curve\" onclick=\"setCurve('s-curve',this)\" class=\"active\">S-Curve</button>")
+        sb.append("<button data-curve=\"log\" onclick=\"setCurve('log',this)\">Log</button>")
+        sb.append("<button data-curve=\"cinematic\" onclick=\"setCurve('cinematic',this)\">Cinema</button>")
+        sb.append("</div>")
+        sb.append("<canvas id=\"curve-canvas\" class=\"curve-canvas\" width=\"300\" height=\"90\"></canvas>")
+        sb.append("<p class=\"curve-label\" id=\"curve-label\">S-Curve — sombras levantadas, highlights suavizados</p>")
+        sb.append("</div>")
         // HOT PIXEL
         sb.append("<div class=\"postproc-section\" style=\"margin-bottom:0\">")
         sb.append("<h4>Pixel Quente (Hot Pixel)</h4>")
@@ -469,7 +488,7 @@ class WebControlServer(
         sb.append("</div>") // fim card-postproc
 
         sb.append("<p style=\"text-align:center;margin-top:16px;color:var(--muted);font-size:10px;padding-bottom:20px\">")
-        sb.append("Camera2 API · RootEncoder · NanoHTTPD · v2.4</p>")
+        sb.append("Camera2 API \u00b7 RootEncoder \u00b7 NanoHTTPD \u00b7 v2.5</p>")
         sb.append("</div>")
         sb.append("<div id=\"toast\" class=\"ok\">OK</div>")
 
@@ -553,7 +572,13 @@ class WebControlServer(
         // ── Onda 3: controles de pós-processamento ───────────────────────────
         sb.append("function setEdge(val,btn){markActive('data-edge',val);sendControl({edgeMode:val},btn,'Edge '+val);}")
         sb.append("function setNR(val,btn){markActive('data-nr',val);sendControl({noiseReduction:val},btn,'NR '+val);}")
-        sb.append("function setTone(val,btn){markActive('data-tone',val);sendControl({tonemap:val},btn,'Tone '+val);}")
+        sb.append("function setTone(val,btn){")
+        sb.append("markActive('data-tone',val);")
+        sb.append("sendControl({tonemap:val},btn,'Tone '+val);")
+        // Mostrar/ocultar card de curva apenas quando contrast_curve selecionado
+        sb.append("showCard('card-tonecurve',val==='contrast_curve');")
+        sb.append("if(val==='contrast_curve'){drawCurvePreview(_activeCurve||'s-curve');}")
+        sb.append("}")
         sb.append("function setHotPx(val,btn){markActive('data-hotpx',val);sendControl({hotPixel:val},btn,'HotPx '+val);}")
         // Preset Qualidade Máxima
         sb.append("function applyQualityMax(btn){")
@@ -561,6 +586,7 @@ class WebControlServer(
         sb.append("markActive('data-nr','high_quality');")
         sb.append("markActive('data-tone','high_quality');")
         sb.append("markActive('data-hotpx','high_quality');")
+        sb.append("showCard('card-tonecurve',false);")
         sb.append("sendControl({edgeMode:'high_quality',noiseReduction:'high_quality',tonemap:'high_quality',hotPixel:'high_quality'},btn,'Qualidade M\u00e1xima');}")
         // Preset Latência Mínima
         sb.append("function applyLatencyMin(btn){")
@@ -568,7 +594,66 @@ class WebControlServer(
         sb.append("markActive('data-nr','off');")
         sb.append("markActive('data-tone','fast');")
         sb.append("markActive('data-hotpx','off');")
+        sb.append("showCard('card-tonecurve',false);")
         sb.append("sendControl({edgeMode:'off',noiseReduction:'off',tonemap:'fast',hotPixel:'off'},btn,'Lat\u00eancia M\u00ednima');}")
+
+        // ── Cinema: Tonemap Curve ─────────────────────────────────────────────
+        sb.append("var _activeCurve='s-curve';")
+        sb.append("var CURVE_LABELS={'linear':'Linear \u2014 resposta direta sem ajuste',")
+        sb.append("'s-curve':'S-Curve \u2014 sombras levantadas, highlights suavizados',")
+        sb.append("'log':'Log \u2014 preserva detalhes em highlights, amplia sombras',")
+        sb.append("'cinematic':'Cinema \u2014 base levantada, roll-off suave nos altos'};")
+        sb.append("function setCurve(name,btn){")
+        sb.append("_activeCurve=name;")
+        sb.append("markActive('data-curve',name);")
+        sb.append("drawCurvePreview(name);")
+        sb.append("sendControl({tonemapCurve:name},btn,CURVE_LABELS[name]||name);}")
+        sb.append("function drawCurvePreview(name){")
+        sb.append("var canvas=document.getElementById('curve-canvas');")
+        sb.append("if(!canvas)return;")
+        sb.append("var ctx=canvas.getContext('2d');")
+        sb.append("var W=canvas.width,H=canvas.height;")
+        sb.append("ctx.clearRect(0,0,W,H);")
+        // Grid
+        sb.append("ctx.strokeStyle='rgba(255,255,255,0.07)';ctx.lineWidth=1;")
+        sb.append("for(var g=1;g<4;g++){")
+        sb.append("var gx=g*(W/4),gy=g*(H/4);")
+        sb.append("ctx.beginPath();ctx.moveTo(gx,0);ctx.lineTo(gx,H);ctx.stroke();")
+        sb.append("ctx.beginPath();ctx.moveTo(0,gy);ctx.lineTo(W,gy);ctx.stroke();}")
+        // Diagonal de referência
+        sb.append("ctx.strokeStyle='rgba(255,255,255,0.15)';ctx.lineWidth=1;")
+        sb.append("ctx.setLineDash([4,4]);")
+        sb.append("ctx.beginPath();ctx.moveTo(0,H);ctx.lineTo(W,0);ctx.stroke();")
+        sb.append("ctx.setLineDash([]);")
+        // Gerar pontos da curva
+        sb.append("var pts=[];")
+        sb.append("for(var i=0;i<=32;i++){")
+        sb.append("var x=i/32;var y;")
+        sb.append("if(name==='linear'){y=x;}")
+        sb.append("else if(name==='s-curve'){y=x*x*(3-2*x);}")
+        sb.append("else if(name==='log'){y=Math.log(1+9*x)/Math.log(10);}")
+        sb.append("else if(name==='cinematic'){")
+        sb.append("var lift=0.05,gain=0.95;")
+        sb.append("y=x<0.5?lift+x*(0.5-lift)*2:0.5+(x-0.5)*(gain-0.5)*2;")
+        sb.append("y=Math.max(0,Math.min(1,y));")
+        sb.append("}else{y=x;}")
+        sb.append("pts.push([x*W,(1-y)*H]);}")
+        // Glow externo da curva
+        sb.append("ctx.shadowColor='#a855f7';ctx.shadowBlur=8;")
+        sb.append("ctx.strokeStyle='rgba(168,85,247,0.4)';ctx.lineWidth=4;")
+        sb.append("ctx.beginPath();")
+        sb.append("for(var j=0;j<pts.length;j++){j===0?ctx.moveTo(pts[j][0],pts[j][1]):ctx.lineTo(pts[j][0],pts[j][1]);}")
+        sb.append("ctx.stroke();")
+        // Linha principal ciano
+        sb.append("ctx.shadowBlur=0;")
+        sb.append("ctx.strokeStyle='#38bdf8';ctx.lineWidth=2;")
+        sb.append("ctx.beginPath();")
+        sb.append("for(var j=0;j<pts.length;j++){j===0?ctx.moveTo(pts[j][0],pts[j][1]):ctx.lineTo(pts[j][0],pts[j][1]);}")
+        sb.append("ctx.stroke();")
+        // Label da curva
+        sb.append("var lbl=document.getElementById('curve-label');")
+        sb.append("if(lbl)lbl.textContent=CURVE_LABELS[name]||name;")
+        sb.append("}")
 
         // ── updateUIForCamera ─────────────────────────────────────────────────
         sb.append("function updateUIForCamera(camId){")
@@ -579,7 +664,7 @@ class WebControlServer(
         sb.append("showCard('card-iso',true);showCard('card-ev',true);")
         sb.append("showCard('card-shutter',false);showCard('card-frame',false);")
         sb.append("showCard('card-wb',true);showCard('card-extras',true);")
-        sb.append("showCard('card-postproc',false);")
+        sb.append("showCard('card-postproc',false);showCard('card-tonecurve',false);")
         sb.append("updateOISCapability(false);")
         sb.append("return;}")
         // Zoom
@@ -657,9 +742,10 @@ class WebControlServer(
         // OIS
         sb.append("updateOISCapability(!!cap.has_ois);")
         sb.append("showCard('card-extras',true);")
-        // ── Onda 3: mostrar card de pós-processamento só se suportado ─────────
+        // Onda 3: mostrar card de pós-processamento só se suportado
         sb.append("var hasPost=!!cap.supports_manual_post_processing;")
         sb.append("showCard('card-postproc',hasPost);")
+        sb.append("if(!hasPost)showCard('card-tonecurve',false);")
         sb.append("}")
 
         // ── Funções de controle ───────────────────────────────────────────────
@@ -779,7 +865,7 @@ class WebControlServer(
         sb.append("document.getElementById('info-ois').textContent=c.ois||'-';")
         sb.append("document.getElementById('info-eis').textContent=c.eis||'-';")
         sb.append("document.getElementById('info-fps').textContent=(c.fps||'-')+'fps';")
-        // ── Onda 3: sync pills de estado ──────────────────────────────────────
+        // Onda 3: sync pills de estado
         sb.append("var edgeLbl=document.getElementById('info-edge');")
         sb.append("var nrLbl=document.getElementById('info-nr');")
         sb.append("var toneLbl=document.getElementById('info-tone');")
@@ -788,11 +874,18 @@ class WebControlServer(
         sb.append("if(nrLbl&&c.noise_reduction_mode)nrLbl.textContent=c.noise_reduction_mode;")
         sb.append("if(toneLbl&&c.tonemap_mode)toneLbl.textContent=c.tonemap_mode;")
         sb.append("if(hotLbl&&c.hot_pixel_mode)hotLbl.textContent=c.hot_pixel_mode;")
-        // ── Onda 3: sync botões ativos ────────────────────────────────────────
+        // Onda 3: sync botões ativos
         sb.append("if(c.edge_mode)markActive('data-edge',c.edge_mode);")
         sb.append("if(c.noise_reduction_mode)markActive('data-nr',c.noise_reduction_mode);")
-        sb.append("if(c.tonemap_mode)markActive('data-tone',c.tonemap_mode);")
+        sb.append("if(c.tonemap_mode){")
+        sb.append("markActive('data-tone',c.tonemap_mode);")
+        sb.append("showCard('card-tonecurve',c.tonemap_mode==='contrast_curve');}")
         sb.append("if(c.hot_pixel_mode)markActive('data-hotpx',c.hot_pixel_mode);")
+        // Cinema: sync curva ativa
+        sb.append("if(c.tonemap_curve){")
+        sb.append("_activeCurve=c.tonemap_curve;")
+        sb.append("markActive('data-curve',c.tonemap_curve);")
+        sb.append("if(c.tonemap_mode==='contrast_curve')drawCurvePreview(c.tonemap_curve);}")
         sb.append("var isManual=c.manual_sensor==='on';")
         sb.append("syncChk('toggle-manual',isManual);")
         sb.append("updateManualUI(isManual);")
@@ -873,6 +966,7 @@ class WebControlServer(
         sb.append("showCard('card-shutter',true);showCard('card-frame',true);")
         sb.append("showCard('card-wb',true);")
         sb.append("showCard('card-postproc',true);")
+        sb.append("showCard('card-tonecurve',false);")
         sb.append("updateOISCapability(false);")
         sb.append("var wg=document.getElementById('btngroup-wb');wg.innerHTML='';")
         sb.append("var wbDef=['auto','daylight','cloudy','tungsten','fluorescent'];")
@@ -891,6 +985,8 @@ class WebControlServer(
         sb.append("initCapabilities();")
         sb.append("pollStatus();")
         sb.append("setInterval(pollStatus,2000);")
+        sb.append("// Draw default curve preview on load")
+        sb.append("setTimeout(function(){drawCurvePreview('s-curve');},300);")
         sb.append("</script></body></html>")
         return sb.toString()
     }
