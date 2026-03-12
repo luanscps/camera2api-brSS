@@ -5,15 +5,12 @@ import android.hardware.camera2.CameraCharacteristics
 import android.hardware.camera2.CameraManager
 import android.hardware.camera2.CameraMetadata
 import android.hardware.camera2.CaptureRequest
-import android.hardware.camera2.CaptureResult
-import android.hardware.camera2.TotalCaptureResult
 import android.os.Handler
 import android.os.HandlerThread
 import android.util.Log
 import com.pedro.encoder.input.video.Camera2ApiManager
 import com.pedro.library.base.Camera2Base
 import com.pedro.rtspserver.RtspServerCamera2
-import kotlin.math.pow
 
 class Camera2Controller {
 
@@ -42,30 +39,19 @@ class Camera2Controller {
     var currentBitrate   = 4000
     var currentFps       = 30
 
-    // ── Onda 3: Post-processing state ─────────────────────────────────────────
+    // Onda 3: Post-processing — tonemap fixo HIGH_QUALITY, sem curvas
     var edgeMode           = CameraMetadata.EDGE_MODE_HIGH_QUALITY
     var noiseReductionMode = CameraMetadata.NOISE_REDUCTION_MODE_HIGH_QUALITY
-    var tonemapMode        = CameraMetadata.TONEMAP_MODE_HIGH_QUALITY
     var hotPixelMode       = CameraMetadata.HOT_PIXEL_MODE_HIGH_QUALITY
 
-    // ── Tonemap Curve ──────────────────────────────────────────────────────
-    var customTonemapCurve = "s-curve"
-    private var tonemapCurvePoints: FloatArray = buildSCurve()
-
-    // ── Histogram (simulado) ─────────────────────────────────────────────────
-    val lastHistogramR = IntArray(256)
-    val lastHistogramG = IntArray(256)
-    val lastHistogramB = IntArray(256)
-
-    // ── Worker thread ────────────────────────────────────────────────────────
     private val workerThread = HandlerThread("CameraWorker").also { it.start() }
     private val worker = Handler(workerThread.looper)
     private fun post(block: () -> Unit) =
         worker.post { runCatching(block).onFailure { Log.e(tag, "worker error", it) } }
 
-    // =========================================================================
-    // Acesso ao Camera2ApiManager via reflection (unico ponto de reflection)
-    // =========================================================================
+    // -------------------------------------------------------------------------
+    // Reflection helpers
+    // -------------------------------------------------------------------------
 
     private fun getCam2Manager(): Camera2ApiManager? = try {
         val f = Camera2Base::class.java.getDeclaredField("cameraManager")
@@ -75,108 +61,45 @@ class Camera2Controller {
         Log.e(tag, "getCam2Manager falhou", e); null
     }
 
-    // =========================================================================
-    // setCustomRequest — API publica do RootEncoder
-    // Equivale a: builder.set(...) + setRepeatingRequest(builder.build())
-    // Nao precisa de reflection alem do getCam2Manager acima.
-    // =========================================================================
-
-    private fun customRequest(block: (CaptureRequest.Builder) -> Unit): Boolean {
+    private fun applyOnBuilder(block: (CaptureRequest.Builder) -> Unit): Boolean {
         val cam = getCam2Manager() ?: return false
         return try {
-            cam.setCustomRequest(block)
+            val bf = Camera2ApiManager::class.java.getDeclaredField("builderInputSurface")
+            bf.isAccessible = true
+            val builder = bf.get(cam) as? CaptureRequest.Builder
+                ?: run { Log.w(tag, "builderInputSurface nulo"); return false }
+            block(builder)
+            val am = Camera2ApiManager::class.java.getDeclaredMethod(
+                "applyRequest", CaptureRequest.Builder::class.java
+            )
+            am.isAccessible = true
+            am.invoke(cam, builder) as? Boolean ?: false
         } catch (e: Exception) {
-            Log.e(tag, "setCustomRequest falhou", e); false
+            Log.e(tag, "applyOnBuilder falhou", e); false
         }
     }
 
-    // =========================================================================
-    // Tonemap persistente via setCustomOnCaptureCompletedCallback
-    //
-    // PROBLEMA REAL: o driver Samsung (HAL3) silenciosamente ignora
-    // TONEMAP_MODE_CONTRAST_CURVE em muitas configuracoes de stream.
-    // Para confirmar se o tonemap esta sendo ACEITO, lemos TONEMAP_MODE
-    // de volta do CaptureResult a cada frame.
-    //
-    // Estrategia:
-    //   - Registramos o callback via setCustomOnCaptureCompletedCallback
-    //   - A cada frame lemos result.get(CaptureResult.TONEMAP_MODE)
-    //   - Se o driver retornar algo diferente de CONTRAST_CURVE, logamos
-    //     como WARN ("HAL ignorou TONEMAP") e tentamos reaplicar
-    //   - Isso tambem serve de diagnostico: se o log aparecer sempre,
-    //     o Note10+ simplesmente nao suporta TONEMAP em stream de video
-    // =========================================================================
-
-    @Volatile private var tonemapCallbackActive = false
-
-    private fun activateTonemapCallback() {
-        if (tonemapCallbackActive) return
-        val cam = getCam2Manager() ?: return
-        cam.setCustomOnCaptureCompletedCallback { _, _, result ->
-            if (tonemapMode != CameraMetadata.TONEMAP_MODE_CONTRAST_CURVE) return@setCustomOnCaptureCompletedCallback
-            val actual = result.get(CaptureResult.TONEMAP_MODE)
-            if (actual != CameraMetadata.TONEMAP_MODE_CONTRAST_CURVE) {
-                Log.w(tag, "HAL nao aceitou TONEMAP_CONTRAST_CURVE (retornou $actual) — tentando reaplicar")
-                // Tenta reaplicar via setCustomRequest
-                customRequest { b ->
-                    b.set(CaptureRequest.TONEMAP_MODE, CameraMetadata.TONEMAP_MODE_CONTRAST_CURVE)
-                    b.set(CaptureRequest.TONEMAP_CURVE, android.hardware.camera2.params.TonemapCurve(
-                        tonemapCurvePoints, tonemapCurvePoints, tonemapCurvePoints
-                    ))
-                }
-            }
-        }
-        tonemapCallbackActive = true
-        Log.d(tag, "tonemapCallback ativado via setCustomOnCaptureCompletedCallback")
-    }
-
-    private fun deactivateTonemapCallback() {
-        if (!tonemapCallbackActive) return
-        getCam2Manager()?.setCustomOnCaptureCompletedCallback(null)
-        tonemapCallbackActive = false
-        Log.d(tag, "tonemapCallback desativado")
-    }
-
-    // =========================================================================
-    // Post-processing
-    // =========================================================================
+    // -------------------------------------------------------------------------
+    // Post-processing (EDGE + NR + HotPixel; tonemap sempre HIGH_QUALITY)
+    // -------------------------------------------------------------------------
 
     private fun applyPostProcessing() {
-        val usingCurve = (tonemapMode == CameraMetadata.TONEMAP_MODE_CONTRAST_CURVE)
-
-        val ok = customRequest { b ->
+        val ok = applyOnBuilder { b ->
             b.set(CaptureRequest.EDGE_MODE,            edgeMode)
             b.set(CaptureRequest.NOISE_REDUCTION_MODE, noiseReductionMode)
             b.set(CaptureRequest.HOT_PIXEL_MODE,       hotPixelMode)
-
-            if (usingCurve) {
-                b.set(CaptureRequest.TONEMAP_MODE, CameraMetadata.TONEMAP_MODE_CONTRAST_CURVE)
-                b.set(CaptureRequest.TONEMAP_CURVE, android.hardware.camera2.params.TonemapCurve(
-                    tonemapCurvePoints, tonemapCurvePoints, tonemapCurvePoints
-                ))
-                Log.d(tag, "applyPostProcessing: CONTRAST_CURVE curva=$customTonemapCurve pts=${tonemapCurvePoints.size / 2}")
-            } else {
-                if (!manualSensor) {
-                    b.set(CaptureRequest.CONTROL_MODE,    CameraMetadata.CONTROL_MODE_AUTO)
-                    b.set(CaptureRequest.CONTROL_AE_MODE, CameraMetadata.CONTROL_AE_MODE_ON)
-                }
-                b.set(CaptureRequest.TONEMAP_MODE, tonemapMode)
-            }
+            b.set(CaptureRequest.TONEMAP_MODE,         CameraMetadata.TONEMAP_MODE_HIGH_QUALITY)
         }
-
-        if (usingCurve) activateTonemapCallback()
-        else deactivateTonemapCallback()
-
-        Log.d(tag, "applyPostProcessing ok=$ok edge=$edgeMode nr=$noiseReductionMode tone=$tonemapMode hot=$hotPixelMode")
+        Log.d(tag, "applyPostProcessing ok=$ok edge=$edgeMode nr=$noiseReductionMode hot=$hotPixelMode tonemap=HIGH_QUALITY")
     }
 
-    // =========================================================================
+    // -------------------------------------------------------------------------
     // Sensor manual / auto
-    // =========================================================================
+    // -------------------------------------------------------------------------
 
     private fun applyManualSensor() {
         val safeDuration = maxOf(frameDurationNs, exposureNs)
-        val ok = customRequest { b ->
+        val ok = applyOnBuilder { b ->
             b.set(CaptureRequest.CONTROL_MODE,          CameraMetadata.CONTROL_MODE_OFF)
             b.set(CaptureRequest.CONTROL_AE_MODE,       CameraMetadata.CONTROL_AE_MODE_OFF)
             b.set(CaptureRequest.SENSOR_SENSITIVITY,    isoValue)
@@ -189,70 +112,16 @@ class Camera2Controller {
     }
 
     private fun applyAutoSensor() {
-        val ok = customRequest { b ->
+        val ok = applyOnBuilder { b ->
             b.set(CaptureRequest.CONTROL_MODE,    CameraMetadata.CONTROL_MODE_AUTO)
             b.set(CaptureRequest.CONTROL_AE_MODE, CameraMetadata.CONTROL_AE_MODE_ON)
         }
         Log.d(tag, "applyAutoSensor ok=$ok")
     }
 
-    // =========================================================================
-    // Tonemap curve builders
-    // =========================================================================
-
-    private fun buildLinear(): FloatArray = floatArrayOf(0f, 0f, 1f, 1f)
-
-    private fun buildSCurve(): FloatArray {
-        val pts = mutableListOf<Float>()
-        for (i in 0..16) {
-            val x = i / 16f
-            val s = x * x * (3f - 2f * x)
-            pts.add(x); pts.add((s * 0.90f + x * 0.10f).coerceIn(0f, 1f))
-        }
-        return pts.toFloatArray()
-    }
-
-    private fun buildLogCurve(): FloatArray {
-        val pts = mutableListOf<Float>()
-        for (i in 0..16) {
-            val x = i / 16f
-            val y = kotlin.math.ln(1f + 9f * x) / kotlin.math.ln(10f)
-            pts.add(x); pts.add((y * 0.80f + x * 0.20f).coerceIn(0f, 1f))
-        }
-        return pts.toFloatArray()
-    }
-
-    private fun buildCinematicCurve(): FloatArray {
-        val pts = mutableListOf<Float>()
-        for (i in 0..16) {
-            val x = i / 16f; val lift = 0.04f; val gain = 0.96f
-            val raw = if (x < 0.5f) lift + x * (0.5f - lift) * 2f
-                      else 0.5f + (x - 0.5f) * (gain - 0.5f) * 2f
-            pts.add(x); pts.add((raw * 0.85f + x * 0.15f).coerceIn(0f, 1f))
-        }
-        return pts.toFloatArray()
-    }
-
-    private fun buildCustomCurve(raw: List<Double>): FloatArray? {
-        if (raw.size < 4 || raw.size % 2 != 0) return null
-        val pairs = mutableListOf<Pair<Float, Float>>()
-        var i = 0
-        while (i < raw.size - 1) {
-            pairs.add(raw[i].toFloat().coerceIn(0f,1f) to raw[i+1].toFloat().coerceIn(0f,1f))
-            i += 2
-        }
-        val sorted = pairs.sortedBy { it.first }.take(64).toMutableList()
-        if (sorted.size < 2) return null
-        if (sorted.first().first > 0f) sorted.add(0, 0f to sorted.first().second)
-        if (sorted.last().first  < 1f) sorted.add(1f to sorted.last().second)
-        val result = FloatArray(sorted.size * 2)
-        sorted.forEachIndexed { idx, (x, y) -> result[idx*2] = x; result[idx*2+1] = y }
-        return result
-    }
-
-    // =========================================================================
+    // -------------------------------------------------------------------------
     // discoverAllCameras
-    // =========================================================================
+    // -------------------------------------------------------------------------
 
     fun discoverAllCameras(context: Context): List<CameraCapabilities> {
         val mgr = context.getSystemService(Context.CAMERA_SERVICE) as CameraManager
@@ -275,12 +144,13 @@ class Camera2Controller {
             val supDepth  = hasCap(CameraCharacteristics.REQUEST_AVAILABLE_CAPABILITIES_DEPTH_OUTPUT)
             val supMulti  = if (android.os.Build.VERSION.SDK_INT >= 28)
                 hasCap(CameraCharacteristics.REQUEST_AVAILABLE_CAPABILITIES_LOGICAL_MULTI_CAMERA) else false
-            val isoRange = ch.get(CameraCharacteristics.SENSOR_INFO_SENSITIVITY_RANGE)?.let { listOf(it.lower, it.upper) }
-            val expRange = ch.get(CameraCharacteristics.SENSOR_INFO_EXPOSURE_TIME_RANGE)?.let { listOf(it.lower, it.upper) }
-            val evRange  = ch.get(CameraCharacteristics.CONTROL_AE_COMPENSATION_RANGE)?.let { listOf(it.lower, it.upper) }
-            val focRange = ch.get(CameraCharacteristics.LENS_INFO_MINIMUM_FOCUS_DISTANCE)?.let { listOf(0f, it) }
-            val zomRange = ch.get(CameraCharacteristics.SCALER_AVAILABLE_MAX_DIGITAL_ZOOM)?.let { listOf(1.0f, it) }
-            val fpsRanges = (ch.get(CameraCharacteristics.CONTROL_AE_AVAILABLE_TARGET_FPS_RANGES) ?: arrayOf()).map { listOf(it.lower, it.upper) }
+            val isoRange  = ch.get(CameraCharacteristics.SENSOR_INFO_SENSITIVITY_RANGE)?.let { listOf(it.lower, it.upper) }
+            val expRange  = ch.get(CameraCharacteristics.SENSOR_INFO_EXPOSURE_TIME_RANGE)?.let { listOf(it.lower, it.upper) }
+            val evRange   = ch.get(CameraCharacteristics.CONTROL_AE_COMPENSATION_RANGE)?.let { listOf(it.lower, it.upper) }
+            val focRange  = ch.get(CameraCharacteristics.LENS_INFO_MINIMUM_FOCUS_DISTANCE)?.let { listOf(0f, it) }
+            val zomRange  = ch.get(CameraCharacteristics.SCALER_AVAILABLE_MAX_DIGITAL_ZOOM)?.let { listOf(1.0f, it) }
+            val fpsRanges = (ch.get(CameraCharacteristics.CONTROL_AE_AVAILABLE_TARGET_FPS_RANGES) ?: arrayOf())
+                .map { listOf(it.lower, it.upper) }
             val streamCfg = ch.get(CameraCharacteristics.SCALER_STREAM_CONFIGURATION_MAP)
             val resolutions = streamCfg?.getOutputSizes(android.graphics.ImageFormat.YUV_420_888)
                 ?.map { "${it.width}x${it.height}" }?.distinct()
@@ -358,9 +228,9 @@ class Camera2Controller {
         return cameras
     }
 
-    // =========================================================================
+    // -------------------------------------------------------------------------
     // updateSettings
-    // =========================================================================
+    // -------------------------------------------------------------------------
 
     fun updateSettings(params: Map<String, Any>) {
         val srv = server ?: run { Log.w(tag, "server nao inicializado"); return }
@@ -413,7 +283,9 @@ class Camera2Controller {
 
         params["focusmode"]?.let {
             when (it as String) {
-                "continuous-video", "continuous-picture", "auto" -> { autoFocus = true; focusDistance = 0f; srv.enableAutoFocus() }
+                "continuous-video", "continuous-picture", "auto" -> {
+                    autoFocus = true; focusDistance = 0f; srv.enableAutoFocus()
+                }
                 "off" -> srv.disableAutoFocus()
             }
             Log.d(tag, "focusMode -> $it")
@@ -503,9 +375,6 @@ class Camera2Controller {
         params["camera"]?.let { value ->
             currentCameraId = value as String
             post {
-                // Ao trocar de camera a sessao e recriada, desativa callback
-                // para ser re-registrado na nova sessao
-                deactivateTonemapCallback()
                 srv.switchCamera(currentCameraId)
                 if (manualSensor) applyManualSensor()
                 else if (!autoFocus && focusDistance > 0f) srv.setFocusDistance(focusDistance)
@@ -517,7 +386,7 @@ class Camera2Controller {
             val (w, h, br) = when (value as String) {
                 "4k"    -> Triple(3840, 2160, 20000)
                 "1080p" -> Triple(1920, 1080, 8000)
-                else    -> Triple(1280, 720,  4000)
+                else    -> Triple(1280, 720, 4000)
             }
             currentWidth = w; currentHeight = h; currentBitrate = br
             post {
@@ -530,7 +399,7 @@ class Camera2Controller {
             }
         }
 
-        // ── Onda 3: Post-processing ───────────────────────────────────────────
+        // Onda 3: Edge / NR / HotPixel (tonemap sempre HIGH_QUALITY, sem selecao)
         params["edgeMode"]?.let {
             edgeMode = when (it as String) {
                 "off"          -> CameraMetadata.EDGE_MODE_OFF
@@ -543,61 +412,21 @@ class Camera2Controller {
 
         params["noiseReduction"]?.let {
             noiseReductionMode = when (it as String) {
-                "off"          -> CameraMetadata.NOISE_REDUCTION_MODE_OFF
-                "fast"         -> CameraMetadata.NOISE_REDUCTION_MODE_FAST
-                "high_quality" -> CameraMetadata.NOISE_REDUCTION_MODE_HIGH_QUALITY
-                "minimal"      -> CameraMetadata.NOISE_REDUCTION_MODE_MINIMAL
-                else           -> CameraMetadata.NOISE_REDUCTION_MODE_HIGH_QUALITY
+                "off"     -> CameraMetadata.NOISE_REDUCTION_MODE_OFF
+                "fast"    -> CameraMetadata.NOISE_REDUCTION_MODE_FAST
+                "minimal" -> CameraMetadata.NOISE_REDUCTION_MODE_MINIMAL
+                else      -> CameraMetadata.NOISE_REDUCTION_MODE_HIGH_QUALITY
             }
             applyPostProcessing(); Log.d(tag, "noiseReduction -> $it")
         }
 
-        params["tonemap"]?.let {
-            tonemapMode = when (it as String) {
-                "contrast_curve" -> CameraMetadata.TONEMAP_MODE_CONTRAST_CURVE
-                "fast"           -> CameraMetadata.TONEMAP_MODE_FAST
-                "high_quality"   -> CameraMetadata.TONEMAP_MODE_HIGH_QUALITY
-                "gamma_value"    -> CameraMetadata.TONEMAP_MODE_GAMMA_VALUE
-                else             -> CameraMetadata.TONEMAP_MODE_HIGH_QUALITY
-            }
-            applyPostProcessing(); Log.d(tag, "tonemap -> $it")
-        }
-
         params["hotPixel"]?.let {
             hotPixelMode = when (it as String) {
-                "off"          -> CameraMetadata.HOT_PIXEL_MODE_OFF
-                "fast"         -> CameraMetadata.HOT_PIXEL_MODE_FAST
-                "high_quality" -> CameraMetadata.HOT_PIXEL_MODE_HIGH_QUALITY
-                else           -> CameraMetadata.HOT_PIXEL_MODE_HIGH_QUALITY
+                "off"  -> CameraMetadata.HOT_PIXEL_MODE_OFF
+                "fast" -> CameraMetadata.HOT_PIXEL_MODE_FAST
+                else   -> CameraMetadata.HOT_PIXEL_MODE_HIGH_QUALITY
             }
             applyPostProcessing(); Log.d(tag, "hotPixel -> $it")
-        }
-
-        params["tonemapCurve"]?.let {
-            customTonemapCurve = it as String
-            tonemapCurvePoints = when (customTonemapCurve) {
-                "linear"    -> buildLinear()
-                "s-curve"   -> buildSCurve()
-                "log"       -> buildLogCurve()
-                "cinematic" -> buildCinematicCurve()
-                else        -> buildSCurve()
-            }
-            tonemapMode = CameraMetadata.TONEMAP_MODE_CONTRAST_CURVE
-            applyPostProcessing()
-            Log.d(tag, "tonemapCurve -> $customTonemapCurve (${tonemapCurvePoints.size / 2} pts)")
-        }
-
-        @Suppress("UNCHECKED_CAST")
-        params["tonemapCurveCustom"]?.let { raw ->
-            val pts = raw as? List<*> ?: run { Log.w(tag, "tonemapCurveCustom: tipo errado"); return@let }
-            val doubles = try { pts.map { (it as Number).toDouble() } }
-            catch (e: ClassCastException) { Log.w(tag, "tonemapCurveCustom cast falhou"); return@let }
-            val built = buildCustomCurve(doubles) ?: return@let
-            tonemapCurvePoints = built
-            customTonemapCurve = "custom"
-            tonemapMode = CameraMetadata.TONEMAP_MODE_CONTRAST_CURVE
-            applyPostProcessing()
-            Log.d(tag, "tonemapCurveCustom: ${built.size / 2} pontos")
         }
     }
 
