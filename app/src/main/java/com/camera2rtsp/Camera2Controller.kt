@@ -39,7 +39,9 @@ class Camera2Controller {
     var currentBitrate   = 4000
     var currentFps       = 30
 
-    // ── Onda 3: pós-processamento ────────────────────────────────────────────
+    // ── Onda 3: pós-processamento ─────────────────────────────────────────────
+    // Nomes com apenas 1 maiúscula por palavra → Gson LOWER_CASE_WITH_UNDERSCORES
+    // gera: edge_mode, noise_reduction_mode, tonemap_mode, hot_pixel_mode ✅
     var edgeMode           = CameraMetadata.EDGE_MODE_HIGH_QUALITY
     var noiseReductionMode = CameraMetadata.NOISE_REDUCTION_MODE_HIGH_QUALITY
     var tonemapMode        = CameraMetadata.TONEMAP_MODE_HIGH_QUALITY
@@ -85,13 +87,13 @@ class Camera2Controller {
         }
     }
 
-    // ── Onda 3: aplica os 4 controles de pós-processamento ──────────────────
+    // ── Onda 3: aplica os 4 controles de pós-processamento ───────────────────
     private fun applyPostProcessing() {
         val ok = applyOnBuilder { b ->
-            b.set(CaptureRequest.EDGE_MODE,             edgeMode)
-            b.set(CaptureRequest.NOISE_REDUCTION_MODE,  noiseReductionMode)
-            b.set(CaptureRequest.TONEMAP_MODE,          tonemapMode)
-            b.set(CaptureRequest.HOT_PIXEL_MODE,        hotPixelMode)
+            b.set(CaptureRequest.EDGE_MODE,            edgeMode)
+            b.set(CaptureRequest.NOISE_REDUCTION_MODE, noiseReductionMode)
+            b.set(CaptureRequest.TONEMAP_MODE,         tonemapMode)
+            b.set(CaptureRequest.HOT_PIXEL_MODE,       hotPixelMode)
         }
         Log.d(tag, "applyPostProcessing ok=$ok edge=$edgeMode nr=$noiseReductionMode tone=$tonemapMode hot=$hotPixelMode")
     }
@@ -105,10 +107,10 @@ class Camera2Controller {
             b.set(CaptureRequest.SENSOR_EXPOSURE_TIME,  exposureNs)
             b.set(CaptureRequest.SENSOR_FRAME_DURATION, safeDuration)
         }
-        // Aplica pós-processamento junto para garantir persistência ao mudar modo AE
-        applyPostProcessing()
         val fpsMax = if (safeDuration > 0) (1_000_000_000.0 / safeDuration).toInt() else 0
         Log.d(tag, "applyManualSensor ok=$ok ISO=$isoValue exp=${exposureNs}ns dur=${safeDuration}ns fpsMax=$fpsMax")
+        // Garante que EDGE/NR/Tonemap/HotPixel persistem apos mudar CONTROL_MODE
+        applyPostProcessing()
     }
 
     private fun applyAutoSensor() {
@@ -443,7 +445,7 @@ class Camera2Controller {
             }
         }
 
-        // ── Onda 3: Pós-processamento ────────────────────────────────────────
+        // ── Onda 3: pós-processamento ─────────────────────────────────────────
         params["edgeMode"]?.let {
             edgeMode = when ((it as String).lowercase()) {
                 "off"          -> CameraMetadata.EDGE_MODE_OFF
@@ -464,7 +466,7 @@ class Camera2Controller {
                 else           -> CameraMetadata.NOISE_REDUCTION_MODE_HIGH_QUALITY
             }
             applyPostProcessing()
-            Log.d(tag, "noiseReduction -> $noiseReductionMode")
+            Log.d(tag, "noiseReductionMode -> $noiseReductionMode")
         }
 
         params["tonemap"]?.let {
@@ -476,7 +478,7 @@ class Camera2Controller {
                 else             -> CameraMetadata.TONEMAP_MODE_HIGH_QUALITY
             }
             applyPostProcessing()
-            Log.d(tag, "tonemap -> $tonemapMode")
+            Log.d(tag, "tonemapMode -> $tonemapMode")
         }
 
         params["hotPixel"]?.let {
@@ -487,7 +489,7 @@ class Camera2Controller {
                 else           -> CameraMetadata.HOT_PIXEL_MODE_HIGH_QUALITY
             }
             applyPostProcessing()
-            Log.d(tag, "hotPixel -> $hotPixelMode")
+            Log.d(tag, "hotPixelMode -> $hotPixelMode")
         }
     }
 
