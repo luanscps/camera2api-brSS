@@ -30,8 +30,10 @@ data class CameraCapabilities(
     val supportedAWBModes: List<String>,
 
     // Hardware físico
+    // NOTA: hasOis (não hasOIS) — Gson LOWER_CASE_WITH_UNDERSCORES serializa
+    // cada maiúscula separada: hasOIS -> has_o_i_s (quebrado), hasOis -> has_ois (correto)
     val hasFlash: Boolean,
-    val hasOIS: Boolean,
+    val hasOis: Boolean,
     val focalLengths: List<Float>,
     val apertures: List<Float>
 )
