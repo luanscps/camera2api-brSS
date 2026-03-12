@@ -38,6 +38,34 @@ class WebControlServer(
         return resp
     }
 
+    // ── helper: int CameraMetadata → string legível para o front-end ──────────
+    private fun edgeModeStr(v: Int) = when (v) {
+        android.hardware.camera2.CameraMetadata.EDGE_MODE_OFF          -> "off"
+        android.hardware.camera2.CameraMetadata.EDGE_MODE_FAST         -> "fast"
+        android.hardware.camera2.CameraMetadata.EDGE_MODE_HIGH_QUALITY -> "high_quality"
+        else -> "high_quality"
+    }
+    private fun nrModeStr(v: Int) = when (v) {
+        android.hardware.camera2.CameraMetadata.NOISE_REDUCTION_MODE_OFF          -> "off"
+        android.hardware.camera2.CameraMetadata.NOISE_REDUCTION_MODE_MINIMAL      -> "minimal"
+        android.hardware.camera2.CameraMetadata.NOISE_REDUCTION_MODE_FAST         -> "fast"
+        android.hardware.camera2.CameraMetadata.NOISE_REDUCTION_MODE_HIGH_QUALITY -> "high_quality"
+        else -> "high_quality"
+    }
+    private fun tonemapModeStr(v: Int) = when (v) {
+        android.hardware.camera2.CameraMetadata.TONEMAP_MODE_CONTRAST_CURVE -> "contrast_curve"
+        android.hardware.camera2.CameraMetadata.TONEMAP_MODE_GAMMA_VALUE    -> "gamma_value"
+        android.hardware.camera2.CameraMetadata.TONEMAP_MODE_FAST           -> "fast"
+        android.hardware.camera2.CameraMetadata.TONEMAP_MODE_HIGH_QUALITY   -> "high_quality"
+        else -> "high_quality"
+    }
+    private fun hotPixelModeStr(v: Int) = when (v) {
+        android.hardware.camera2.CameraMetadata.HOT_PIXEL_MODE_OFF          -> "off"
+        android.hardware.camera2.CameraMetadata.HOT_PIXEL_MODE_FAST         -> "fast"
+        android.hardware.camera2.CameraMetadata.HOT_PIXEL_MODE_HIGH_QUALITY -> "high_quality"
+        else -> "high_quality"
+    }
+
     private fun serveStatus(): Response {
         val c = cameraController
         val srv: RtspServerCamera2? = c.server
@@ -50,27 +78,32 @@ class WebControlServer(
         } catch (_: Exception) { 0 }
 
         val curvals = mapOf(
-            "video_size"      to "${c.currentWidth}x${c.currentHeight}",
-            "ffc"             to if (c.currentCameraId == "1") "on" else "off",
-            "camera_id"       to c.currentCameraId,
-            "zoom"            to "${(c.zoomLevel * 100).toInt() + 100}",
-            "focusmode"       to focusMode,
-            "focus_distance"  to focusDist,
-            "focal_length"    to "4.30",
-            "aperture"        to "1.5 (fixo)",
-            "whitebalance"    to c.whiteBalanceMode,
-            "torch"           to if (c.lanternEnabled) "on" else "off",
-            "iso"             to c.isoValue.toString(),
-            "exposure_ns"     to c.exposureNs.toString(),
-            "frame_duration"  to c.frameDurationNs.toString(),
-            "manual_sensor"   to if (c.manualSensor) "on" else "off",
-            "bitrate_kbps"    to c.currentBitrate.toString(),
-            "fps"             to c.currentFps.toString(),
-            "ois"             to if (c.oisEnabled) "on" else "off",
-            "eis"             to if (c.eisEnabled) "on" else "off",
-            "ae_lock"         to if (c.aeLocked) "on" else "off",
-            "awb_lock"        to if (c.awbLocked) "on" else "off",
-            "flash_mode"      to c.flashMode
+            "video_size"          to "${c.currentWidth}x${c.currentHeight}",
+            "ffc"                 to if (c.currentCameraId == "1") "on" else "off",
+            "camera_id"           to c.currentCameraId,
+            "zoom"                to "${(c.zoomLevel * 100).toInt() + 100}",
+            "focusmode"           to focusMode,
+            "focus_distance"      to focusDist,
+            "focal_length"        to "4.30",
+            "aperture"            to "1.5 (fixo)",
+            "whitebalance"        to c.whiteBalanceMode,
+            "torch"               to if (c.lanternEnabled) "on" else "off",
+            "iso"                 to c.isoValue.toString(),
+            "exposure_ns"         to c.exposureNs.toString(),
+            "frame_duration"      to c.frameDurationNs.toString(),
+            "manual_sensor"       to if (c.manualSensor) "on" else "off",
+            "bitrate_kbps"        to c.currentBitrate.toString(),
+            "fps"                 to c.currentFps.toString(),
+            "ois"                 to if (c.oisEnabled) "on" else "off",
+            "eis"                 to if (c.eisEnabled) "on" else "off",
+            "ae_lock"             to if (c.aeLocked) "on" else "off",
+            "awb_lock"            to if (c.awbLocked) "on" else "off",
+            "flash_mode"          to c.flashMode,
+            // ── Onda 3: pós-processamento ──────────────────────────────────
+            "edge_mode"           to edgeModeStr(c.edgeMode),
+            "noise_reduction_mode" to nrModeStr(c.noiseReductionMode),
+            "tonemap_mode"        to tonemapModeStr(c.tonemapMode),
+            "hot_pixel_mode"      to hotPixelModeStr(c.hotPixelMode)
         )
 
         val avail = mapOf(
@@ -83,7 +116,12 @@ class WebControlServer(
             "iso"            to listOf("50","100","200","400","800","1600","3200"),
             "zoom"           to (100..800 step 7).map { it.toString() },
             "camera_id"      to listOf("0", "1", "2", "3"),
-            "flash_mode"     to listOf("off", "torch", "single")
+            "flash_mode"     to listOf("off", "torch", "single"),
+            // ── Onda 3 ────────────────────────────────────────────────────
+            "edge_mode"      to listOf("off", "fast", "high_quality"),
+            "noise_reduction_mode" to listOf("off", "minimal", "fast", "high_quality"),
+            "tonemap_mode"   to listOf("contrast_curve", "gamma_value", "fast", "high_quality"),
+            "hot_pixel_mode" to listOf("off", "fast", "high_quality")
         )
 
         val status = mapOf(
@@ -137,7 +175,7 @@ class WebControlServer(
         sb.append("<style>")
         sb.append(":root{--bg:#0f172a;--surface:#1e293b;--surface2:#263348;--border:#334155;")
         sb.append("--accent:#38bdf8;--text:#f1f5f9;--muted:#94a3b8;")
-        sb.append("--green:#10b981;--red:#ef4444;--yellow:#f59e0b;}")
+        sb.append("--green:#10b981;--red:#ef4444;--yellow:#f59e0b;--purple:#a855f7;}")
         sb.append("*{margin:0;padding:0;box-sizing:border-box;-webkit-tap-highlight-color:transparent}")
         sb.append("html{font-size:14px}")
         sb.append("body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;")
@@ -161,6 +199,8 @@ class WebControlServer(
         sb.append(".card.hidden{display:none!important}")
         sb.append(".card.manual-active{border-color:var(--yellow)!important;")
         sb.append("box-shadow:0 0 0 2px rgba(245,158,11,.25)}")
+        sb.append(".card.postproc-active{border-color:var(--purple)!important;")
+        sb.append("box-shadow:0 0 0 2px rgba(168,85,247,.18)}")
         sb.append(".card h3{color:var(--accent);font-size:13px;font-weight:700;margin-bottom:11px;")
         sb.append("display:flex;align-items:center;gap:6px}")
         sb.append(".val{display:inline-block;background:var(--bg);padding:2px 10px;")
@@ -177,6 +217,10 @@ class WebControlServer(
         sb.append("button:hover{background:var(--accent);color:#0f172a;border-color:var(--accent)}")
         sb.append("button:active{transform:scale(.93)}")
         sb.append("button.active{background:var(--green);color:#fff;border-color:var(--green)}")
+        sb.append("button.preset-quality{background:rgba(168,85,247,.18);border-color:var(--purple);color:var(--purple)}")
+        sb.append("button.preset-quality:hover{background:var(--purple);color:#fff;border-color:var(--purple)}")
+        sb.append("button.preset-fast{background:rgba(245,158,11,.12);border-color:var(--yellow);color:var(--yellow)}")
+        sb.append("button.preset-fast:hover{background:var(--yellow);color:#0f172a;border-color:var(--yellow)}")
         sb.append("@keyframes pulse-ok{0%{box-shadow:0 0 0 0 rgba(16,185,129,.8)}")
         sb.append("70%{box-shadow:0 0 0 12px rgba(16,185,129,0)}100%{box-shadow:0 0 0 0 rgba(16,185,129,0)}}")
         sb.append("@keyframes pulse-err{0%{box-shadow:0 0 0 0 rgba(239,68,68,.8)}")
@@ -207,6 +251,11 @@ class WebControlServer(
         sb.append(".ois-no-support{font-size:10px;color:var(--muted);font-style:italic;margin-left:8px}")
         sb.append(".ev-disabled-hint{font-size:10px;color:var(--muted);margin-top:4px;font-style:italic;display:none}")
         sb.append(".ev-disabled-hint.show{display:block}")
+        sb.append(".postproc-section{margin-bottom:12px}")
+        sb.append(".postproc-section h4{color:var(--muted);font-size:11px;font-weight:700;")
+        sb.append("text-transform:uppercase;letter-spacing:.06em;margin-bottom:7px}")
+        sb.append(".postproc-presets{display:flex;gap:8px;margin-bottom:14px}")
+        sb.append(".postproc-presets button{flex:1;font-size:11px;padding:8px 6px}")
         sb.append("@media(min-width:480px){.grid2{display:grid;grid-template-columns:1fr 1fr;gap:12px}}")
         sb.append("#toast{position:fixed;bottom:22px;left:50%;transform:translateX(-50%) translateY(80px);")
         sb.append("padding:10px 22px;border-radius:24px;font-size:13px;font-weight:700;")
@@ -248,6 +297,11 @@ class WebControlServer(
         sb.append("<div class=\"info-pill\">OIS: <span id=\"info-ois\">-</span></div>")
         sb.append("<div class=\"info-pill\">EIS: <span id=\"info-eis\">-</span></div>")
         sb.append("<div class=\"info-pill\">FPS: <span id=\"info-fps\">-</span></div>")
+        // ── Onda 3: pills de pós-processamento no painel de estado ──────────
+        sb.append("<div class=\"info-pill\">Edge: <span id=\"info-edge\">-</span></div>")
+        sb.append("<div class=\"info-pill\">NR: <span id=\"info-nr\">-</span></div>")
+        sb.append("<div class=\"info-pill\">Tone: <span id=\"info-tone\">-</span></div>")
+        sb.append("<div class=\"info-pill\">HotPx: <span id=\"info-hotpx\">-</span></div>")
         sb.append("</div></div>")
 
         // ── Camera selector ───────────────────────────────────────────────────
@@ -271,7 +325,6 @@ class WebControlServer(
         sb.append("</div></div></div>")
 
         // ── Zoom ──────────────────────────────────────────────────────────────
-        // card-zoom é sempre renderizado; JS esconde só se zoom_range[1] <= 1.0
         sb.append("<div class=\"card\" id=\"card-zoom\"><h3>\uD83D\uDD0D Zoom <span class=\"val\" id=\"zoom-val\">1x</span></h3>")
         sb.append("<div class=\"slider-wrap\">")
         sb.append("<input type=\"range\" id=\"zoom\" min=\"0\" max=\"1\" value=\"0\" step=\"0.01\" oninput=\"updateZoom(this.value)\">")
@@ -358,23 +411,65 @@ class WebControlServer(
         sb.append("<span class=\"sw\"></span></label></div></div>")
 
         // ── Controles Extras ──────────────────────────────────────────────────
-        // OIS e EIS são SEMPRE renderizados aqui; JS habilita/desabilita conforme cap.has_ois
         sb.append("<div class=\"card\" id=\"card-extras\"><h3>Controles Extras</h3>")
         sb.append("<div id=\"extras-flash\"></div>")
-        // OIS — sempre presente no DOM, disabled se sem suporte
         sb.append("<div class=\"toggle-row\" id=\"row-ois\">")
         sb.append("<span class=\"toggle-label\">OIS (\u00d3tica)<span class=\"ois-no-support\" id=\"ois-hint\"></span></span>")
         sb.append("<label class=\"switch\"><input type=\"checkbox\" id=\"toggle-ois\" onchange=\"toggleOIS(this)\">")
         sb.append("<span class=\"sw\"></span></label></div>")
-        // EIS — sempre presente
         sb.append("<div class=\"toggle-row\" id=\"row-eis\">")
         sb.append("<span class=\"toggle-label\">EIS (Digital)</span>")
         sb.append("<label class=\"switch\"><input type=\"checkbox\" id=\"toggle-eis\" onchange=\"toggleEIS(this)\">")
         sb.append("<span class=\"sw\"></span></label></div>")
         sb.append("</div>")
 
+        // ── Onda 3: Processamento de Imagem ───────────────────────────────────
+        // Card oculto por padrão; JS mostra só se supports_manual_post_processing === true
+        sb.append("<div class=\"card hidden postproc-active\" id=\"card-postproc\">")
+        sb.append("<h3>\uD83C\uDF9E Processamento de Imagem</h3>")
+        // Presets rápidos
+        sb.append("<div class=\"postproc-presets\">")
+        sb.append("<button class=\"preset-quality\" onclick=\"applyQualityMax(this)\">\u2B50 Qualidade M\u00e1xima</button>")
+        sb.append("<button class=\"preset-fast\" onclick=\"applyLatencyMin(this)\">\u26A1 Lat\u00eancia M\u00ednima</button>")
+        sb.append("</div>")
+        // EDGE MODE
+        sb.append("<div class=\"postproc-section\">")
+        sb.append("<h4>Nitidez (Edge)</h4>")
+        sb.append("<div class=\"btngroup\">")
+        sb.append("<button data-edge=\"off\" onclick=\"setEdge('off',this)\">Desligado</button>")
+        sb.append("<button data-edge=\"fast\" onclick=\"setEdge('fast',this)\">R\u00e1pido</button>")
+        sb.append("<button data-edge=\"high_quality\" onclick=\"setEdge('high_quality',this)\" class=\"active\">Qualidade</button>")
+        sb.append("</div></div>")
+        // NOISE REDUCTION
+        sb.append("<div class=\"postproc-section\">")
+        sb.append("<h4>Redu\u00e7\u00e3o de Ru\u00eddo (NR)</h4>")
+        sb.append("<div class=\"btngroup\">")
+        sb.append("<button data-nr=\"off\" onclick=\"setNR('off',this)\">Desligado</button>")
+        sb.append("<button data-nr=\"minimal\" onclick=\"setNR('minimal',this)\">M\u00ednimo</button>")
+        sb.append("<button data-nr=\"fast\" onclick=\"setNR('fast',this)\">R\u00e1pido</button>")
+        sb.append("<button data-nr=\"high_quality\" onclick=\"setNR('high_quality',this)\" class=\"active\">Qualidade</button>")
+        sb.append("</div></div>")
+        // TONEMAP
+        sb.append("<div class=\"postproc-section\">")
+        sb.append("<h4>Curva de Tom (Tonemap)</h4>")
+        sb.append("<div class=\"btngroup\">")
+        sb.append("<button data-tone=\"contrast_curve\" onclick=\"setTone('contrast_curve',this)\">Curva</button>")
+        sb.append("<button data-tone=\"gamma_value\" onclick=\"setTone('gamma_value',this)\">Gamma</button>")
+        sb.append("<button data-tone=\"fast\" onclick=\"setTone('fast',this)\">R\u00e1pido</button>")
+        sb.append("<button data-tone=\"high_quality\" onclick=\"setTone('high_quality',this)\" class=\"active\">Qualidade</button>")
+        sb.append("</div></div>")
+        // HOT PIXEL
+        sb.append("<div class=\"postproc-section\" style=\"margin-bottom:0\">")
+        sb.append("<h4>Pixel Quente (Hot Pixel)</h4>")
+        sb.append("<div class=\"btngroup\">")
+        sb.append("<button data-hotpx=\"off\" onclick=\"setHotPx('off',this)\">Desligado</button>")
+        sb.append("<button data-hotpx=\"fast\" onclick=\"setHotPx('fast',this)\">R\u00e1pido</button>")
+        sb.append("<button data-hotpx=\"high_quality\" onclick=\"setHotPx('high_quality',this)\" class=\"active\">Qualidade</button>")
+        sb.append("</div></div>")
+        sb.append("</div>") // fim card-postproc
+
         sb.append("<p style=\"text-align:center;margin-top:16px;color:var(--muted);font-size:10px;padding-bottom:20px\">")
-        sb.append("Camera2 API · RootEncoder · NanoHTTPD · v2.3</p>")
+        sb.append("Camera2 API · RootEncoder · NanoHTTPD · v2.4</p>")
         sb.append("</div>")
         sb.append("<div id=\"toast\" class=\"ok\">OK</div>")
 
@@ -448,14 +543,32 @@ class WebControlServer(
         sb.append("}")
         sb.append("}")
 
-        // ── updateOISCapability: habilita/desabilita OIS baseado na câmera ────
-        // FIX: OIS sempre existe no DOM, apenas desabilitamos o input se sem suporte
+        // ── updateOISCapability ───────────────────────────────────────────────
         sb.append("function updateOISCapability(hasOIS){")
         sb.append("var chk=document.getElementById('toggle-ois');")
         sb.append("var hint=document.getElementById('ois-hint');")
         sb.append("if(chk){chk.disabled=!hasOIS;}")
-        sb.append("if(hint){hint.textContent=hasOIS?'':'(sem suporte nesta câmera)';}")
-        sb.append("}")
+        sb.append("if(hint){hint.textContent=hasOIS?'':'(sem suporte nesta câmera)';}}")
+
+        // ── Onda 3: controles de pós-processamento ───────────────────────────
+        sb.append("function setEdge(val,btn){markActive('data-edge',val);sendControl({edgeMode:val},btn,'Edge '+val);}")
+        sb.append("function setNR(val,btn){markActive('data-nr',val);sendControl({noiseReduction:val},btn,'NR '+val);}")
+        sb.append("function setTone(val,btn){markActive('data-tone',val);sendControl({tonemap:val},btn,'Tone '+val);}")
+        sb.append("function setHotPx(val,btn){markActive('data-hotpx',val);sendControl({hotPixel:val},btn,'HotPx '+val);}")
+        // Preset Qualidade Máxima
+        sb.append("function applyQualityMax(btn){")
+        sb.append("markActive('data-edge','high_quality');")
+        sb.append("markActive('data-nr','high_quality');")
+        sb.append("markActive('data-tone','high_quality');")
+        sb.append("markActive('data-hotpx','high_quality');")
+        sb.append("sendControl({edgeMode:'high_quality',noiseReduction:'high_quality',tonemap:'high_quality',hotPixel:'high_quality'},btn,'Qualidade M\u00e1xima');}")
+        // Preset Latência Mínima
+        sb.append("function applyLatencyMin(btn){")
+        sb.append("markActive('data-edge','off');")
+        sb.append("markActive('data-nr','off');")
+        sb.append("markActive('data-tone','fast');")
+        sb.append("markActive('data-hotpx','off');")
+        sb.append("sendControl({edgeMode:'off',noiseReduction:'off',tonemap:'fast',hotPixel:'off'},btn,'Lat\u00eancia M\u00ednima');}")
 
         // ── updateUIForCamera ─────────────────────────────────────────────────
         sb.append("function updateUIForCamera(camId){")
@@ -466,10 +579,10 @@ class WebControlServer(
         sb.append("showCard('card-iso',true);showCard('card-ev',true);")
         sb.append("showCard('card-shutter',false);showCard('card-frame',false);")
         sb.append("showCard('card-wb',true);showCard('card-extras',true);")
-        // Sem caps: OIS desabilitado com aviso
+        sb.append("showCard('card-postproc',false);")
         sb.append("updateOISCapability(false);")
         sb.append("return;}")
-        // Zoom — esconde apenas se zoom_range[1] <= 1.0 explicitamente
+        // Zoom
         sb.append("var hasZoom=cap.zoom_range&&cap.zoom_range[1]>1.0;")
         sb.append("showCard('card-zoom',hasZoom!==false);")
         sb.append("var zs=document.getElementById('zoom');if(zs)zs.disabled=!hasZoom;")
@@ -488,7 +601,8 @@ class WebControlServer(
         sb.append("b.textContent=mode==='off'?'Travar':mode==='auto'?'Auto':'Continuo';")
         sb.append("b.setAttribute('data-fm',mode);")
         sb.append("b.onclick=function(){markActive('data-fm',mode);setFocusMode(mode);};")
-        sb.append("fg.appendChild(b);}})(afModes[i]);}}")
+        sb.append("fg.appendChild(b);}})(afModes[i]);}")
+        sb.append("}")
         // ISO / Sensor Manual
         sb.append("var hasISO=cap.supports_manual_sensor&&cap.iso_range;")
         sb.append("showCard('card-iso',hasISO);")
@@ -524,7 +638,7 @@ class WebControlServer(
         sb.append("b.onclick=function(){markActive('data-wb',mode);sendControl({whiteBalance:mode},b,'WB '+mode);};")
         sb.append("wg.appendChild(b);})(awb[j]);}")
         sb.append("}else{showCard('card-wb',false);}")
-        // Flash — injetado no div #extras-flash
+        // Flash
         sb.append("var ef=document.getElementById('extras-flash');ef.innerHTML='';")
         sb.append("if(cap.has_flash){")
         sb.append("var flashDiv=document.createElement('div');flashDiv.style.marginBottom='12px';")
@@ -540,9 +654,12 @@ class WebControlServer(
         sb.append("b.onclick=function(){markActive('data-flash',mode);sendControl({flashMode:mode},b,'Flash '+mode);};")
         sb.append("flashGroup.appendChild(b);})(fmodes[m]);}")
         sb.append("flashDiv.appendChild(flashGroup);ef.appendChild(flashDiv);}")
-        // OIS: habilitar/desabilitar baseado em cap.has_ois (toggle sempre existe)
+        // OIS
         sb.append("updateOISCapability(!!cap.has_ois);")
         sb.append("showCard('card-extras',true);")
+        // ── Onda 3: mostrar card de pós-processamento só se suportado ─────────
+        sb.append("var hasPost=!!cap.supports_manual_post_processing;")
+        sb.append("showCard('card-postproc',hasPost);")
         sb.append("}")
 
         // ── Funções de controle ───────────────────────────────────────────────
@@ -662,10 +779,23 @@ class WebControlServer(
         sb.append("document.getElementById('info-ois').textContent=c.ois||'-';")
         sb.append("document.getElementById('info-eis').textContent=c.eis||'-';")
         sb.append("document.getElementById('info-fps').textContent=(c.fps||'-')+'fps';")
+        // ── Onda 3: sync pills de estado ──────────────────────────────────────
+        sb.append("var edgeLbl=document.getElementById('info-edge');")
+        sb.append("var nrLbl=document.getElementById('info-nr');")
+        sb.append("var toneLbl=document.getElementById('info-tone');")
+        sb.append("var hotLbl=document.getElementById('info-hotpx');")
+        sb.append("if(edgeLbl&&c.edge_mode)edgeLbl.textContent=c.edge_mode;")
+        sb.append("if(nrLbl&&c.noise_reduction_mode)nrLbl.textContent=c.noise_reduction_mode;")
+        sb.append("if(toneLbl&&c.tonemap_mode)toneLbl.textContent=c.tonemap_mode;")
+        sb.append("if(hotLbl&&c.hot_pixel_mode)hotLbl.textContent=c.hot_pixel_mode;")
+        // ── Onda 3: sync botões ativos ────────────────────────────────────────
+        sb.append("if(c.edge_mode)markActive('data-edge',c.edge_mode);")
+        sb.append("if(c.noise_reduction_mode)markActive('data-nr',c.noise_reduction_mode);")
+        sb.append("if(c.tonemap_mode)markActive('data-tone',c.tonemap_mode);")
+        sb.append("if(c.hot_pixel_mode)markActive('data-hotpx',c.hot_pixel_mode);")
         sb.append("var isManual=c.manual_sensor==='on';")
         sb.append("syncChk('toggle-manual',isManual);")
         sb.append("updateManualUI(isManual);")
-        // syncChk agora sempre funciona porque toggle-ois está fixo no DOM
         sb.append("syncChk('toggle-ois',c.ois==='on');")
         sb.append("syncChk('toggle-eis',c.eis==='on');")
         sb.append("syncChk('toggle-ae-lock',c.ae_lock==='on');")
@@ -712,7 +842,8 @@ class WebControlServer(
         sb.append("b.className='pq-btn';b.setAttribute('data-res',p.res);")
         sb.append("b.textContent=p.lbl;")
         sb.append("b.onclick=function(){setResolution(p.res,b);};")
-        sb.append("rg.appendChild(b);}})(ps[j]);}}")
+        sb.append("rg.appendChild(b);}})(ps[j]);}")
+        sb.append("}")
         sb.append("var fg=document.getElementById('btngroup-fps');fg.innerHTML='';")
         sb.append("var fpsOpts=[15,24,30];")
         sb.append("for(var k=0;k<fpsOpts.length;k++){")
@@ -741,6 +872,7 @@ class WebControlServer(
         sb.append("showCard('card-iso',true);showCard('card-ev',true);")
         sb.append("showCard('card-shutter',true);showCard('card-frame',true);")
         sb.append("showCard('card-wb',true);")
+        sb.append("showCard('card-postproc',true);")
         sb.append("updateOISCapability(false);")
         sb.append("var wg=document.getElementById('btngroup-wb');wg.innerHTML='';")
         sb.append("var wbDef=['auto','daylight','cloudy','tungsten','fluorescent'];")
