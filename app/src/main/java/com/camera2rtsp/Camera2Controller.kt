@@ -49,9 +49,7 @@ class Camera2Controller {
     var hotPixelMode       = CameraMetadata.HOT_PIXEL_MODE_HIGH_QUALITY
 
     // ── Cinema: Tonemap Curve Customization ───────────────────────────────────
-    // Preset selecionado: "linear" | "s-curve" | "log" | "cinematic" | "custom"
     var customTonemapCurve = "s-curve"
-    // Pontos da curva atual (in, out) normalizados [0..1], aplicados como R=G=B
     private var tonemapCurvePoints: FloatArray = buildSCurve()
 
     // ── Cinema Feature: Live Histogram ─────────────────────────────────────────
@@ -99,53 +97,75 @@ class Camera2Controller {
     }
 
     // ── Cinema: Tonemap Curve Builders ────────────────────────────────────────
+    //
+    // REGRA CRÍTICA da Camera2 API:
+    // Ao usar TONEMAP_MODE_CONTRAST_CURVE, o driver aplica a curva APÓS o
+    // pipeline ISP completo (AE + AWB). Se CONTROL_MODE=AUTO ainda estiver
+    // ativo, o ISP já processou a exposição e a curva é aplicada em cima,
+    // causando "double-darkening" em qualquer curva não-linear.
+    //
+    // Solução: applyPostProcessing() seta CONTROL_MODE=OFF + AE_MODE=OFF
+    // quando tonemapMode == CONTRAST_CURVE, e restaura AUTO ao sair.
+    // As curvas são normalizadas para que y(0.5) >= 0.5 (sem perda de brilho).
 
     private fun buildLinear(): FloatArray = floatArrayOf(
         0.0f, 0.0f,
         1.0f, 1.0f
     )
 
+    // S-Curve corrigida: lift mínimo 0.02 nas sombras, sem esmagar pretos
     private fun buildSCurve(): FloatArray {
         val points = mutableListOf<Float>()
         for (i in 0..16) {
             val x = i / 16f
-            val y = x * x * (3f - 2f * x)
+            // smoothstep clássico, mas com lift leve nas sombras para não perder detalhes
+            val smooth = x * x * (3f - 2f * x)
+            // mistura 90% smoothstep + 10% linear = y(0.5)=0.5 preservado
+            val y = (smooth * 0.90f + x * 0.10f).coerceIn(0f, 1f)
             points.add(x); points.add(y)
         }
         return points.toFloatArray()
     }
 
+    // Log normalizada: escala para que y(1.0)=1.0 e y(0.5)~=0.65 (log preserva altas luzes)
     private fun buildLogCurve(): FloatArray {
         val points = mutableListOf<Float>()
+        val scale = 1f / (kotlin.math.ln(1f + 9f * 1f) / kotlin.math.ln(10f)) // = 1.0 por construção
         for (i in 0..16) {
             val x = i / 16f
-            val y = kotlin.math.ln(1f + 9f * x) / kotlin.math.ln(10f)
+            // log10(1 + 9x) vai de 0 a 1 — já normalizado
+            val rawY = kotlin.math.ln(1f + 9f * x) / kotlin.math.ln(10f)
+            // Mistura 80% log + 20% linear para manter exposição geral
+            val y = (rawY * 0.80f + x * 0.20f).coerceIn(0f, 1f)
             points.add(x); points.add(y)
         }
         return points.toFloatArray()
     }
 
+    // Cinematic: lift 0.04 (não 0.05), gain 0.96, mistura 85%/15% com linear
     private fun buildCinematicCurve(): FloatArray {
         val points = mutableListOf<Float>()
         for (i in 0..16) {
             val x = i / 16f
-            val lift = 0.05f; val gain = 0.95f
-            val y = if (x < 0.5f) lift + x * (0.5f - lift) * 2f
-                    else 0.5f + (x - 0.5f) * (gain - 0.5f) * 2f
-            points.add(x); points.add(y.coerceIn(0f, 1f))
+            val lift = 0.04f
+            val gain = 0.96f
+            val raw = if (x < 0.5f)
+                lift + x * (0.5f - lift) * 2f
+            else
+                0.5f + (x - 0.5f) * (gain - 0.5f) * 2f
+            // mistura 85% cinematic + 15% linear => y(0.5) fica em ~0.51 (neutro)
+            val y = (raw * 0.85f + x * 0.15f).coerceIn(0f, 1f)
+            points.add(x); points.add(y)
         }
         return points.toFloatArray()
     }
 
-    // ── Cinema: validar e normalizar array de pontos customizados ─────────────
-    // Entrada: List<Double> [x0,y0,x1,y1,...] de tamanho par
-    // Saída: FloatArray validado, ordenado por X, clampado [0..1], min 2 pts, max 64 pts
+    // Valida pontos customizados do editor JS
     private fun buildCustomCurve(raw: List<Double>): FloatArray? {
         if (raw.size < 4 || raw.size % 2 != 0) {
             Log.w(tag, "tonemapCurveCustom: tamanho inválido ${raw.size}, ignorando")
             return null
         }
-        // Converter pares (x,y) e ordenar por x
         val pairs = mutableListOf<Pair<Float, Float>>()
         var i = 0
         while (i < raw.size - 1) {
@@ -154,43 +174,78 @@ class Camera2Controller {
             pairs.add(Pair(x, y))
             i += 2
         }
-        // Ordenar por X crescente (Camera2 exige)
         pairs.sortBy { it.first }
-        // Garantir ponto inicial (0,?) e final (1,?) para cobertura total da curva
-        // (não obrigatório pela API, mas evita clipping nos extremos)
-        // Limitar a 64 pontos (limite da Camera2 API)
         val limited = if (pairs.size > 64) pairs.take(64) else pairs
         if (limited.size < 2) {
             Log.w(tag, "tonemapCurveCustom: menos de 2 pontos após filtragem, ignorando")
             return null
         }
-        val result = FloatArray(limited.size * 2)
-        limited.forEachIndexed { idx, (x, y) ->
+        // Garantir cobertura total [0..1]: forçar primeiro ponto com in=0 e último com in=1
+        val withExtremes = limited.toMutableList()
+        if (withExtremes.first().first > 0f)
+            withExtremes.add(0, Pair(0f, withExtremes.first().second))
+        if (withExtremes.last().first < 1f)
+            withExtremes.add(Pair(1f, withExtremes.last().second))
+
+        val result = FloatArray(withExtremes.size * 2)
+        withExtremes.forEachIndexed { idx, (x, y) ->
             result[idx * 2]     = x
             result[idx * 2 + 1] = y
         }
-        Log.d(tag, "buildCustomCurve: ${limited.size} pontos OK, primeiro=(${result[0]},${result[1]}), último=(${result[result.size-2]},${result[result.size-1]})")
+        Log.d(tag, "buildCustomCurve: ${withExtremes.size} pontos OK, [0]=(${result[0]},${result[1]}), [-1]=(${result[result.size-2]},${result[result.size-1]})")
         return result
     }
 
-    // ── Onda 3: applyPostProcessing() ──────────────────────────────────────────
+    // ── FIX: applyPostProcessing com controle de CONTROL_MODE ─────────────────
+    //
+    // Quando tonemapMode == CONTRAST_CURVE:
+    //   • Desliga AE (CONTROL_MODE=OFF, AE_MODE=OFF) para evitar double-darkening
+    //   • Se manualSensor já estiver ativo, os valores de ISO/shutter já estão certos
+    //   • Se sensor for AUTO, usa os últimos valores capturados pelo AE como ponto
+    //     de partida — a câmera mantém exposição estável por alguns frames
+    //
+    // Quando tonemapMode != CONTRAST_CURVE:
+    //   • Restaura CONTROL_MODE=AUTO + AE_MODE=ON (a menos que manualSensor esteja ON)
     private fun applyPostProcessing() {
+        val usingCurve = (tonemapMode == CameraMetadata.TONEMAP_MODE_CONTRAST_CURVE)
+
         val ok = applyOnBuilder { b ->
-            b.set(CaptureRequest.EDGE_MODE,             edgeMode)
-            b.set(CaptureRequest.NOISE_REDUCTION_MODE,  noiseReductionMode)
-            b.set(CaptureRequest.HOT_PIXEL_MODE,        hotPixelMode)
-            if (tonemapMode == CameraMetadata.TONEMAP_MODE_CONTRAST_CURVE) {
+            // ── EDGE / NR / HOT PIXEL (não dependem de AE) ────────────────────
+            b.set(CaptureRequest.EDGE_MODE,            edgeMode)
+            b.set(CaptureRequest.NOISE_REDUCTION_MODE, noiseReductionMode)
+            b.set(CaptureRequest.HOT_PIXEL_MODE,       hotPixelMode)
+
+            if (usingCurve) {
+                // FIX: desligar AE para que a curva seja aplicada sobre
+                // valores RAW lineares, não sobre imagem já processada
+                if (!manualSensor) {
+                    // Sensor auto: travar AE momentaneamente com os valores
+                    // que o AE escolheu (CONTROL_MODE_OFF + AE_MODE_OFF).
+                    // Isso congela exposição mas elimina o double-darkening.
+                    b.set(CaptureRequest.CONTROL_MODE,    CameraMetadata.CONTROL_MODE_OFF)
+                    b.set(CaptureRequest.CONTROL_AE_MODE, CameraMetadata.CONTROL_AE_MODE_OFF)
+                    // Mantém ISO e shutter nos valores atuais do sensor
+                    b.set(CaptureRequest.SENSOR_SENSITIVITY,   isoValue)
+                    b.set(CaptureRequest.SENSOR_EXPOSURE_TIME, exposureNs)
+                    b.set(CaptureRequest.SENSOR_FRAME_DURATION, frameDurationNs)
+                }
+                // Aplica a curva
                 b.set(CaptureRequest.TONEMAP_MODE, CameraMetadata.TONEMAP_MODE_CONTRAST_CURVE)
                 val curve = android.hardware.camera2.params.TonemapCurve(
                     tonemapCurvePoints, tonemapCurvePoints, tonemapCurvePoints
                 )
                 b.set(CaptureRequest.TONEMAP_CURVE, curve)
-                Log.d(tag, "Applied tonemap curve: $customTonemapCurve (${tonemapCurvePoints.size / 2} pts)")
+                Log.d(tag, "applyPostProcessing: curva=$customTonemapCurve (${tonemapCurvePoints.size / 2} pts) AE desligado")
             } else {
+                // FIX: restaurar CONTROL_MODE=AUTO quando não estiver usando curva
+                if (!manualSensor) {
+                    b.set(CaptureRequest.CONTROL_MODE,    CameraMetadata.CONTROL_MODE_AUTO)
+                    b.set(CaptureRequest.CONTROL_AE_MODE, CameraMetadata.CONTROL_AE_MODE_ON)
+                }
                 b.set(CaptureRequest.TONEMAP_MODE, tonemapMode)
             }
         }
-        Log.d(tag, "applyPostProcessing ok=$ok edge=$edgeMode nr=$noiseReductionMode tone=$tonemapMode hot=$hotPixelMode curve=$customTonemapCurve")
+        Log.d(tag, "applyPostProcessing ok=$ok edge=$edgeMode nr=$noiseReductionMode tone=$tonemapMode hot=$hotPixelMode curve=$customTonemapCurve usingCurve=$usingCurve")
     }
 
     private fun applyManualSensor() {
@@ -569,24 +624,20 @@ class Camera2Controller {
             Log.d(tag, "hotPixel -> $it")
         }
 
-        // ── Cinema: Preset de curva (Linear/S-Curve/Log/Cinematic) ────────────
         params["tonemapCurve"]?.let {
             customTonemapCurve = it as String
             tonemapCurvePoints = when (customTonemapCurve) {
-                "linear"     -> buildLinear()
-                "s-curve"    -> buildSCurve()
-                "log"        -> buildLogCurve()
-                "cinematic"  -> buildCinematicCurve()
-                else         -> buildSCurve()
+                "linear"    -> buildLinear()
+                "s-curve"   -> buildSCurve()
+                "log"       -> buildLogCurve()
+                "cinematic" -> buildCinematicCurve()
+                else        -> buildSCurve()
             }
             tonemapMode = CameraMetadata.TONEMAP_MODE_CONTRAST_CURVE
             applyPostProcessing()
             Log.d(tag, "tonemapCurve -> $customTonemapCurve (${tonemapCurvePoints.size / 2} pts)")
         }
 
-        // ── Cinema: Curva CUSTOMIZADA via editor interativo ───────────────────
-        // Recebe List<Double> [x0,y0,x1,y1,...] do editor de pontos do front-end
-        // Gson deserializa arrays JSON como List<Double> em Map<String,Any>
         @Suppress("UNCHECKED_CAST")
         params["tonemapCurveCustom"]?.let { raw ->
             val pts = raw as? List<*>
