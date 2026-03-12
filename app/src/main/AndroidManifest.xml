@@ -28,7 +28,7 @@
     <uses-feature android:name="android.hardware.camera.autofocus" android:required="false" />
 
     <application
-        android:allowBackup="true"
+        android:allowBackup="false"
         android:dataExtractionRules="@xml/data_extraction_rules"
         android:fullBackupContent="@xml/backup_rules"
         android:icon="@mipmap/ic_launcher"
@@ -39,6 +39,7 @@
         android:usesCleartextTraffic="true"
         tools:targetApi="31">
 
+        <!-- Tela principal (só abre se licenciado) -->
         <activity
             android:name=".MainActivity"
             android:exported="true"
@@ -49,6 +50,13 @@
                 <category android:name="android.intent.category.LAUNCHER" />
             </intent-filter>
         </activity>
+
+        <!-- Tela de ativação de licença -->
+        <activity
+            android:name=".ActivationActivity"
+            android:exported="false"
+            android:screenOrientation="portrait"
+            android:windowSoftInputMode="adjustResize" />
 
         <!-- ForegroundService que mantém câmera+RTSP vivos com tela desligada -->
         <service

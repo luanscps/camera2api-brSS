@@ -17,14 +17,23 @@ import java.net.NetworkInterface
 
 class MainActivity : AppCompatActivity() {
 
-    private lateinit var statusText: TextView
-    private lateinit var rtspIndicator: TextView
-    private lateinit var cameraPreview: TextureView
+    private lateinit var statusText    : TextView
+    private lateinit var rtspIndicator : TextView
+    private lateinit var cameraPreview : TextureView
 
     private val PERMISSION_CODE = 100
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+
+        // ── VERIFICAÇÃO DE LICENÇA ───────────────────────────────────────────
+        if (!LicenseManager.isLicensed(this)) {
+            startActivity(Intent(this, ActivationActivity::class.java))
+            finish()
+            return
+        }
+        // ── FIM DA VERIFICAÇÃO ───────────────────────────────────────────────
+
         setContentView(R.layout.activity_main)
 
         statusText    = findViewById(R.id.statusText)
@@ -37,8 +46,6 @@ class MainActivity : AppCompatActivity() {
 
     override fun onResume() {
         super.onResume()
-        // Quando o app volta ao primeiro plano, vincula o TextureView ao servidor
-        // para mostrar o preview ao vivo sem reiniciar o stream
         StreamingService.instance?.rtspServer?.attachTextureView(cameraPreview)
         updateStatusUI()
     }
@@ -58,7 +65,7 @@ class MainActivity : AppCompatActivity() {
     }
 
     private fun updateStatusUI() {
-        val ip = getLocalIpAddress()
+        val ip      = getLocalIpAddress()
         val rtspUrl = "rtsp://$ip:8554/live"
         val webUrl  = "http://$ip:8080"
         statusText.text    = "📡 $rtspUrl\n🌐 $webUrl"
@@ -95,7 +102,6 @@ class MainActivity : AppCompatActivity() {
             Manifest.permission.ACCESS_NETWORK_STATE,
             Manifest.permission.ACCESS_WIFI_STATE
         )
-        // Android 13+ requer permissão explícita para notificações
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
             perms.add(Manifest.permission.POST_NOTIFICATIONS)
         }
@@ -119,9 +125,6 @@ class MainActivity : AppCompatActivity() {
         }
     }
 
-    // onDestroy da Activity NÃO para o serviço.
-    // O stream continua vivo com tela desligada ou app em background.
-    // Para parar: usar o botão "Parar" na notificação.
     override fun onDestroy() {
         super.onDestroy()
         Log.d("MainActivity", "Activity destruída — serviço continua rodando")
