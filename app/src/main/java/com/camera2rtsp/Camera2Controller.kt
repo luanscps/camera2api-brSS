@@ -6,7 +6,6 @@ import android.hardware.camera2.CameraManager
 import android.hardware.camera2.CameraMetadata
 import android.hardware.camera2.CaptureRequest
 import android.hardware.camera2.CaptureResult
-import android.hardware.camera2.CameraCaptureSession
 import android.hardware.camera2.TotalCaptureResult
 import android.os.Handler
 import android.os.HandlerThread
@@ -49,223 +48,113 @@ class Camera2Controller {
     var tonemapMode        = CameraMetadata.TONEMAP_MODE_HIGH_QUALITY
     var hotPixelMode       = CameraMetadata.HOT_PIXEL_MODE_HIGH_QUALITY
 
-    // ── Cinema: Tonemap Curve Customization ───────────────────────────────────
+    // ── Tonemap Curve ──────────────────────────────────────────────────────
     var customTonemapCurve = "s-curve"
     private var tonemapCurvePoints: FloatArray = buildSCurve()
 
-    // ── Cinema Feature: Live Histogram ─────────────────────────────────────────
+    // ── Histogram (simulado) ─────────────────────────────────────────────────
     val lastHistogramR = IntArray(256)
     val lastHistogramG = IntArray(256)
     val lastHistogramB = IntArray(256)
-    private var histogramReady = false
 
-    // ── Tonemap persistente: reaplica a cada frame via CaptureCallback ─────────
-    // O RootEncoder chama applyRequest() internamente a cada CaptureResult,
-    // sobrescrevendo nosso TONEMAP_MODE. O callback abaixo roda DEPOIS do
-    // applyRequest do encoder e regarante o tonemap frame a frame.
-    @Volatile private var tonemapCallbackRegistered = false
-
-    private val tonemapCaptureCallback = object : CameraCaptureSession.CaptureCallback() {
-        override fun onCaptureCompleted(
-            session: CameraCaptureSession,
-            request: CaptureRequest,
-            result: TotalCaptureResult
-        ) {
-            val usingCurve = (tonemapMode == CameraMetadata.TONEMAP_MODE_CONTRAST_CURVE)
-            if (!usingCurve) return
-            // Reaplica tonemap diretamente no builder sem passar pelo applyRequest do encoder
-            val cam = getCam2Manager() ?: return
-            try {
-                val builderField = Camera2ApiManager::class.java.getDeclaredField("builderInputSurface")
-                builderField.isAccessible = true
-                val builder = builderField.get(cam) as? CaptureRequest.Builder ?: return
-                builder.set(CaptureRequest.TONEMAP_MODE, CameraMetadata.TONEMAP_MODE_CONTRAST_CURVE)
-                val curve = android.hardware.camera2.params.TonemapCurve(
-                    tonemapCurvePoints, tonemapCurvePoints, tonemapCurvePoints
-                )
-                builder.set(CaptureRequest.TONEMAP_CURVE, curve)
-                // Chama applyRequest para persistir no repeating request
-                val applyMethod = Camera2ApiManager::class.java.getDeclaredMethod(
-                    "applyRequest", CaptureRequest.Builder::class.java
-                )
-                applyMethod.isAccessible = true
-                applyMethod.invoke(cam, builder)
-            } catch (_: Exception) { }
-        }
-    }
-
-    private fun ensureTonemapCallback() {
-        if (tonemapCallbackRegistered) return
-        val cam = getCam2Manager() ?: return
-        try {
-            // Tenta registrar o callback no Camera2ApiManager via reflection
-            // O campo pode ser "captureCallback" ou "videoCapture" dependendo da versão
-            val fields = Camera2ApiManager::class.java.declaredFields
-            val cbField = fields.firstOrNull { f ->
-                CameraCaptureSession.CaptureCallback::class.java.isAssignableFrom(f.type)
-            }
-            if (cbField != null) {
-                cbField.isAccessible = true
-                // Wrap: cria um callback composto que chama o original + o nosso
-                val original = cbField.get(cam) as? CameraCaptureSession.CaptureCallback
-                val composed = object : CameraCaptureSession.CaptureCallback() {
-                    override fun onCaptureCompleted(
-                        session: CameraCaptureSession,
-                        request: CaptureRequest,
-                        result: TotalCaptureResult
-                    ) {
-                        original?.onCaptureCompleted(session, request, result)
-                        tonemapCaptureCallback.onCaptureCompleted(session, request, result)
-                    }
-                }
-                cbField.set(cam, composed)
-                tonemapCallbackRegistered = true
-                Log.d(tag, "tonemapCaptureCallback registrado via reflection (field=${cbField.name})")
-            } else {
-                Log.w(tag, "nao encontrou CaptureCallback field no Camera2ApiManager — fallback para applyOnBuilder")
-            }
-        } catch (e: Exception) {
-            Log.w(tag, "ensureTonemapCallback falhou: ${e.message}")
-        }
-    }
-
+    // ── Worker thread ────────────────────────────────────────────────────────
     private val workerThread = HandlerThread("CameraWorker").also { it.start() }
     private val worker = Handler(workerThread.looper)
-
     private fun post(block: () -> Unit) =
-        worker.post { runCatching(block).onFailure { Log.e(tag, "Erro na worker", it) } }
+        worker.post { runCatching(block).onFailure { Log.e(tag, "worker error", it) } }
 
-    // -------------------------------------------------------------------------
-    // Reflection helpers
-    // -------------------------------------------------------------------------
+    // =========================================================================
+    // Acesso ao Camera2ApiManager via reflection (unico ponto de reflection)
+    // =========================================================================
 
-    private fun getCam2Manager(): Camera2ApiManager? {
-        return try {
-            val field = Camera2Base::class.java.getDeclaredField("cameraManager")
-            field.isAccessible = true
-            field.get(server) as? Camera2ApiManager
-        } catch (e: Exception) {
-            Log.e(tag, "Reflection: cameraManager nao encontrado", e)
-            null
-        }
+    private fun getCam2Manager(): Camera2ApiManager? = try {
+        val f = Camera2Base::class.java.getDeclaredField("cameraManager")
+        f.isAccessible = true
+        f.get(server) as? Camera2ApiManager
+    } catch (e: Exception) {
+        Log.e(tag, "getCam2Manager falhou", e); null
     }
 
-    private fun applyOnBuilder(block: (CaptureRequest.Builder) -> Unit): Boolean {
+    // =========================================================================
+    // setCustomRequest — API publica do RootEncoder
+    // Equivale a: builder.set(...) + setRepeatingRequest(builder.build())
+    // Nao precisa de reflection alem do getCam2Manager acima.
+    // =========================================================================
+
+    private fun customRequest(block: (CaptureRequest.Builder) -> Unit): Boolean {
         val cam = getCam2Manager() ?: return false
         return try {
-            val builderField = Camera2ApiManager::class.java.getDeclaredField("builderInputSurface")
-            builderField.isAccessible = true
-            val builder = builderField.get(cam) as? CaptureRequest.Builder
-                ?: run { Log.w(tag, "builderInputSurface eh null (camera ainda nao aberta)"); return false }
-            block(builder)
-            val applyMethod = Camera2ApiManager::class.java.getDeclaredMethod("applyRequest", CaptureRequest.Builder::class.java)
-            applyMethod.isAccessible = true
-            applyMethod.invoke(cam, builder) as? Boolean ?: false
+            cam.setCustomRequest(block)
         } catch (e: Exception) {
-            Log.e(tag, "Reflection: applyOnBuilder falhou", e)
-            false
+            Log.e(tag, "setCustomRequest falhou", e); false
         }
     }
 
-    // ── Cinema: Tonemap Curve Builders ────────────────────────────────────────
-
-    private fun buildLinear(): FloatArray = floatArrayOf(
-        0.0f, 0.0f,
-        1.0f, 1.0f
-    )
-
-    private fun buildSCurve(): FloatArray {
-        val points = mutableListOf<Float>()
-        for (i in 0..16) {
-            val x = i / 16f
-            val smooth = x * x * (3f - 2f * x)
-            val y = (smooth * 0.90f + x * 0.10f).coerceIn(0f, 1f)
-            points.add(x); points.add(y)
-        }
-        return points.toFloatArray()
-    }
-
-    private fun buildLogCurve(): FloatArray {
-        val points = mutableListOf<Float>()
-        for (i in 0..16) {
-            val x = i / 16f
-            val rawY = kotlin.math.ln(1f + 9f * x) / kotlin.math.ln(10f)
-            val y = (rawY * 0.80f + x * 0.20f).coerceIn(0f, 1f)
-            points.add(x); points.add(y)
-        }
-        return points.toFloatArray()
-    }
-
-    private fun buildCinematicCurve(): FloatArray {
-        val points = mutableListOf<Float>()
-        for (i in 0..16) {
-            val x = i / 16f
-            val lift = 0.04f
-            val gain = 0.96f
-            val raw = if (x < 0.5f)
-                lift + x * (0.5f - lift) * 2f
-            else
-                0.5f + (x - 0.5f) * (gain - 0.5f) * 2f
-            val y = (raw * 0.85f + x * 0.15f).coerceIn(0f, 1f)
-            points.add(x); points.add(y)
-        }
-        return points.toFloatArray()
-    }
-
-    private fun buildCustomCurve(raw: List<Double>): FloatArray? {
-        if (raw.size < 4 || raw.size % 2 != 0) {
-            Log.w(tag, "tonemapCurveCustom: tamanho inválido ${raw.size}, ignorando")
-            return null
-        }
-        val pairs = mutableListOf<Pair<Float, Float>>()
-        var i = 0
-        while (i < raw.size - 1) {
-            val x = raw[i].toFloat().coerceIn(0f, 1f)
-            val y = raw[i + 1].toFloat().coerceIn(0f, 1f)
-            pairs.add(Pair(x, y))
-            i += 2
-        }
-        pairs.sortBy { it.first }
-        val limited = if (pairs.size > 64) pairs.take(64) else pairs
-        if (limited.size < 2) {
-            Log.w(tag, "tonemapCurveCustom: menos de 2 pontos após filtragem, ignorando")
-            return null
-        }
-        val withExtremes = limited.toMutableList()
-        if (withExtremes.first().first > 0f)
-            withExtremes.add(0, Pair(0f, withExtremes.first().second))
-        if (withExtremes.last().first < 1f)
-            withExtremes.add(Pair(1f, withExtremes.last().second))
-
-        val result = FloatArray(withExtremes.size * 2)
-        withExtremes.forEachIndexed { idx, (x, y) ->
-            result[idx * 2]     = x
-            result[idx * 2 + 1] = y
-        }
-        Log.d(tag, "buildCustomCurve: ${withExtremes.size} pontos OK, [0]=(${result[0]},${result[1]}), [-1]=(${result[result.size-2]},${result[result.size-1]})")
-        return result
-    }
-
-    // ── applyPostProcessing ───────────────────────────────────────────────────
+    // =========================================================================
+    // Tonemap persistente via setCustomOnCaptureCompletedCallback
     //
-    // Aplica EDGE/NR/HOTPIXEL e tonemap no builder.
-    // Para curvas (CONTRAST_CURVE): também tenta registrar o CaptureCallback
-    // persistente para combater o reset por frame do encoder.
+    // PROBLEMA REAL: o driver Samsung (HAL3) silenciosamente ignora
+    // TONEMAP_MODE_CONTRAST_CURVE em muitas configuracoes de stream.
+    // Para confirmar se o tonemap esta sendo ACEITO, lemos TONEMAP_MODE
+    // de volta do CaptureResult a cada frame.
+    //
+    // Estrategia:
+    //   - Registramos o callback via setCustomOnCaptureCompletedCallback
+    //   - A cada frame lemos result.get(CaptureResult.TONEMAP_MODE)
+    //   - Se o driver retornar algo diferente de CONTRAST_CURVE, logamos
+    //     como WARN ("HAL ignorou TONEMAP") e tentamos reaplicar
+    //   - Isso tambem serve de diagnostico: se o log aparecer sempre,
+    //     o Note10+ simplesmente nao suporta TONEMAP em stream de video
+    // =========================================================================
+
+    @Volatile private var tonemapCallbackActive = false
+
+    private fun activateTonemapCallback() {
+        if (tonemapCallbackActive) return
+        val cam = getCam2Manager() ?: return
+        cam.setCustomOnCaptureCompletedCallback { _, _, result ->
+            if (tonemapMode != CameraMetadata.TONEMAP_MODE_CONTRAST_CURVE) return@setCustomOnCaptureCompletedCallback
+            val actual = result.get(CaptureResult.TONEMAP_MODE)
+            if (actual != CameraMetadata.TONEMAP_MODE_CONTRAST_CURVE) {
+                Log.w(tag, "HAL nao aceitou TONEMAP_CONTRAST_CURVE (retornou $actual) — tentando reaplicar")
+                // Tenta reaplicar via setCustomRequest
+                customRequest { b ->
+                    b.set(CaptureRequest.TONEMAP_MODE, CameraMetadata.TONEMAP_MODE_CONTRAST_CURVE)
+                    b.set(CaptureRequest.TONEMAP_CURVE, android.hardware.camera2.params.TonemapCurve(
+                        tonemapCurvePoints, tonemapCurvePoints, tonemapCurvePoints
+                    ))
+                }
+            }
+        }
+        tonemapCallbackActive = true
+        Log.d(tag, "tonemapCallback ativado via setCustomOnCaptureCompletedCallback")
+    }
+
+    private fun deactivateTonemapCallback() {
+        if (!tonemapCallbackActive) return
+        getCam2Manager()?.setCustomOnCaptureCompletedCallback(null)
+        tonemapCallbackActive = false
+        Log.d(tag, "tonemapCallback desativado")
+    }
+
+    // =========================================================================
+    // Post-processing
+    // =========================================================================
+
     private fun applyPostProcessing() {
         val usingCurve = (tonemapMode == CameraMetadata.TONEMAP_MODE_CONTRAST_CURVE)
 
-        val ok = applyOnBuilder { b ->
+        val ok = customRequest { b ->
             b.set(CaptureRequest.EDGE_MODE,            edgeMode)
             b.set(CaptureRequest.NOISE_REDUCTION_MODE, noiseReductionMode)
             b.set(CaptureRequest.HOT_PIXEL_MODE,       hotPixelMode)
 
             if (usingCurve) {
                 b.set(CaptureRequest.TONEMAP_MODE, CameraMetadata.TONEMAP_MODE_CONTRAST_CURVE)
-                val curve = android.hardware.camera2.params.TonemapCurve(
+                b.set(CaptureRequest.TONEMAP_CURVE, android.hardware.camera2.params.TonemapCurve(
                     tonemapCurvePoints, tonemapCurvePoints, tonemapCurvePoints
-                )
-                b.set(CaptureRequest.TONEMAP_CURVE, curve)
-                Log.d(tag, "applyPostProcessing: curva=$customTonemapCurve (${tonemapCurvePoints.size / 2} pts) manualSensor=$manualSensor")
+                ))
+                Log.d(tag, "applyPostProcessing: CONTRAST_CURVE curva=$customTonemapCurve pts=${tonemapCurvePoints.size / 2}")
             } else {
                 if (!manualSensor) {
                     b.set(CaptureRequest.CONTROL_MODE,    CameraMetadata.CONTROL_MODE_AUTO)
@@ -275,15 +164,19 @@ class Camera2Controller {
             }
         }
 
-        // Registra callback persistente para manter a curva viva frame a frame
-        if (usingCurve) ensureTonemapCallback()
+        if (usingCurve) activateTonemapCallback()
+        else deactivateTonemapCallback()
 
-        Log.d(tag, "applyPostProcessing ok=$ok edge=$edgeMode nr=$noiseReductionMode tone=$tonemapMode hot=$hotPixelMode curve=$customTonemapCurve usingCurve=$usingCurve cbRegistered=$tonemapCallbackRegistered")
+        Log.d(tag, "applyPostProcessing ok=$ok edge=$edgeMode nr=$noiseReductionMode tone=$tonemapMode hot=$hotPixelMode")
     }
+
+    // =========================================================================
+    // Sensor manual / auto
+    // =========================================================================
 
     private fun applyManualSensor() {
         val safeDuration = maxOf(frameDurationNs, exposureNs)
-        val ok = applyOnBuilder { b ->
+        val ok = customRequest { b ->
             b.set(CaptureRequest.CONTROL_MODE,          CameraMetadata.CONTROL_MODE_OFF)
             b.set(CaptureRequest.CONTROL_AE_MODE,       CameraMetadata.CONTROL_AE_MODE_OFF)
             b.set(CaptureRequest.SENSOR_SENSITIVITY,    isoValue)
@@ -296,32 +189,74 @@ class Camera2Controller {
     }
 
     private fun applyAutoSensor() {
-        val ok = applyOnBuilder { b ->
+        val ok = customRequest { b ->
             b.set(CaptureRequest.CONTROL_MODE,    CameraMetadata.CONTROL_MODE_AUTO)
             b.set(CaptureRequest.CONTROL_AE_MODE, CameraMetadata.CONTROL_AE_MODE_ON)
         }
         Log.d(tag, "applyAutoSensor ok=$ok")
     }
 
-    private fun extractHistogram(result: TotalCaptureResult) {
-        val brightness = (isoValue / 3200f * 0.5f + (exposureLevel + 8) / 16f * 0.5f).coerceIn(0f, 1f)
-        val peak = (brightness * 255).toInt()
-        for (i in 0 until 256) {
-            val dist = kotlin.math.abs(i - peak).toFloat()
-            val v = (255 * kotlin.math.exp((-dist * dist) / (2 * 30.0 * 30.0))).toInt()
-            lastHistogramR[i] = (v * 1.1f).toInt().coerceIn(0, 255)
-            lastHistogramG[i] = v
-            lastHistogramB[i] = (v * 0.9f).toInt().coerceIn(0, 255)
+    // =========================================================================
+    // Tonemap curve builders
+    // =========================================================================
+
+    private fun buildLinear(): FloatArray = floatArrayOf(0f, 0f, 1f, 1f)
+
+    private fun buildSCurve(): FloatArray {
+        val pts = mutableListOf<Float>()
+        for (i in 0..16) {
+            val x = i / 16f
+            val s = x * x * (3f - 2f * x)
+            pts.add(x); pts.add((s * 0.90f + x * 0.10f).coerceIn(0f, 1f))
         }
-        histogramReady = true
+        return pts.toFloatArray()
     }
 
-    // -------------------------------------------------------------------------
+    private fun buildLogCurve(): FloatArray {
+        val pts = mutableListOf<Float>()
+        for (i in 0..16) {
+            val x = i / 16f
+            val y = kotlin.math.ln(1f + 9f * x) / kotlin.math.ln(10f)
+            pts.add(x); pts.add((y * 0.80f + x * 0.20f).coerceIn(0f, 1f))
+        }
+        return pts.toFloatArray()
+    }
+
+    private fun buildCinematicCurve(): FloatArray {
+        val pts = mutableListOf<Float>()
+        for (i in 0..16) {
+            val x = i / 16f; val lift = 0.04f; val gain = 0.96f
+            val raw = if (x < 0.5f) lift + x * (0.5f - lift) * 2f
+                      else 0.5f + (x - 0.5f) * (gain - 0.5f) * 2f
+            pts.add(x); pts.add((raw * 0.85f + x * 0.15f).coerceIn(0f, 1f))
+        }
+        return pts.toFloatArray()
+    }
+
+    private fun buildCustomCurve(raw: List<Double>): FloatArray? {
+        if (raw.size < 4 || raw.size % 2 != 0) return null
+        val pairs = mutableListOf<Pair<Float, Float>>()
+        var i = 0
+        while (i < raw.size - 1) {
+            pairs.add(raw[i].toFloat().coerceIn(0f,1f) to raw[i+1].toFloat().coerceIn(0f,1f))
+            i += 2
+        }
+        val sorted = pairs.sortedBy { it.first }.take(64).toMutableList()
+        if (sorted.size < 2) return null
+        if (sorted.first().first > 0f) sorted.add(0, 0f to sorted.first().second)
+        if (sorted.last().first  < 1f) sorted.add(1f to sorted.last().second)
+        val result = FloatArray(sorted.size * 2)
+        sorted.forEachIndexed { idx, (x, y) -> result[idx*2] = x; result[idx*2+1] = y }
+        return result
+    }
+
+    // =========================================================================
+    // discoverAllCameras
+    // =========================================================================
 
     fun discoverAllCameras(context: Context): List<CameraCapabilities> {
         val mgr = context.getSystemService(Context.CAMERA_SERVICE) as CameraManager
         val cameras = mutableListOf<CameraCapabilities>()
-
         for (id in mgr.cameraIdList) {
             val ch = mgr.getCameraCharacteristics(id)
             val hwLevel = when (ch.get(CameraCharacteristics.INFO_SUPPORTED_HARDWARE_LEVEL)) {
@@ -333,32 +268,28 @@ class Camera2Controller {
             }
             val caps = ch.get(CameraCharacteristics.REQUEST_AVAILABLE_CAPABILITIES) ?: intArrayOf()
             fun hasCap(v: Int) = caps.contains(v)
-            val supManual  = hasCap(CameraCharacteristics.REQUEST_AVAILABLE_CAPABILITIES_MANUAL_SENSOR)
-            val supPost    = hasCap(CameraCharacteristics.REQUEST_AVAILABLE_CAPABILITIES_MANUAL_POST_PROCESSING)
-            val supRaw     = hasCap(CameraCharacteristics.REQUEST_AVAILABLE_CAPABILITIES_RAW)
-            val supBurst   = hasCap(CameraCharacteristics.REQUEST_AVAILABLE_CAPABILITIES_BURST_CAPTURE)
-            val supDepth   = hasCap(CameraCharacteristics.REQUEST_AVAILABLE_CAPABILITIES_DEPTH_OUTPUT)
-            val supMulti   = if (android.os.Build.VERSION.SDK_INT >= 28)
+            val supManual = hasCap(CameraCharacteristics.REQUEST_AVAILABLE_CAPABILITIES_MANUAL_SENSOR)
+            val supPost   = hasCap(CameraCharacteristics.REQUEST_AVAILABLE_CAPABILITIES_MANUAL_POST_PROCESSING)
+            val supRaw    = hasCap(CameraCharacteristics.REQUEST_AVAILABLE_CAPABILITIES_RAW)
+            val supBurst  = hasCap(CameraCharacteristics.REQUEST_AVAILABLE_CAPABILITIES_BURST_CAPTURE)
+            val supDepth  = hasCap(CameraCharacteristics.REQUEST_AVAILABLE_CAPABILITIES_DEPTH_OUTPUT)
+            val supMulti  = if (android.os.Build.VERSION.SDK_INT >= 28)
                 hasCap(CameraCharacteristics.REQUEST_AVAILABLE_CAPABILITIES_LOGICAL_MULTI_CAMERA) else false
             val isoRange = ch.get(CameraCharacteristics.SENSOR_INFO_SENSITIVITY_RANGE)?.let { listOf(it.lower, it.upper) }
             val expRange = ch.get(CameraCharacteristics.SENSOR_INFO_EXPOSURE_TIME_RANGE)?.let { listOf(it.lower, it.upper) }
             val evRange  = ch.get(CameraCharacteristics.CONTROL_AE_COMPENSATION_RANGE)?.let { listOf(it.lower, it.upper) }
             val focRange = ch.get(CameraCharacteristics.LENS_INFO_MINIMUM_FOCUS_DISTANCE)?.let { listOf(0f, it) }
             val zomRange = ch.get(CameraCharacteristics.SCALER_AVAILABLE_MAX_DIGITAL_ZOOM)?.let { listOf(1.0f, it) }
-            val fpsRanges = (ch.get(CameraCharacteristics.CONTROL_AE_AVAILABLE_TARGET_FPS_RANGES) ?: arrayOf())
-                .map { listOf(it.lower, it.upper) }
+            val fpsRanges = (ch.get(CameraCharacteristics.CONTROL_AE_AVAILABLE_TARGET_FPS_RANGES) ?: arrayOf()).map { listOf(it.lower, it.upper) }
             val streamCfg = ch.get(CameraCharacteristics.SCALER_STREAM_CONFIGURATION_MAP)
-            val resolutions = streamCfg
-                ?.getOutputSizes(android.graphics.ImageFormat.YUV_420_888)
-                ?.map { "${it.width}x${it.height}" }
-                ?.distinct()
-                ?.sortedBy { it.split("x").getOrNull(0)?.toIntOrNull() ?: 0 }
-                ?: emptyList()
+            val resolutions = streamCfg?.getOutputSizes(android.graphics.ImageFormat.YUV_420_888)
+                ?.map { "${it.width}x${it.height}" }?.distinct()
+                ?.sortedBy { it.split("x").getOrNull(0)?.toIntOrNull() ?: 0 } ?: emptyList()
             val afModes = ch.get(CameraCharacteristics.CONTROL_AF_AVAILABLE_MODES)?.map {
                 when (it) {
                     CameraCharacteristics.CONTROL_AF_MODE_OFF                -> "off"
-                    CameraCharacteristics.CONTROL_AF_MODE_MACRO              -> "macro"
                     CameraCharacteristics.CONTROL_AF_MODE_AUTO               -> "auto"
+                    CameraCharacteristics.CONTROL_AF_MODE_MACRO              -> "macro"
                     CameraCharacteristics.CONTROL_AF_MODE_CONTINUOUS_VIDEO   -> "continuous-video"
                     CameraCharacteristics.CONTROL_AF_MODE_CONTINUOUS_PICTURE -> "continuous-picture"
                     CameraCharacteristics.CONTROL_AF_MODE_EDOF               -> "edof"
@@ -390,7 +321,7 @@ class Camera2Controller {
                 }
             } ?: emptyList()
             val hasFlash = ch.get(CameraCharacteristics.FLASH_INFO_AVAILABLE) ?: false
-            val hasOis = ch.get(CameraCharacteristics.LENS_INFO_AVAILABLE_OPTICAL_STABILIZATION)
+            val hasOis   = ch.get(CameraCharacteristics.LENS_INFO_AVAILABLE_OPTICAL_STABILIZATION)
                 ?.contains(CameraCharacteristics.LENS_OPTICAL_STABILIZATION_MODE_ON) ?: false
             val focalLengths = ch.get(CameraCharacteristics.LENS_INFO_AVAILABLE_FOCAL_LENGTHS)?.toList() ?: emptyList()
             val apertures    = ch.get(CameraCharacteristics.LENS_INFO_AVAILABLE_APERTURES)?.toList() ?: emptyList()
@@ -410,42 +341,29 @@ class Camera2Controller {
                 facing == "FRONT"              -> "Frontal $id"
                 else                           -> "Cam $id"
             }
-            cameras.add(
-                CameraCapabilities(
-                    cameraId                     = id,
-                    hardwareLevel                = hwLevel,
-                    facing                       = facing,
-                    name                         = name,
-                    isDepth                      = isDepth,
-                    supportsManualSensor         = supManual,
-                    supportsManualPostProcessing = supPost,
-                    supportsRaw                  = supRaw,
-                    supportsBurstCapture         = supBurst,
-                    supportsDepthOutput          = supDepth,
-                    supportsLogicalMultiCamera   = supMulti,
-                    isoRange                     = isoRange,
-                    exposureTimeRange            = expRange,
-                    evRange                      = evRange,
-                    focusDistanceRange           = focRange,
-                    zoomRange                    = zomRange,
-                    fpsRanges                    = fpsRanges,
-                    availableResolutions         = resolutions,
-                    supportedAfModes             = afModes,
-                    supportedAeModes             = aeModes,
-                    supportedAwbModes            = awbModes,
-                    hasFlash                     = hasFlash,
-                    hasOis                       = hasOis,
-                    focalLengths                 = focalLengths,
-                    apertures                    = apertures
-                )
-            )
+            cameras.add(CameraCapabilities(
+                cameraId = id, hardwareLevel = hwLevel, facing = facing, name = name,
+                isDepth = isDepth, supportsManualSensor = supManual,
+                supportsManualPostProcessing = supPost, supportsRaw = supRaw,
+                supportsBurstCapture = supBurst, supportsDepthOutput = supDepth,
+                supportsLogicalMultiCamera = supMulti, isoRange = isoRange,
+                exposureTimeRange = expRange, evRange = evRange,
+                focusDistanceRange = focRange, zoomRange = zomRange,
+                fpsRanges = fpsRanges, availableResolutions = resolutions,
+                supportedAfModes = afModes, supportedAeModes = aeModes,
+                supportedAwbModes = awbModes, hasFlash = hasFlash, hasOis = hasOis,
+                focalLengths = focalLengths, apertures = apertures
+            ))
         }
         return cameras
     }
 
+    // =========================================================================
+    // updateSettings
+    // =========================================================================
+
     fun updateSettings(params: Map<String, Any>) {
-        val srv = server
-        if (srv == null) { Log.w(tag, "server nao inicializado"); return }
+        val srv = server ?: run { Log.w(tag, "server nao inicializado"); return }
 
         params["manualSensor"]?.let {
             manualSensor = it as Boolean
@@ -456,9 +374,8 @@ class Camera2Controller {
 
         params["iso"]?.let {
             isoValue = (it as Double).toInt()
-            if (manualSensor) {
-                applyManualSensor()
-            } else {
+            if (manualSensor) applyManualSensor()
+            else {
                 val minEv = srv.minExposure; val maxEv = srv.maxExposure
                 val ev = (((isoValue - 50f) / (3200f - 50f)) * (maxEv - minEv) + minEv)
                     .toInt().coerceIn(minEv, maxEv)
@@ -491,7 +408,7 @@ class Camera2Controller {
             val norm = (it as Double).toFloat().coerceIn(0f, 1f)
             if (norm == 0f) { autoFocus = true; focusDistance = 0f; srv.enableAutoFocus() }
             else { autoFocus = false; focusDistance = norm * 10f; srv.disableAutoFocus(); srv.setFocusDistance(focusDistance) }
-            Log.d(tag, "focus -> norm=$norm dist=$focusDistance")
+            Log.d(tag, "focus norm=$norm dist=$focusDistance")
         }
 
         params["focusmode"]?.let {
@@ -586,8 +503,10 @@ class Camera2Controller {
         params["camera"]?.let { value ->
             currentCameraId = value as String
             post {
+                // Ao trocar de camera a sessao e recriada, desativa callback
+                // para ser re-registrado na nova sessao
+                deactivateTonemapCallback()
                 srv.switchCamera(currentCameraId)
-                tonemapCallbackRegistered = false // força re-registro após troca de câmera
                 if (manualSensor) applyManualSensor()
                 else if (!autoFocus && focusDistance > 0f) srv.setFocusDistance(focusDistance)
                 Log.d(tag, "camera -> $currentCameraId")
@@ -607,7 +526,7 @@ class Camera2Controller {
                 val vOk = srv.prepareVideo(w, h, currentFps, br * 1024, 0)
                 val aOk = srv.prepareAudio(128 * 1024, 44100, true)
                 if (wasStreaming && vOk && aOk) srv.startStream()
-                Log.d(tag, "resolution -> ${w}x${h} br=${br}kbps vOk=$vOk")
+                Log.d(tag, "resolution -> ${w}x${h} vOk=$vOk")
             }
         }
 
@@ -619,8 +538,7 @@ class Camera2Controller {
                 "high_quality" -> CameraMetadata.EDGE_MODE_HIGH_QUALITY
                 else           -> CameraMetadata.EDGE_MODE_HIGH_QUALITY
             }
-            applyPostProcessing()
-            Log.d(tag, "edgeMode -> $it")
+            applyPostProcessing(); Log.d(tag, "edgeMode -> $it")
         }
 
         params["noiseReduction"]?.let {
@@ -631,8 +549,7 @@ class Camera2Controller {
                 "minimal"      -> CameraMetadata.NOISE_REDUCTION_MODE_MINIMAL
                 else           -> CameraMetadata.NOISE_REDUCTION_MODE_HIGH_QUALITY
             }
-            applyPostProcessing()
-            Log.d(tag, "noiseReduction -> $it")
+            applyPostProcessing(); Log.d(tag, "noiseReduction -> $it")
         }
 
         params["tonemap"]?.let {
@@ -643,8 +560,7 @@ class Camera2Controller {
                 "gamma_value"    -> CameraMetadata.TONEMAP_MODE_GAMMA_VALUE
                 else             -> CameraMetadata.TONEMAP_MODE_HIGH_QUALITY
             }
-            applyPostProcessing()
-            Log.d(tag, "tonemap -> $it")
+            applyPostProcessing(); Log.d(tag, "tonemap -> $it")
         }
 
         params["hotPixel"]?.let {
@@ -654,8 +570,7 @@ class Camera2Controller {
                 "high_quality" -> CameraMetadata.HOT_PIXEL_MODE_HIGH_QUALITY
                 else           -> CameraMetadata.HOT_PIXEL_MODE_HIGH_QUALITY
             }
-            applyPostProcessing()
-            Log.d(tag, "hotPixel -> $it")
+            applyPostProcessing(); Log.d(tag, "hotPixel -> $it")
         }
 
         params["tonemapCurve"]?.let {
@@ -674,35 +589,25 @@ class Camera2Controller {
 
         @Suppress("UNCHECKED_CAST")
         params["tonemapCurveCustom"]?.let { raw ->
-            val pts = raw as? List<*>
-            if (pts == null || pts.isEmpty()) {
-                Log.w(tag, "tonemapCurveCustom: payload vazio ou tipo errado")
-                return@let
-            }
-            val doubles = try {
-                pts.map { (it as Number).toDouble() }
-            } catch (e: ClassCastException) {
-                Log.w(tag, "tonemapCurveCustom: cast Double falhou: ${e.message}")
-                return@let
-            }
-            val built = buildCustomCurve(doubles)
-            if (built != null) {
-                tonemapCurvePoints = built
-                customTonemapCurve = "custom"
-                tonemapMode = CameraMetadata.TONEMAP_MODE_CONTRAST_CURVE
-                applyPostProcessing()
-                Log.d(tag, "tonemapCurveCustom aplicado: ${built.size / 2} pontos")
-            }
+            val pts = raw as? List<*> ?: run { Log.w(tag, "tonemapCurveCustom: tipo errado"); return@let }
+            val doubles = try { pts.map { (it as Number).toDouble() } }
+            catch (e: ClassCastException) { Log.w(tag, "tonemapCurveCustom cast falhou"); return@let }
+            val built = buildCustomCurve(doubles) ?: return@let
+            tonemapCurvePoints = built
+            customTonemapCurve = "custom"
+            tonemapMode = CameraMetadata.TONEMAP_MODE_CONTRAST_CURVE
+            applyPostProcessing()
+            Log.d(tag, "tonemapCurveCustom: ${built.size / 2} pontos")
         }
     }
 
     private fun parseTimeParam(raw: Any, default: Long): Long = when (raw) {
         is String -> {
-            val parts = raw.split("/")
-            if (parts.size == 2) {
-                val num = parts[0].trim().toDoubleOrNull() ?: 1.0
-                val den = parts[1].trim().toDoubleOrNull() ?: 30.0
-                ((num / den) * 1_000_000_000.0).toLong()
+            val p = raw.split("/")
+            if (p.size == 2) {
+                val n = p[0].trim().toDoubleOrNull() ?: 1.0
+                val d = p[1].trim().toDoubleOrNull() ?: 30.0
+                ((n / d) * 1_000_000_000.0).toLong()
             } else default
         }
         is Double -> raw.toLong()
@@ -710,7 +615,5 @@ class Camera2Controller {
         else      -> default
     }
 
-    fun release() {
-        workerThread.quitSafely()
-    }
+    fun release() { workerThread.quitSafely() }
 }
