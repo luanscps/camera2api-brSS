@@ -49,7 +49,6 @@ class Camera2Controller {
     // Reflection helpers
     // -------------------------------------------------------------------------
 
-    /** Retorna o Camera2ApiManager privado que vive dentro do Camera2Base. */
     private fun getCam2Manager(): Camera2ApiManager? {
         return try {
             val field = Camera2Base::class.java.getDeclaredField("cameraManager")
@@ -61,14 +60,9 @@ class Camera2Controller {
         }
     }
 
-    /**
-     * Aplica um bloco de configuracoes no builderInputSurface e chama applyRequest.
-     * Usa reflection porque ambos sao privados na versao 2.6.1.
-     */
     private fun applyOnBuilder(block: (CaptureRequest.Builder) -> Unit): Boolean {
         val cam = getCam2Manager() ?: return false
         return try {
-            // pega o builderInputSurface privado
             val builderField = Camera2ApiManager::class.java.getDeclaredField("builderInputSurface")
             builderField.isAccessible = true
             val builder = builderField.get(cam) as? CaptureRequest.Builder
@@ -76,7 +70,6 @@ class Camera2Controller {
 
             block(builder)
 
-            // chama applyRequest(builder) privado
             val applyMethod = Camera2ApiManager::class.java.getDeclaredMethod("applyRequest", CaptureRequest.Builder::class.java)
             applyMethod.isAccessible = true
             applyMethod.invoke(cam, builder) as? Boolean ?: false
@@ -86,7 +79,6 @@ class Camera2Controller {
         }
     }
 
-    /** Liga modo cinema: desativa AE e injeta ISO/exposicao/frame duration. */
     private fun applyManualSensor() {
         val safeDuration = maxOf(frameDurationNs, exposureNs)
         val ok = applyOnBuilder { b ->
@@ -100,7 +92,6 @@ class Camera2Controller {
         Log.d(tag, "applyManualSensor ok=$ok ISO=$isoValue exp=${exposureNs}ns dur=${safeDuration}ns fpsMax=$fpsMax")
     }
 
-    /** Restaura AE automatico. */
     private fun applyAutoSensor() {
         val ok = applyOnBuilder { b ->
             b.set(CaptureRequest.CONTROL_MODE,    CameraMetadata.CONTROL_MODE_AUTO)
@@ -134,7 +125,6 @@ class Camera2Controller {
             val supRaw     = hasCap(CameraCharacteristics.REQUEST_AVAILABLE_CAPABILITIES_RAW)
             val supBurst   = hasCap(CameraCharacteristics.REQUEST_AVAILABLE_CAPABILITIES_BURST_CAPTURE)
             val supDepth   = hasCap(CameraCharacteristics.REQUEST_AVAILABLE_CAPABILITIES_DEPTH_OUTPUT)
-            // LOGICAL_MULTI_CAMERA requer API 28; minSdk=26 entao verifica em runtime
             val supMulti   = if (android.os.Build.VERSION.SDK_INT >= 28)
                 hasCap(CameraCharacteristics.REQUEST_AVAILABLE_CAPABILITIES_LOGICAL_MULTI_CAMERA) else false
 
@@ -194,8 +184,13 @@ class Camera2Controller {
             } ?: emptyList()
 
             val hasFlash = ch.get(CameraCharacteristics.FLASH_INFO_AVAILABLE) ?: false
-            val hasOIS   = ch.get(CameraCharacteristics.LENS_INFO_AVAILABLE_OPTICAL_STABILIZATION)
+
+            // CORRIGIDO: variavel local hasOis (nao hasOIS) para consistencia com o data class
+            // LENS_INFO_AVAILABLE_OPTICAL_STABILIZATION lista os modos suportados;
+            // se contem MODE_ON, o hardware tem OIS fisico
+            val hasOis = ch.get(CameraCharacteristics.LENS_INFO_AVAILABLE_OPTICAL_STABILIZATION)
                 ?.contains(CameraCharacteristics.LENS_OPTICAL_STABILIZATION_MODE_ON) ?: false
+
             val focalLengths = ch.get(CameraCharacteristics.LENS_INFO_AVAILABLE_FOCAL_LENGTHS)?.toList() ?: emptyList()
             val apertures    = ch.get(CameraCharacteristics.LENS_INFO_AVAILABLE_APERTURES)?.toList() ?: emptyList()
 
@@ -242,7 +237,7 @@ class Camera2Controller {
                     supportedAEModes             = aeModes,
                     supportedAWBModes            = awbModes,
                     hasFlash                     = hasFlash,
-                    hasOIS                       = hasOIS,
+                    hasOis                       = hasOis,   // corrigido: era hasOIS
                     focalLengths                 = focalLengths,
                     apertures                    = apertures
                 )
@@ -255,7 +250,6 @@ class Camera2Controller {
         val srv = server
         if (srv == null) { Log.w(tag, "server nao inicializado"); return }
 
-        // Toggle Sensor Manual
         params["manualSensor"]?.let {
             manualSensor = it as Boolean
             if (manualSensor) applyManualSensor()
@@ -263,7 +257,6 @@ class Camera2Controller {
             Log.d(tag, "manualSensor -> $manualSensor")
         }
 
-        // ISO real ou assistido
         params["iso"]?.let {
             isoValue = (it as Double).toInt()
             if (manualSensor) {
@@ -279,21 +272,18 @@ class Camera2Controller {
             Log.d(tag, "ISO -> $isoValue manual=$manualSensor")
         }
 
-        // Shutter Speed: "1/1000" ou nanosegundos como Double
         params["shutterSpeed"]?.let { raw ->
             exposureNs = parseTimeParam(raw, 33_333_333L)
             if (manualSensor) applyManualSensor()
             Log.d(tag, "shutterSpeed -> ${exposureNs}ns")
         }
 
-        // Frame Duration: "1/30" ou nanosegundos como Double
         params["frameDuration"]?.let { raw ->
             frameDurationNs = parseTimeParam(raw, 33_333_333L)
             if (manualSensor) applyManualSensor()
             Log.d(tag, "frameDuration -> ${frameDurationNs}ns")
         }
 
-        // Exposure EV (modo assistido)
         params["exposure"]?.let {
             if (!manualSensor) {
                 val ev = (it as Double).toInt().coerceIn(srv.minExposure, srv.maxExposure)
@@ -303,7 +293,6 @@ class Camera2Controller {
             }
         }
 
-        // Foco
         params["focus"]?.let {
             val norm = (it as Double).toFloat().coerceIn(0f, 1f)
             if (norm == 0f) {
@@ -332,7 +321,6 @@ class Camera2Controller {
             Log.d(tag, "afTrigger via enableAutoFocus")
         }
 
-        // White Balance
         params["whiteBalance"]?.let {
             whiteBalanceMode = it as String
             val mode = when (whiteBalanceMode) {
@@ -346,7 +334,6 @@ class Camera2Controller {
             Log.d(tag, "WB -> $whiteBalanceMode")
         }
 
-        // Zoom
         params["zoom"]?.let {
             val z = (it as Double).toFloat().coerceIn(0f, 1f)
             zoomLevel = z
@@ -355,14 +342,12 @@ class Camera2Controller {
             Log.d(tag, "zoom -> $z")
         }
 
-        // Lanterna
         params["lantern"]?.let {
             lanternEnabled = it as Boolean
             if (lanternEnabled) srv.enableLantern() else srv.disableLantern()
             Log.d(tag, "lantern -> $lanternEnabled")
         }
 
-        // OIS / EIS
         params["ois"]?.let {
             oisEnabled = it as Boolean
             if (oisEnabled) srv.enableOpticalVideoStabilization() else srv.disableOpticalVideoStabilization()
@@ -374,7 +359,6 @@ class Camera2Controller {
             Log.d(tag, "eis -> $eisEnabled")
         }
 
-        // AE / AWB Lock
         params["aeLock"]?.let {
             aeLocked = it as Boolean
             if (aeLocked) srv.disableAutoExposure() else srv.enableAutoExposure()
@@ -387,7 +371,6 @@ class Camera2Controller {
             Log.d(tag, "awbLock -> $awbLocked")
         }
 
-        // Flash Mode
         params["flashMode"]?.let {
             flashMode = it as String
             when (flashMode) {
@@ -397,14 +380,12 @@ class Camera2Controller {
             Log.d(tag, "flashMode -> $flashMode")
         }
 
-        // Bitrate
         params["bitrate"]?.let {
             currentBitrate = (it as Double).toInt()
             srv.setVideoBitrateOnFly(currentBitrate * 1024)
             Log.d(tag, "bitrate -> ${currentBitrate}kbps")
         }
 
-        // FPS
         params["fps"]?.let { value ->
             val fps = (value as Double).toInt().coerceIn(15, 30)
             currentFps = fps
@@ -419,7 +400,6 @@ class Camera2Controller {
             }
         }
 
-        // Camera
         params["camera"]?.let { value ->
             currentCameraId = value as String
             post {
@@ -430,7 +410,6 @@ class Camera2Controller {
             }
         }
 
-        // Resolution
         params["resolution"]?.let { value ->
             val (w, h, br) = when (value as String) {
                 "4k"    -> Triple(3840, 2160, 20000)
@@ -449,14 +428,6 @@ class Camera2Controller {
         }
     }
 
-    // -------------------------------------------------------------------------
-    // Helpers
-    // -------------------------------------------------------------------------
-
-    /**
-     * Converte parametro de tempo para nanosegundos.
-     * Aceita String no formato "1/N" (ex: "1/1000") ou Double/Long direto em ns.
-     */
     private fun parseTimeParam(raw: Any, default: Long): Long = when (raw) {
         is String -> {
             val parts = raw.split("/")
