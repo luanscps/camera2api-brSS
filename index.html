@@ -1,0 +1,976 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Camera2 RTSP Server | by Luan</title>
+    <meta name="description" content="Transforme seu Android em um servidor RTSP profissional com controle total via web. Camera2 API, ISO manual, 4 câmeras.">
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Roboto:wght@300;400;500;700;900&family=Roboto+Mono:wght@400;500;700&display=swap" rel="stylesheet">
+    <style>
+        :root {
+            --bg:      #f6f7fb;
+            --bg2:     #ffffff;
+            --bg3:     #eff2fb;
+            --border:  #e3e7f5;
+            --purple:  #7c3aed;
+            --cyan:    #06b6d4;
+            --pink:    #ec4899;
+            --text:    #0f172a;
+            --muted:   #475569;
+            --font-body: 'Roboto', sans-serif;
+            --font-mono: 'Roboto Mono', monospace;
+        }
+        * { margin:0; padding:0; box-sizing:border-box; }
+        body {
+            font-family: var(--font-body);
+            background-color: var(--bg);
+            color: var(--text);
+            line-height: 1.7;
+            overflow-x: hidden;
+        }
+        body::before {
+            content: '';
+            position: fixed;
+            inset: 0;
+            background-image:
+                linear-gradient(rgba(124,58,237,0.06) 1px, transparent 1px),
+                linear-gradient(90deg, rgba(124,58,237,0.06) 1px, transparent 1px);
+            background-size: 50px 50px;
+            pointer-events: none;
+            z-index: 0;
+        }
+        nav {
+            position: sticky;
+            top: 0;
+            z-index: 100;
+            background: rgba(246,247,251,0.88);
+            backdrop-filter: blur(20px);
+            border-bottom: 1px solid var(--border);
+            padding: 16px 48px;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+        .nav-logo {
+            font-family: var(--font-mono);
+            font-size: 1em;
+            font-weight: 600;
+            background: linear-gradient(90deg, var(--purple), var(--cyan));
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+            background-clip: text;
+        }
+        .nav-links { display: flex; gap: 30px; }
+        .nav-links a {
+            font-family: var(--font-body);
+            color: var(--muted);
+            text-decoration: none;
+            font-size: 0.88em;
+            font-weight: 500;
+            letter-spacing: 0.3px;
+            transition: color 0.2s;
+            position: relative;
+        }
+        .nav-links a::after {
+            content: '';
+            position: absolute;
+            bottom: -4px; left: 0; right: 0;
+            height: 1px;
+            background: var(--cyan);
+            transform: scaleX(0);
+            transition: transform 0.3s;
+        }
+        .nav-links a:hover { color: var(--cyan); }
+        .nav-links a:hover::after { transform: scaleX(1); }
+        .hero {
+            position: relative;
+            z-index: 1;
+            max-width: 1100px;
+            margin: 0 auto;
+            padding: 100px 48px 80px;
+            display: grid;
+            grid-template-columns: 1fr auto;
+            gap: 60px;
+            align-items: center;
+        }
+        .hero-tag {
+            display: inline-block;
+            padding: 5px 14px;
+            border: 1px solid var(--purple);
+            border-radius: 4px;
+            font-family: var(--font-mono);
+            font-size: 0.72em;
+            color: var(--purple);
+            letter-spacing: 1px;
+            margin-bottom: 20px;
+            background: rgba(124,58,237,0.08);
+        }
+        .hero h1 {
+            font-family: var(--font-body);
+            font-size: 3.2em;
+            font-weight: 900;
+            line-height: 1.1;
+            margin-bottom: 8px;
+            letter-spacing: -0.5px;
+        }
+        .hero h1 .name {
+            background: linear-gradient(90deg, var(--purple), var(--cyan), var(--pink));
+            background-size: 200% auto;
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+            background-clip: text;
+            animation: gradMove 4s linear infinite;
+        }
+        @keyframes gradMove {
+            0%   { background-position: 0% center; }
+            100% { background-position: 200% center; }
+        }
+        .hero-subtitle {
+            font-family: var(--font-mono);
+            font-size: 0.9em;
+            color: var(--muted);
+            margin-bottom: 32px;
+        }
+        .hero-subtitle .cursor {
+            display: inline-block;
+            width: 2px; height: 1em;
+            background: var(--cyan);
+            margin-left: 2px;
+            vertical-align: middle;
+            animation: blink 1s step-end infinite;
+        }
+        @keyframes blink { 50% { opacity: 0; } }
+        .hero-cta { display: flex; gap: 14px; flex-wrap: wrap; margin-bottom: 48px; }
+        .cta-btn {
+            font-family: var(--font-body);
+            padding: 12px 28px;
+            border-radius: 6px;
+            font-weight: 600;
+            font-size: 0.9em;
+            text-decoration: none;
+            transition: all 0.25s;
+        }
+        .cta-primary {
+            background: linear-gradient(135deg, var(--purple), var(--pink));
+            color: #fff;
+            box-shadow: 0 0 20px rgba(124,58,237,0.22);
+        }
+        .cta-primary:hover { box-shadow: 0 0 35px rgba(124,58,237,0.32); transform: translateY(-2px); }
+        .cta-outline {
+            border: 1px solid var(--cyan);
+            color: var(--cyan);
+            background: rgba(6,182,212,0.10);
+        }
+        .cta-outline:hover { background: rgba(6,182,212,0.16); box-shadow: 0 0 20px rgba(6,182,212,0.18); transform: translateY(-2px); }
+        .hero-stats { display: flex; gap: 40px; }
+        .hstat-num {
+            font-family: var(--font-mono);
+            font-size: 1.9em;
+            font-weight: 600;
+            color: var(--cyan);
+            text-shadow: 0 0 20px rgba(6,182,212,0.22);
+            display: block;
+        }
+        .hstat-lbl {
+            font-family: var(--font-body);
+            font-size: 0.72em;
+            font-weight: 500;
+            color: var(--muted);
+            text-transform: uppercase;
+            letter-spacing: 1px;
+        }
+        .hero-right { display: flex; justify-content: center; align-items: center; position: relative; }
+        .app-icon-wrap { position: relative; width: 200px; height: 200px; }
+        .app-icon-bg {
+            position: absolute; inset: 0;
+            border-radius: 36px;
+            background: linear-gradient(135deg, #0f172a, #1e293b);
+            display: flex; align-items: center; justify-content: center;
+            font-size: 5em;
+            z-index: 2;
+            box-shadow: 0 20px 60px rgba(15,23,42,0.25);
+        }
+        .app-icon-glow {
+            position: absolute; inset: -10px;
+            border-radius: 46px;
+            background: linear-gradient(135deg, var(--purple), var(--cyan));
+            z-index: 1; opacity: 0.18;
+            filter: blur(22px);
+            animation: pulse-glow 3s ease-in-out infinite;
+        }
+        @keyframes pulse-glow {
+            0%, 100% { opacity: 0.12; transform: scale(1); }
+            50%       { opacity: 0.24; transform: scale(1.05); }
+        }
+        .float-badge {
+            position: absolute;
+            background: var(--bg3);
+            border: 1px solid var(--border);
+            border-radius: 8px;
+            padding: 7px 13px;
+            font-family: var(--font-body);
+            font-size: 0.8em;
+            font-weight: 600;
+            white-space: nowrap;
+            z-index: 10;
+            animation: float 3s ease-in-out infinite;
+        }
+        .float-badge.b1 { top: -10px; right: -75px; border-color: rgba(124,58,237,0.35); color: var(--purple); animation-delay: 0s; }
+        .float-badge.b2 { bottom: 20px; right: -80px; border-color: rgba(6,182,212,0.40); color: var(--cyan); animation-delay: 1s; }
+        .float-badge.b3 { bottom: -10px; left: -70px; border-color: rgba(236,72,153,0.35); color: var(--pink); animation-delay: 2s; }
+        .float-badge.b4 { top: 40px; left: -80px; border-color: rgba(148,163,184,0.5); color: var(--muted); animation-delay: 1.5s; }
+        @keyframes float {
+            0%, 100% { transform: translateY(0); }
+            50%       { transform: translateY(-6px); }
+        }
+        .wrapper { max-width: 1100px; margin: 0 auto; padding: 0 48px 100px; position: relative; z-index: 1; }
+        .sec { margin-bottom: 80px; }
+        .sec-header { display: flex; align-items: center; gap: 14px; margin-bottom: 36px; }
+        .sec-num { font-family: var(--font-mono); font-size: 0.85em; color: var(--cyan); opacity: 0.9; }
+        .sec-title {
+            font-family: var(--font-body);
+            font-size: 1.65em;
+            font-weight: 700;
+            letter-spacing: -0.3px;
+        }
+        .sec-title span {
+            background: linear-gradient(90deg, var(--purple), var(--cyan));
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+            background-clip: text;
+        }
+        .sec-line { flex: 1; height: 1px; background: linear-gradient(90deg, var(--border), transparent); }
+        .about-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; }
+        .acard {
+            background: var(--bg2);
+            border: 1px solid var(--border);
+            border-radius: 14px;
+            padding: 28px;
+            position: relative;
+            overflow: hidden;
+            transition: border-color 0.3s, transform 0.3s;
+        }
+        .acard::before {
+            content: '';
+            position: absolute;
+            top: 0; left: 0; right: 0;
+            height: 2px;
+        }
+        .acard.c1::before { background: linear-gradient(90deg, var(--purple), transparent); }
+        .acard.c2::before { background: linear-gradient(90deg, var(--cyan), transparent); }
+        .acard.c3::before { background: linear-gradient(90deg, var(--pink), transparent); }
+        .acard.c4::before { background: linear-gradient(90deg, var(--purple), transparent); }
+        .acard.c5::before { background: linear-gradient(90deg, var(--pink), transparent); }
+        .acard.c6::before { background: linear-gradient(90deg, var(--cyan), transparent); }
+        .acard.full { grid-column: 1 / -1; }
+        .acard:hover { transform: translateY(-3px); border-color: #cfd6ee; }
+        .acard-icon { font-size: 1.6em; margin-bottom: 12px; }
+        .acard h4 {
+            font-family: var(--font-body);
+            font-size: 0.7em;
+            text-transform: uppercase;
+            letter-spacing: 2px;
+            font-weight: 600;
+            color: var(--muted);
+            margin-bottom: 10px;
+        }
+        .acard p {
+            font-family: var(--font-body);
+            font-size: 0.95em;
+            font-weight: 400;
+            color: #334155;
+            line-height: 1.85;
+        }
+        .acard p strong { color: var(--text); font-weight: 700; }
+        /* FUNCTION CARDS */
+        .func-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(320px, 1fr)); gap: 18px; }
+        .func-card {
+            background: var(--bg2);
+            border: 1px solid var(--border);
+            border-radius: 14px;
+            padding: 26px;
+            transition: all 0.3s;
+            position: relative; overflow: hidden;
+        }
+        .func-card::before {
+            content: '';
+            position: absolute;
+            top: 0; left: 0; right: 0;
+            height: 2px;
+        }
+        .func-card.fc1::before { background: linear-gradient(90deg, var(--purple), transparent); }
+        .func-card.fc2::before { background: linear-gradient(90deg, var(--cyan), transparent); }
+        .func-card.fc3::before { background: linear-gradient(90deg, var(--pink), transparent); }
+        .func-card.fc4::before { background: linear-gradient(90deg, #10b981, transparent); }
+        .func-card.fc5::before { background: linear-gradient(90deg, #f59e0b, transparent); }
+        .func-card.fc6::before { background: linear-gradient(90deg, var(--purple), transparent); }
+        .func-card:hover { border-color: rgba(124,58,237,0.35); transform: translateY(-4px); box-shadow: 0 12px 35px rgba(15,23,42,0.09); }
+        .func-card-head { display: flex; align-items: center; gap: 12px; margin-bottom: 14px; }
+        .func-icon { font-size: 1.8em; }
+        .func-name {
+            font-family: var(--font-mono);
+            font-size: 0.85em;
+            font-weight: 700;
+            color: var(--purple);
+            background: rgba(124,58,237,0.09);
+            padding: 3px 10px;
+            border-radius: 5px;
+            border: 1px solid rgba(124,58,237,0.2);
+        }
+        .func-title { font-family: var(--font-body); font-size: 1em; font-weight: 700; margin-bottom: 8px; }
+        .func-desc { font-family: var(--font-body); font-size: 0.88em; color: var(--muted); line-height: 1.75; }
+        .func-tags { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 14px; }
+        .ftag {
+            font-family: var(--font-mono);
+            padding: 3px 10px;
+            background: rgba(6,182,212,0.10);
+            border: 1px solid rgba(6,182,212,0.30);
+            border-radius: 4px;
+            font-size: 0.74em;
+            color: #0e7490;
+        }
+        /* ARCH */
+        .arch-box {
+            background: var(--bg2);
+            border: 1px solid var(--border);
+            border-radius: 14px;
+            padding: 36px;
+        }
+        .arch-flow {
+            display: grid;
+            grid-template-columns: repeat(3, 1fr);
+            gap: 20px;
+            align-items: center;
+            margin-bottom: 32px;
+        }
+        .arch-node {
+            background: var(--bg3);
+            border: 1px solid var(--border);
+            border-radius: 12px;
+            padding: 20px;
+            text-align: center;
+            transition: border-color 0.3s;
+        }
+        .arch-node:hover { border-color: rgba(124,58,237,0.4); }
+        .arch-node-icon { font-size: 2em; margin-bottom: 8px; }
+        .arch-node-title { font-family: var(--font-body); font-size: 0.88em; font-weight: 700; margin-bottom: 4px; }
+        .arch-node-sub { font-family: var(--font-mono); font-size: 0.74em; color: var(--muted); }
+        .arch-arrow {
+            text-align: center;
+            font-size: 1.8em;
+            color: var(--cyan);
+            opacity: 0.7;
+        }
+        .arch-params { display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 12px; margin-top: 24px; }
+        .param-row {
+            background: var(--bg3);
+            border-radius: 8px;
+            padding: 12px 16px;
+            display: flex; justify-content: space-between; align-items: center;
+            border: 1px solid var(--border);
+        }
+        .param-key { font-family: var(--font-mono); font-size: 0.78em; color: var(--muted); }
+        .param-val { font-family: var(--font-mono); font-size: 0.82em; font-weight: 700; color: var(--cyan); }
+        /* CAMERAS */
+        .cam-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(230px, 1fr)); gap: 16px; }
+        .cam-card {
+            background: var(--bg2);
+            border: 1px solid var(--border);
+            border-radius: 14px;
+            padding: 24px;
+            transition: all 0.3s;
+        }
+        .cam-card:hover { border-color: rgba(124,58,237,0.35); transform: translateY(-3px); }
+        .cam-card-head { display: flex; align-items: center; gap: 10px; margin-bottom: 14px; }
+        .cam-emoji { font-size: 1.6em; }
+        .cam-name { font-family: var(--font-body); font-size: 0.95em; font-weight: 700; }
+        .cam-badge {
+            font-family: var(--font-mono);
+            font-size: 0.7em;
+            padding: 2px 8px;
+            border-radius: 4px;
+            font-weight: 600;
+        }
+        .badge-full { background: rgba(16,185,129,0.12); color: #059669; border: 1px solid rgba(16,185,129,0.3); }
+        .badge-limited { background: rgba(245,158,11,0.12); color: #d97706; border: 1px solid rgba(245,158,11,0.3); }
+        .cam-features { list-style: none; }
+        .cam-features li { font-family: var(--font-body); font-size: 0.85em; color: var(--muted); padding: 4px 0; border-bottom: 1px solid var(--border); display: flex; align-items: center; gap: 6px; }
+        .cam-features li:last-child { border-bottom: none; }
+        /* SKILLS */
+        .skills-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(230px, 1fr)); gap: 16px; }
+        .skill-box {
+            background: var(--bg2);
+            border: 1px solid var(--border);
+            border-radius: 14px;
+            padding: 22px;
+            transition: border-color 0.3s;
+        }
+        .skill-box:hover { border-color: #cfd6ee; }
+        .skill-box h4 {
+            font-family: var(--font-body);
+            font-size: 0.75em;
+            text-transform: uppercase;
+            letter-spacing: 2px;
+            font-weight: 700;
+            margin-bottom: 16px;
+            padding-bottom: 12px;
+            border-bottom: 1px solid var(--border);
+            color: var(--purple);
+        }
+        .skill-tags { display: flex; flex-wrap: wrap; gap: 8px; }
+        .stag {
+            font-family: var(--font-body);
+            padding: 5px 12px;
+            background: var(--bg3);
+            border: 1px solid var(--border);
+            border-radius: 5px;
+            font-size: 0.83em;
+            font-weight: 500;
+            color: #334155;
+            transition: all 0.2s;
+            cursor: default;
+        }
+        .stag:hover { border-color: rgba(124,58,237,0.45); color: var(--purple); background: rgba(124,58,237,0.08); }
+        /* PRIVACY */
+        .privacy-wrap {
+            background: var(--bg2);
+            border: 1px solid var(--border);
+            border-radius: 16px;
+            padding: 50px;
+            position: relative;
+            overflow: hidden;
+        }
+        .privacy-wrap::before {
+            content: '';
+            position: absolute;
+            top: -80px; left: 50%;
+            transform: translateX(-50%);
+            width: 300px; height: 300px;
+            background: radial-gradient(circle, rgba(124,58,237,0.08) 0%, transparent 70%);
+            pointer-events: none;
+        }
+        .privacy-section { margin-bottom: 32px; }
+        .privacy-section h3 {
+            font-family: var(--font-body);
+            font-size: 1em;
+            font-weight: 700;
+            color: var(--purple);
+            margin-bottom: 10px;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+        .privacy-section p, .privacy-section li {
+            font-family: var(--font-body);
+            font-size: 0.93em;
+            color: #334155;
+            line-height: 1.9;
+        }
+        .privacy-section ul { list-style: none; padding: 0; }
+        .privacy-section ul li { padding: 3px 0; }
+        .privacy-section ul li::before { content: '▸ '; color: var(--cyan); font-size: 0.9em; }
+        .privacy-title {
+            font-family: var(--font-body);
+            font-size: 1.6em;
+            font-weight: 800;
+            margin-bottom: 6px;
+        }
+        .privacy-date {
+            font-family: var(--font-mono);
+            font-size: 0.8em;
+            color: var(--muted);
+            margin-bottom: 32px;
+        }
+        .privacy-divider { height: 1px; background: var(--border); margin: 28px 0; }
+        /* CONTACT */
+        .contact-wrap {
+            background: var(--bg2);
+            border: 1px solid var(--border);
+            border-radius: 16px;
+            padding: 50px;
+            text-align: center;
+            position: relative;
+            overflow: hidden;
+        }
+        .contact-wrap::before {
+            content: '';
+            position: absolute;
+            top: -80px; left: 50%;
+            transform: translateX(-50%);
+            width: 300px; height: 300px;
+            background: radial-gradient(circle, rgba(124,58,237,0.12) 0%, transparent 70%);
+            pointer-events: none;
+        }
+        .contact-wrap h3 { font-family: var(--font-body); font-size: 1.6em; font-weight: 800; margin-bottom: 12px; }
+        .contact-wrap p { font-family: var(--font-body); font-weight: 400; color: var(--muted); margin-bottom: 32px; font-size: 1em; }
+        .contact-btns { display: flex; justify-content: center; gap: 16px; flex-wrap: wrap; }
+        .cbtn {
+            font-family: var(--font-body);
+            display: inline-flex;
+            align-items: center;
+            gap: 9px;
+            padding: 13px 30px;
+            border-radius: 8px;
+            font-weight: 700;
+            font-size: 0.92em;
+            text-decoration: none;
+            transition: all 0.25s;
+        }
+        .cbtn-purple { background: linear-gradient(135deg, var(--purple), var(--pink)); color: #fff; box-shadow: 0 0 20px rgba(124,58,237,0.22); }
+        .cbtn-purple:hover { box-shadow: 0 0 35px rgba(124,58,237,0.32); transform: translateY(-2px); }
+        .cbtn-ghost { border: 1px solid var(--border); color: var(--muted); background: transparent; }
+        .cbtn-ghost:hover { border-color: rgba(6,182,212,0.55); color: #0e7490; transform: translateY(-2px); }
+        footer {
+            border-top: 1px solid var(--border);
+            padding: 28px 48px;
+            text-align: center;
+            color: var(--muted);
+            font-family: var(--font-mono);
+            font-size: 0.8em;
+            position: relative; z-index: 1;
+        }
+        footer span.p { color: var(--purple); }
+        footer span.c { color: var(--cyan); }
+        @media (max-width: 768px) {
+            nav { padding: 14px 20px; }
+            .nav-links { gap: 16px; }
+            .hero { grid-template-columns: 1fr; padding: 60px 20px 40px; gap: 40px; }
+            .hero h1 { font-size: 2.4em; }
+            .hero-right { order: -1; }
+            .float-badge { display: none; }
+            .wrapper { padding: 0 20px 60px; }
+            .about-grid { grid-template-columns: 1fr; }
+            .acard.full { grid-column: auto; }
+            .hero-stats { gap: 24px; }
+            .arch-flow { grid-template-columns: 1fr; }
+            .arch-arrow { transform: rotate(90deg); }
+            .privacy-wrap, .contact-wrap { padding: 28px; }
+        }
+    </style>
+</head>
+<body>
+
+<nav>
+    <span class="nav-logo">&gt; camera2.rtsp_</span>
+    <div class="nav-links">
+        <a href="#sobre">Sobre</a>
+        <a href="#funcoes">Funções</a>
+        <a href="#cameras">Câmeras</a>
+        <a href="#privacidade">Privacidade</a>
+        <a href="#contato">Contato</a>
+    </div>
+</nav>
+
+<div class="hero">
+    <div class="hero-left">
+        <span class="hero-tag">&#9679; Android App · Camera2 API · v2.1</span>
+        <h1>Camera2<br><span class="name">RTSP Server</span></h1>
+        <p class="hero-subtitle">Servidor RTSP profissional para Android<br>Controle total via painel web<span class="cursor"></span></p>
+        <div class="hero-cta">
+            <a href="https://github.com/luanscps/camera2api-brSS/tree/v2" target="_blank" class="cta-btn cta-primary">Ver no GitHub</a>
+            <a href="#privacidade" class="cta-btn cta-outline">Política de Privacidade</a>
+        </div>
+        <div class="hero-stats">
+            <div><span class="hstat-num">4</span><span class="hstat-lbl">Câmeras</span></div>
+            <div><span class="hstat-num">30</span><span class="hstat-lbl">FPS</span></div>
+            <div><span class="hstat-num">8554</span><span class="hstat-lbl">Porta RTSP</span></div>
+        </div>
+    </div>
+    <div class="hero-right">
+        <div class="app-icon-wrap">
+            <div class="app-icon-glow"></div>
+            <div class="app-icon-bg">📡</div>
+            <div class="float-badge b1">📡 RTSP :8554</div>
+            <div class="float-badge b2">🌐 Web :8080</div>
+            <div class="float-badge b3">📷 Camera2 API</div>
+            <div class="float-badge b4">⚡ H.264</div>
+        </div>
+    </div>
+</div>
+
+<div class="wrapper">
+
+    <!-- SOBRE -->
+    <section class="sec" id="sobre">
+        <div class="sec-header">
+            <span class="sec-num">01.</span>
+            <h2 class="sec-title"><span>Sobre</span> o App</h2>
+            <div class="sec-line"></div>
+        </div>
+        <div class="about-grid">
+            <div class="acard c4 full">
+                <div class="acard-icon">🎯</div>
+                <h4>O Projeto</h4>
+                <p>Transforma um <strong>Samsung Galaxy Note10+</strong> (ou qualquer Android com Camera2 API) em um <strong>servidor RTSP profissional</strong>. Stream de vídeo H.264 a 720p/30fps com controle remoto completo via painel web moderno. Latência de <strong>200–500ms</strong> na rede local WiFi.</p>
+            </div>
+            <div class="acard c1">
+                <div class="acard-icon">📡</div>
+                <h4>Servidor RTSP</h4>
+                <p>Utiliza a biblioteca <strong>RootEncoder v2.4.5</strong> para transmissão de vídeo H.264 na porta <strong>8554</strong>. Compatível com <strong>VLC</strong>, <strong>OBS Studio</strong>, ffplay e qualquer player RTSP.</p>
+            </div>
+            <div class="acard c2">
+                <div class="acard-icon">🌐</div>
+                <h4>Painel Web</h4>
+                <p>Servidor HTTP via <strong>NanoHTTPD</strong> na porta <strong>8080</strong>. Interface responsiva com controles dinâmicos que se adaptam automaticamente às capabilities de cada câmera detectada.</p>
+            </div>
+            <div class="acard c3">
+                <div class="acard-icon">⚙️</div>
+                <h4>Controles Manuais</h4>
+                <p>Ajuste de <strong>ISO</strong> (50–3200), <strong>Exposição</strong> (1/8000s – 30s), <strong>Foco manual</strong>, <strong>Balanço de branco</strong> com múltiplos modos, zoom digital e flash/OIS quando disponíveis.</p>
+            </div>
+            <div class="acard c6">
+                <div class="acard-icon">🔧</div>
+                <h4>Stack Técnica</h4>
+                <p>Desenvolvido em <strong>Kotlin</strong> com <strong>Coroutines</strong> para operações assíncronas. Serialização JSON com <strong>Gson 2.10.1</strong>. Target <strong>Android 7.0+</strong> (API 24+).</p>
+            </div>
+        </div>
+    </section>
+
+    <!-- FUNÇÕES -->
+    <section class="sec" id="funcoes">
+        <div class="sec-header">
+            <span class="sec-num">02.</span>
+            <h2 class="sec-title"><span>Funções</span> Principais</h2>
+            <div class="sec-line"></div>
+        </div>
+        <div class="func-grid">
+            <div class="func-card fc1">
+                <div class="func-card-head">
+                    <span class="func-icon">🔍</span>
+                    <span class="func-name">discoverAllCameras()</span>
+                </div>
+                <div class="func-title">Detecção Dinâmica de Câmeras</div>
+                <div class="func-desc">Percorre todas as câmeras do dispositivo via <code>CameraManager</code>, extraindo <code>CameraCharacteristics</code>: hardware level (LEGACY / LIMITED / FULL / LEVEL_3), ranges de ISO, exposição, foco, zoom, modos AF/AWB, presença de flash e OIS.</div>
+                <div class="func-tags">
+                    <span class="ftag">Camera2Controller.kt</span>
+                    <span class="ftag">CameraCharacteristics</span>
+                    <span class="ftag">INFO_SUPPORTED_HARDWARE_LEVEL</span>
+                </div>
+            </div>
+            <div class="func-card fc2">
+                <div class="func-card-head">
+                    <span class="func-icon">📊</span>
+                    <span class="func-name">/api/capabilities</span>
+                </div>
+                <div class="func-title">Endpoint REST de Capabilities</div>
+                <div class="func-desc">Endpoint HTTP exposto pelo <code>WebControlServer</code> que serializa todas as capabilities detectadas em JSON e as retorna ao browser. Inclui header <code>Access-Control-Allow-Origin: *</code> para acesso cross-origin.</div>
+                <div class="func-tags">
+                    <span class="ftag">WebControlServer.kt</span>
+                    <span class="ftag">NanoHTTPD</span>
+                    <span class="ftag">Gson / JSON</span>
+                </div>
+            </div>
+            <div class="func-card fc3">
+                <div class="func-card-head">
+                    <span class="func-icon">🖥️</span>
+                    <span class="func-name">initCapabilities()</span>
+                </div>
+                <div class="func-title">Inicialização da Interface Web</div>
+                <div class="func-desc">Função JavaScript no painel web que consome <code>/api/capabilities</code> e constrói dinamicamente os botões de câmera, detecta resoluções disponíveis e inicializa a UI para a câmera 0. Roda ao carregar a página.</div>
+                <div class="func-tags">
+                    <span class="ftag">JavaScript</span>
+                    <span class="ftag">fetch API</span>
+                    <span class="ftag">DOM dinâmico</span>
+                </div>
+            </div>
+            <div class="func-card fc4">
+                <div class="func-card-head">
+                    <span class="func-icon">🔄</span>
+                    <span class="func-name">updateUIForCamera()</span>
+                </div>
+                <div class="func-title">Atualização Dinâmica da UI</div>
+                <div class="func-desc">Ao trocar de câmera, mostra/esconde cards de controle (ISO, zoom, foco, WB, flash, OIS) conforme as capabilities reais da lente selecionada. Reconstrói botões de modo de foco e white balance dinamicamente.</div>
+                <div class="func-tags">
+                    <span class="ftag">JavaScript</span>
+                    <span class="ftag">classList.toggle</span>
+                    <span class="ftag">DOM manipulation</span>
+                </div>
+            </div>
+            <div class="func-card fc5">
+                <div class="func-card-head">
+                    <span class="func-icon">📡</span>
+                    <span class="func-name">RtspServerPedro</span>
+                </div>
+                <div class="func-title">Transmissão RTSP H.264</div>
+                <div class="func-desc">Encapsula o <strong>RootEncoder</strong> para publicar o stream Camera2 na porta 8554. Parâmetros: resolução 1280×720, 30 FPS, bitrate 2500 kbps, codec H.264. URL de acesso: <code>rtsp://IP:8554/live</code>.</div>
+                <div class="func-tags">
+                    <span class="ftag">RtspServerPedro.kt</span>
+                    <span class="ftag">RootEncoder 2.4.5</span>
+                    <span class="ftag">H.264 / RTP</span>
+                </div>
+            </div>
+            <div class="func-card fc6">
+                <div class="func-card-head">
+                    <span class="func-icon">🗂️</span>
+                    <span class="func-name">CameraCapabilities</span>
+                </div>
+                <div class="func-title">Data Class de Capabilities</div>
+                <div class="func-desc">Data class Kotlin que centraliza todas as informações de uma câmera: ID, hardware level, facing, flags de suporte manual (sensor, post-processing, RAW, burst), ranges numéricos, resoluções, modos AF/AE/AWB, flash, OIS e focais.</div>
+                <div class="func-tags">
+                    <span class="ftag">CameraCapabilities.kt</span>
+                    <span class="ftag">data class</span>
+                    <span class="ftag">Kotlin</span>
+                </div>
+            </div>
+        </div>
+    </section>
+
+    <!-- ARQUITETURA -->
+    <section class="sec" id="arquitetura">
+        <div class="sec-header">
+            <span class="sec-num">03.</span>
+            <h2 class="sec-title"><span>Arquitetura</span> do Sistema</h2>
+            <div class="sec-line"></div>
+        </div>
+        <div class="arch-box">
+            <div class="arch-flow">
+                <div class="arch-node">
+                    <div class="arch-node-icon">📱</div>
+                    <div class="arch-node-title">Android App</div>
+                    <div class="arch-node-sub">Camera2 API Controller<br>Kotlin Coroutines</div>
+                </div>
+                <div class="arch-arrow">→</div>
+                <div class="arch-node">
+                    <div class="arch-node-icon">🖥️</div>
+                    <div class="arch-node-title">Dois Servidores</div>
+                    <div class="arch-node-sub">RTSP :8554 (RootEncoder)<br>HTTP :8080 (NanoHTTPD)</div>
+                </div>
+                <div class="arch-arrow">→</div>
+                <div class="arch-node">
+                    <div class="arch-node-icon">💻</div>
+                    <div class="arch-node-title">Clientes na Rede</div>
+                    <div class="arch-node-sub">VLC / OBS (stream)<br>Chrome / Edge (controle)</div>
+                </div>
+            </div>
+            <div class="arch-params">
+                <div class="param-row"><span class="param-key">Resolução</span><span class="param-val">1280 × 720</span></div>
+                <div class="param-row"><span class="param-key">Frame Rate</span><span class="param-val">30 FPS</span></div>
+                <div class="param-row"><span class="param-key">Bitrate</span><span class="param-val">2500 kbps</span></div>
+                <div class="param-row"><span class="param-key">Codec</span><span class="param-val">H.264</span></div>
+                <div class="param-row"><span class="param-key">Latência</span><span class="param-val">200–500ms</span></div>
+                <div class="param-row"><span class="param-key">Protocolo</span><span class="param-val">RTSP / RTP</span></div>
+                <div class="param-row"><span class="param-key">API Android</span><span class="param-val">24+ (7.0+)</span></div>
+                <div class="param-row"><span class="param-key">Porta HTTP</span><span class="param-val">:8080</span></div>
+            </div>
+        </div>
+    </section>
+
+    <!-- CÂMERAS -->
+    <section class="sec" id="cameras">
+        <div class="sec-header">
+            <span class="sec-num">04.</span>
+            <h2 class="sec-title"><span>Suporte</span> de Câmeras</h2>
+            <div class="sec-line"></div>
+        </div>
+        <div class="cam-grid">
+            <div class="cam-card">
+                <div class="cam-card-head">
+                    <span class="cam-emoji">📷</span>
+                    <div>
+                        <div class="cam-name">Wide</div>
+                        <span class="cam-badge badge-full">FULL</span>
+                    </div>
+                </div>
+                <ul class="cam-features">
+                    <li>✅ Zoom 1× – 8×</li>
+                    <li>✅ Foco manual (0–10D)</li>
+                    <li>✅ ISO 50 – 3200</li>
+                    <li>✅ EV −8 a +8</li>
+                    <li>✅ White Balance completo</li>
+                    <li>✅ Flash / Lanterna</li>
+                    <li>✅ OIS</li>
+                </ul>
+            </div>
+            <div class="cam-card">
+                <div class="cam-card-head">
+                    <span class="cam-emoji">🌊</span>
+                    <div>
+                        <div class="cam-name">Ultra Wide</div>
+                        <span class="cam-badge badge-limited">LIMITED</span>
+                    </div>
+                </div>
+                <ul class="cam-features">
+                    <li>⚠️ Zoom 0.6× – 2×</li>
+                    <li>❌ Foco manual (fixo)</li>
+                    <li>⚠️ ISO limitado</li>
+                    <li>✅ EV disponível</li>
+                    <li>✅ White Balance</li>
+                    <li>❌ Flash</li>
+                    <li>❌ OIS</li>
+                </ul>
+            </div>
+            <div class="cam-card">
+                <div class="cam-card-head">
+                    <span class="cam-emoji">🔭</span>
+                    <div>
+                        <div class="cam-name">Telephoto</div>
+                        <span class="cam-badge badge-full">FULL</span>
+                    </div>
+                </div>
+                <ul class="cam-features">
+                    <li>✅ Zoom 2× – 10×</li>
+                    <li>✅ Foco manual</li>
+                    <li>✅ ISO manual</li>
+                    <li>✅ EV completo</li>
+                    <li>✅ White Balance</li>
+                    <li>❌ Flash (sem flash)</li>
+                    <li>✅ OIS</li>
+                </ul>
+            </div>
+            <div class="cam-card">
+                <div class="cam-card-head">
+                    <span class="cam-emoji">🤳</span>
+                    <div>
+                        <div class="cam-name">Frontal</div>
+                        <span class="cam-badge badge-limited">LIMITED</span>
+                    </div>
+                </div>
+                <ul class="cam-features">
+                    <li>❌ Zoom (lente fixa)</li>
+                    <li>❌ Foco manual (fixo)</li>
+                    <li>⚠️ ISO limitado</li>
+                    <li>✅ EV −4 a +4</li>
+                    <li>✅ White Balance</li>
+                    <li>❌ Flash</li>
+                    <li>❌ OIS</li>
+                </ul>
+            </div>
+        </div>
+    </section>
+
+    <!-- STACK -->
+    <section class="sec" id="stack">
+        <div class="sec-header">
+            <span class="sec-num">05.</span>
+            <h2 class="sec-title"><span>Tecnologias</span> Utilizadas</h2>
+            <div class="sec-line"></div>
+        </div>
+        <div class="skills-grid">
+            <div class="skill-box"><h4>📱 Android</h4><div class="skill-tags"><span class="stag">Kotlin</span><span class="stag">Camera2 API</span><span class="stag">Android 7.0+</span><span class="stag">Coroutines</span></div></div>
+            <div class="skill-box"><h4>📡 Streaming</h4><div class="skill-tags"><span class="stag">RootEncoder 2.4.5</span><span class="stag">RTSP</span><span class="stag">H.264</span><span class="stag">RTP</span></div></div>
+            <div class="skill-box"><h4>🌐 Servidor HTTP</h4><div class="skill-tags"><span class="stag">NanoHTTPD 2.3.1</span><span class="stag">REST API</span><span class="stag">JSON</span><span class="stag">Gson 2.10.1</span></div></div>
+            <div class="skill-box"><h4>🎨 Frontend Web</h4><div class="skill-tags"><span class="stag">HTML5</span><span class="stag">CSS3</span><span class="stag">JavaScript</span><span class="stag">fetch API</span></div></div>
+            <div class="skill-box"><h4>🔧 Build</h4><div class="skill-tags"><span class="stag">Gradle</span><span class="stag">Android Studio</span><span class="stag">AGP</span></div></div>
+            <div class="skill-box"><h4>🔐 Permissões</h4><div class="skill-tags"><span class="stag">CAMERA</span><span class="stag">RECORD_AUDIO</span><span class="stag">INTERNET</span><span class="stag">ACCESS_WIFI_STATE</span></div></div>
+        </div>
+    </section>
+
+    <!-- PRIVACIDADE -->
+    <section class="sec" id="privacidade">
+        <div class="sec-header">
+            <span class="sec-num">06.</span>
+            <h2 class="sec-title"><span>Política de</span> Privacidade</h2>
+            <div class="sec-line"></div>
+        </div>
+        <div class="privacy-wrap">
+            <div class="privacy-title">Política de Privacidade — Camera2 RTSP Server</div>
+            <div class="privacy-date">Última atualização: Março de 2026 &nbsp;|&nbsp; Versão 2.1</div>
+
+            <div class="privacy-section">
+                <h3>🎯 1. Introdução</h3>
+                <p>O aplicativo <strong>Camera2 RTSP Server</strong> (&ldquo;o App&rdquo;), desenvolvido por <strong>Luan Silva</strong> (&ldquo;nós&rdquo; ou &ldquo;desenvolvedor&rdquo;), foi criado para transformar dispositivos Android em servidores de streaming de vídeo RTSP para uso em redes locais. Esta Política de Privacidade descreve como o App lida com informações durante o seu uso.</p>
+            </div>
+            <div class="privacy-divider"></div>
+
+            <div class="privacy-section">
+                <h3>📦 2. Dados Coletados</h3>
+                <p>O App <strong>não coleta, armazena, transmite nem compartilha</strong> nenhum dado pessoal dos usuários com terceiros. Especificamente:</p>
+                <ul>
+                    <li><strong>Câmera:</strong> acessada exclusivamente para captura e transmissão local do stream de vídeo. Nenhuma imagem ou vídeo é gravado ou enviado a servidores externos.</li>
+                    <li><strong>Microfone:</strong> permissão declarada para compatibilidade futura com áudio AAC. O App atual não captura áudio.</li>
+                    <li><strong>Rede / Wi-Fi:</strong> utilizada somente para hospedar os servidores RTSP (porta 8554) e HTTP (porta 8080) na rede local do usuário. Nenhuma conexão é estabelecida com servidores externos.</li>
+                    <li><strong>Endereço IP:</strong> o IP local do dispositivo é exibido na tela do App para que o usuário possa conectar clientes na mesma rede. Não é transmitido para fora do dispositivo.</li>
+                    <li><strong>Dados de diagnóstico:</strong> o App não integra Firebase, Analytics, Crashlytics ou qualquer SDK de telemetria.</li>
+                </ul>
+            </div>
+            <div class="privacy-divider"></div>
+
+            <div class="privacy-section">
+                <h3>🔐 3. Permissões Utilizadas</h3>
+                <ul>
+                    <li><strong>android.permission.CAMERA</strong> — Necessária para acessar as câmeras do dispositivo e gerar o stream de vídeo.</li>
+                    <li><strong>android.permission.RECORD_AUDIO</strong> — Declarada para compatibilidade. Não utilizada ativamente na versão atual.</li>
+                    <li><strong>android.permission.INTERNET</strong> — Necessária para o App funcionar como servidor de rede local (RTSP + HTTP).</li>
+                    <li><strong>android.permission.ACCESS_NETWORK_STATE</strong> — Utilizada para detectar o estado da conexão de rede.</li>
+                    <li><strong>android.permission.ACCESS_WIFI_STATE</strong> — Utilizada para obter o endereço IP local do dispositivo na rede Wi-Fi.</li>
+                </ul>
+            </div>
+            <div class="privacy-divider"></div>
+
+            <div class="privacy-section">
+                <h3>🌐 4. Transmissão de Dados</h3>
+                <p>Todo o tráfego de dados é <strong>estritamente local</strong> (LAN/Wi-Fi). O stream de vídeo é transmitido diretamente do dispositivo Android para os clientes conectados na mesma rede, sem intermediários, proxies ou servidores em nuvem. O App <strong>não requer conexão com a internet</strong> para funcionar.</p>
+            </div>
+            <div class="privacy-divider"></div>
+
+            <div class="privacy-section">
+                <h3>👶 5. Uso por Menores</h3>
+                <p>O App não é direcionado a crianças menores de 13 anos. Não coletamos intencionalmente nenhum dado de crianças. Este App destina-se a desenvolvedores, entusiastas de tecnologia e profissionais que utilizam streaming de vídeo em ambientes controlados.</p>
+            </div>
+            <div class="privacy-divider"></div>
+
+            <div class="privacy-section">
+                <h3>🔗 5. Serviços de Terceiros</h3>
+                <p>O App utiliza as seguintes bibliotecas open-source, que são executadas <strong>inteiramente no dispositivo do usuário</strong> e não coletam dados:</p>
+                <ul>
+                    <li><strong>RootEncoder</strong> (Pedro SG94) — Licença Apache 2.0. Biblioteca de streaming RTSP/RTMP local.</li>
+                    <li><strong>NanoHTTPD</strong> — Licença BSD. Servidor HTTP embutido para o painel de controle local.</li>
+                    <li><strong>Gson</strong> (Google) — Licença Apache 2.0. Serialização de dados JSON local.</li>
+                </ul>
+            </div>
+            <div class="privacy-divider"></div>
+
+            <div class="privacy-section">
+                <h3>✏️ 7. Alterações desta Política</h3>
+                <p>Podemos atualizar esta Política de Privacidade periodicamente. As alterações serão publicadas nesta página com uma nova data de &ldquo;Última atualização&rdquo;. O uso continuado do App após alterações constitui aceitação da nova política.</p>
+            </div>
+            <div class="privacy-divider"></div>
+
+            <div class="privacy-section">
+                <h3>📧 8. Contato</h3>
+                <p>Dúvidas sobre esta política de privacidade? Entre em contato:</p>
+                <ul>
+                    <li><strong>Desenvolvedor:</strong> Luan Silva</li>
+                    <li><strong>E-mail:</strong> luanscps@gmail.com</li>
+                    <li><strong>GitHub:</strong> <a href="https://github.com/luanscps" target="_blank" style="color:var(--cyan)">github.com/luanscps</a></li>
+                </ul>
+            </div>
+        </div>
+    </section>
+
+    <!-- CONTATO -->
+    <section class="sec" id="contato">
+        <div class="sec-header">
+            <span class="sec-num">07.</span>
+            <h2 class="sec-title"><span>Contato</span> & Contribuição</h2>
+            <div class="sec-line"></div>
+        </div>
+        <div class="contact-wrap">
+            <h3>Contribua ou entre em contato 🚀</h3>
+            <p>Fork, issues e pull requests são bem-vindos. Dúvidas? Manda um e-mail.</p>
+            <div class="contact-btns">
+                <a href="https://github.com/luanscps/camera2api-brSS/tree/v2" target="_blank" class="cbtn cbtn-purple">
+                    <svg width="18" height="18" fill="currentColor" viewBox="0 0 24 24"><path d="M12 0c-6.626 0-12 5.373-12 12 0 5.302 3.438 9.8 8.207 11.387.599.111.793-.261.793-.577v-2.234c-3.338.726-4.033-1.416-4.033-1.416-.546-1.387-1.333-1.756-1.333-1.756-1.089-.745.083-.729.083-.729 1.205.084 1.839 1.237 1.839 1.237 1.07 1.834 2.807 1.304 3.492.997.107-.775.418-1.305.762-1.604-2.665-.305-5.467-1.334-5.467-5.931 0-1.311.469-2.381 1.236-3.221-.124-.303-.535-1.524.117-3.176 0 0 1.008-.322 3.301 1.23.957-.266 1.983-.399 3.003-.404 1.02.005 2.047.138 3.006.404 2.291-1.552 3.297-1.23 3.297-1.23.653 1.653.242 2.874.118 3.176.77.84 1.235 1.911 1.235 3.221 0 4.609-2.807 5.624-5.479 5.921.43.372.823 1.102.823 2.222v3.293c0 .319.192.694.801.576 4.765-1.589 8.199-6.086 8.199-11.386 0-6.627-5.373-12-12-12z"/></svg>
+                    Ver no GitHub
+                </a>
+                <a href="https://luanscps.github.io/" target="_blank" class="cbtn cbtn-ghost">
+                    🧑‍💻 Portfólio do Dev
+                </a>
+                <a href="mailto:luanscps@gmail.com" class="cbtn cbtn-ghost">
+                    <svg width="18" height="18" fill="currentColor" viewBox="0 0 24 24"><path d="M0 3v18h24v-18h-24zm6.623 7.929l-4.623 5.712v-9.458l4.623 3.746zm-4.141-5.929h19.035l-9.517 7.713-9.518-7.713zm5.694 7.188l3.824 3.099 3.83-3.104 5.612 6.817h-18.779l5.513-6.812zm9.208-1.264l4.616-3.741v9.348l-4.616-5.607z"/></svg>
+                    luanscps@gmail.com
+                </a>
+            </div>
+        </div>
+    </section>
+
+</div>
+
+<footer>
+    <p><span class="p">//</span> &copy; 2026 <span class="c">Camera2 RTSP Server</span> &mdash; by <a href="https://luanscps.github.io/" style="color:var(--cyan);text-decoration:none">Luan Silva</a> &mdash; Feito com <span class="p">♥</span> e Kotlin</p>
+</footer>
+
+</body>
+</html>
