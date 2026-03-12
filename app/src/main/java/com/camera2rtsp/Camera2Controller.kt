@@ -6,6 +6,7 @@ import android.hardware.camera2.CameraManager
 import android.hardware.camera2.CameraMetadata
 import android.hardware.camera2.CaptureRequest
 import android.hardware.camera2.CaptureResult
+import android.hardware.camera2.CameraCaptureSession
 import android.hardware.camera2.TotalCaptureResult
 import android.os.Handler
 import android.os.HandlerThread
@@ -57,6 +58,76 @@ class Camera2Controller {
     val lastHistogramG = IntArray(256)
     val lastHistogramB = IntArray(256)
     private var histogramReady = false
+
+    // ── Tonemap persistente: reaplica a cada frame via CaptureCallback ─────────
+    // O RootEncoder chama applyRequest() internamente a cada CaptureResult,
+    // sobrescrevendo nosso TONEMAP_MODE. O callback abaixo roda DEPOIS do
+    // applyRequest do encoder e regarante o tonemap frame a frame.
+    @Volatile private var tonemapCallbackRegistered = false
+
+    private val tonemapCaptureCallback = object : CameraCaptureSession.CaptureCallback() {
+        override fun onCaptureCompleted(
+            session: CameraCaptureSession,
+            request: CaptureRequest,
+            result: TotalCaptureResult
+        ) {
+            val usingCurve = (tonemapMode == CameraMetadata.TONEMAP_MODE_CONTRAST_CURVE)
+            if (!usingCurve) return
+            // Reaplica tonemap diretamente no builder sem passar pelo applyRequest do encoder
+            val cam = getCam2Manager() ?: return
+            try {
+                val builderField = Camera2ApiManager::class.java.getDeclaredField("builderInputSurface")
+                builderField.isAccessible = true
+                val builder = builderField.get(cam) as? CaptureRequest.Builder ?: return
+                builder.set(CaptureRequest.TONEMAP_MODE, CameraMetadata.TONEMAP_MODE_CONTRAST_CURVE)
+                val curve = android.hardware.camera2.params.TonemapCurve(
+                    tonemapCurvePoints, tonemapCurvePoints, tonemapCurvePoints
+                )
+                builder.set(CaptureRequest.TONEMAP_CURVE, curve)
+                // Chama applyRequest para persistir no repeating request
+                val applyMethod = Camera2ApiManager::class.java.getDeclaredMethod(
+                    "applyRequest", CaptureRequest.Builder::class.java
+                )
+                applyMethod.isAccessible = true
+                applyMethod.invoke(cam, builder)
+            } catch (_: Exception) { }
+        }
+    }
+
+    private fun ensureTonemapCallback() {
+        if (tonemapCallbackRegistered) return
+        val cam = getCam2Manager() ?: return
+        try {
+            // Tenta registrar o callback no Camera2ApiManager via reflection
+            // O campo pode ser "captureCallback" ou "videoCapture" dependendo da versão
+            val fields = Camera2ApiManager::class.java.declaredFields
+            val cbField = fields.firstOrNull { f ->
+                CameraCaptureSession.CaptureCallback::class.java.isAssignableFrom(f.type)
+            }
+            if (cbField != null) {
+                cbField.isAccessible = true
+                // Wrap: cria um callback composto que chama o original + o nosso
+                val original = cbField.get(cam) as? CameraCaptureSession.CaptureCallback
+                val composed = object : CameraCaptureSession.CaptureCallback() {
+                    override fun onCaptureCompleted(
+                        session: CameraCaptureSession,
+                        request: CaptureRequest,
+                        result: TotalCaptureResult
+                    ) {
+                        original?.onCaptureCompleted(session, request, result)
+                        tonemapCaptureCallback.onCaptureCompleted(session, request, result)
+                    }
+                }
+                cbField.set(cam, composed)
+                tonemapCallbackRegistered = true
+                Log.d(tag, "tonemapCaptureCallback registrado via reflection (field=${cbField.name})")
+            } else {
+                Log.w(tag, "nao encontrou CaptureCallback field no Camera2ApiManager — fallback para applyOnBuilder")
+            }
+        } catch (e: Exception) {
+            Log.w(tag, "ensureTonemapCallback falhou: ${e.message}")
+        }
+    }
 
     private val workerThread = HandlerThread("CameraWorker").also { it.start() }
     private val worker = Handler(workerThread.looper)
@@ -177,35 +248,18 @@ class Camera2Controller {
 
     // ── applyPostProcessing ───────────────────────────────────────────────────
     //
-    // REGRA CORRETA para Samsung Note10+ (e Camera2 em geral):
-    //
-    // TONEMAP_MODE_CONTRAST_CURVE funciona COM CONTROL_MODE=AUTO.
-    // O driver aplica a curva como LUT final sobre a saída do ISP,
-    // independentemente do estado do AE. NÃO é necessário nem correto
-    // desligar o AE para usar curvas de tonemap em modo sensor automático.
-    //
-    // Desligar CONTROL_MODE=OFF com isoValue/exposureNs padrão (100 / 33ms)
-    // congela a câmera em subexposição → imagem escura. Esse era o bug.
-    //
-    // Quando manualSensor=true: applyManualSensor() já setou CONTROL_MODE=OFF
-    // com ISO/shutter corretos. applyPostProcessing() apenas adiciona a curva
-    // por cima, sem tocar em CONTROL_MODE.
-    //
-    // Quando manualSensor=false: nunca tocamos em CONTROL_MODE aqui.
-    // O AE continua livre e a curva é aplicada sobre a imagem resultante.
+    // Aplica EDGE/NR/HOTPIXEL e tonemap no builder.
+    // Para curvas (CONTRAST_CURVE): também tenta registrar o CaptureCallback
+    // persistente para combater o reset por frame do encoder.
     private fun applyPostProcessing() {
         val usingCurve = (tonemapMode == CameraMetadata.TONEMAP_MODE_CONTRAST_CURVE)
 
         val ok = applyOnBuilder { b ->
-            // EDGE / NR / HOT PIXEL — independem do modo AE
             b.set(CaptureRequest.EDGE_MODE,            edgeMode)
             b.set(CaptureRequest.NOISE_REDUCTION_MODE, noiseReductionMode)
             b.set(CaptureRequest.HOT_PIXEL_MODE,       hotPixelMode)
 
             if (usingCurve) {
-                // Aplica a curva sem interferir no CONTROL_MODE.
-                // Funciona tanto com AE ativo (manualSensor=false)
-                // quanto com AE desligado (manualSensor=true).
                 b.set(CaptureRequest.TONEMAP_MODE, CameraMetadata.TONEMAP_MODE_CONTRAST_CURVE)
                 val curve = android.hardware.camera2.params.TonemapCurve(
                     tonemapCurvePoints, tonemapCurvePoints, tonemapCurvePoints
@@ -213,8 +267,6 @@ class Camera2Controller {
                 b.set(CaptureRequest.TONEMAP_CURVE, curve)
                 Log.d(tag, "applyPostProcessing: curva=$customTonemapCurve (${tonemapCurvePoints.size / 2} pts) manualSensor=$manualSensor")
             } else {
-                // Modo de tonemap gerenciado pelo ISP (FAST / HIGH_QUALITY / GAMMA)
-                // Restaura CONTROL_MODE=AUTO se não estiver em modo manual
                 if (!manualSensor) {
                     b.set(CaptureRequest.CONTROL_MODE,    CameraMetadata.CONTROL_MODE_AUTO)
                     b.set(CaptureRequest.CONTROL_AE_MODE, CameraMetadata.CONTROL_AE_MODE_ON)
@@ -222,7 +274,11 @@ class Camera2Controller {
                 b.set(CaptureRequest.TONEMAP_MODE, tonemapMode)
             }
         }
-        Log.d(tag, "applyPostProcessing ok=$ok edge=$edgeMode nr=$noiseReductionMode tone=$tonemapMode hot=$hotPixelMode curve=$customTonemapCurve usingCurve=$usingCurve")
+
+        // Registra callback persistente para manter a curva viva frame a frame
+        if (usingCurve) ensureTonemapCallback()
+
+        Log.d(tag, "applyPostProcessing ok=$ok edge=$edgeMode nr=$noiseReductionMode tone=$tonemapMode hot=$hotPixelMode curve=$customTonemapCurve usingCurve=$usingCurve cbRegistered=$tonemapCallbackRegistered")
     }
 
     private fun applyManualSensor() {
@@ -301,8 +357,8 @@ class Camera2Controller {
             val afModes = ch.get(CameraCharacteristics.CONTROL_AF_AVAILABLE_MODES)?.map {
                 when (it) {
                     CameraCharacteristics.CONTROL_AF_MODE_OFF                -> "off"
-                    CameraCharacteristics.CONTROL_AF_MODE_AUTO               -> "auto"
                     CameraCharacteristics.CONTROL_AF_MODE_MACRO              -> "macro"
+                    CameraCharacteristics.CONTROL_AF_MODE_AUTO               -> "auto"
                     CameraCharacteristics.CONTROL_AF_MODE_CONTINUOUS_VIDEO   -> "continuous-video"
                     CameraCharacteristics.CONTROL_AF_MODE_CONTINUOUS_PICTURE -> "continuous-picture"
                     CameraCharacteristics.CONTROL_AF_MODE_EDOF               -> "edof"
@@ -531,6 +587,7 @@ class Camera2Controller {
             currentCameraId = value as String
             post {
                 srv.switchCamera(currentCameraId)
+                tonemapCallbackRegistered = false // força re-registro após troca de câmera
                 if (manualSensor) applyManualSensor()
                 else if (!autoFocus && focusDistance > 0f) srv.setFocusDistance(focusDistance)
                 Log.d(tag, "camera -> $currentCameraId")
