@@ -82,10 +82,10 @@ class Camera2Controller {
     private fun applyManualSensor() {
         val safeDuration = maxOf(frameDurationNs, exposureNs)
         val ok = applyOnBuilder { b ->
-            b.set(CaptureRequest.CONTROL_MODE,         CameraMetadata.CONTROL_MODE_OFF)
-            b.set(CaptureRequest.CONTROL_AE_MODE,      CameraMetadata.CONTROL_AE_MODE_OFF)
-            b.set(CaptureRequest.SENSOR_SENSITIVITY,   isoValue)
-            b.set(CaptureRequest.SENSOR_EXPOSURE_TIME, exposureNs)
+            b.set(CaptureRequest.CONTROL_MODE,          CameraMetadata.CONTROL_MODE_OFF)
+            b.set(CaptureRequest.CONTROL_AE_MODE,       CameraMetadata.CONTROL_AE_MODE_OFF)
+            b.set(CaptureRequest.SENSOR_SENSITIVITY,    isoValue)
+            b.set(CaptureRequest.SENSOR_EXPOSURE_TIME,  exposureNs)
             b.set(CaptureRequest.SENSOR_FRAME_DURATION, safeDuration)
         }
         val fpsMax = if (safeDuration > 0) (1_000_000_000.0 / safeDuration).toInt() else 0
@@ -145,6 +145,8 @@ class Camera2Controller {
                 ?.sortedBy { it.split("x").getOrNull(0)?.toIntOrNull() ?: 0 }
                 ?: emptyList()
 
+            // afModes, aeModes, awbModes: variaveis locais com nome curto,
+            // referenciadas no construtor como supportedAfModes/supportedAeModes/supportedAwbModes
             val afModes = ch.get(CameraCharacteristics.CONTROL_AF_AVAILABLE_MODES)?.map {
                 when (it) {
                     CameraCharacteristics.CONTROL_AF_MODE_OFF                -> "off"
@@ -185,9 +187,7 @@ class Camera2Controller {
 
             val hasFlash = ch.get(CameraCharacteristics.FLASH_INFO_AVAILABLE) ?: false
 
-            // CORRIGIDO: variavel local hasOis (nao hasOIS) para consistencia com o data class
-            // LENS_INFO_AVAILABLE_OPTICAL_STABILIZATION lista os modos suportados;
-            // se contem MODE_ON, o hardware tem OIS fisico
+            // hasOis (nao hasOIS): Gson gera has_ois corretamente
             val hasOis = ch.get(CameraCharacteristics.LENS_INFO_AVAILABLE_OPTICAL_STABILIZATION)
                 ?.contains(CameraCharacteristics.LENS_OPTICAL_STABILIZATION_MODE_ON) ?: false
 
@@ -233,11 +233,11 @@ class Camera2Controller {
                     zoomRange                    = zomRange,
                     fpsRanges                    = fpsRanges,
                     availableResolutions         = resolutions,
-                    supportedAFModes             = afModes,
-                    supportedAEModes             = aeModes,
-                    supportedAWBModes            = awbModes,
+                    supportedAfModes             = afModes,   // corrigido: era supportedAFModes
+                    supportedAeModes             = aeModes,   // corrigido: era supportedAEModes
+                    supportedAwbModes            = awbModes,  // corrigido: era supportedAWBModes
                     hasFlash                     = hasFlash,
-                    hasOis                       = hasOis,   // corrigido: era hasOIS
+                    hasOis                       = hasOis,
                     focalLengths                 = focalLengths,
                     apertures                    = apertures
                 )
