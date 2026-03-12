@@ -39,9 +39,9 @@ class Camera2Controller {
     var currentBitrate   = 4000
     var currentFps       = 30
 
-    // ── Onda 3: pós-processamento ─────────────────────────────────────────────
-    // Nomes com apenas 1 maiúscula por palavra → Gson LOWER_CASE_WITH_UNDERSCORES
-    // gera: edge_mode, noise_reduction_mode, tonemap_mode, hot_pixel_mode ✅
+    // ── Onda 3: Post-processing state ─────────────────────────────────────────
+    // Nomes com apenas primeira letra maiúscula por palavra → Gson gera snake_case correto:
+    // edgeMode → edge_mode  |  noiseReductionMode → noise_reduction_mode  |  etc.
     var edgeMode           = CameraMetadata.EDGE_MODE_HIGH_QUALITY
     var noiseReductionMode = CameraMetadata.NOISE_REDUCTION_MODE_HIGH_QUALITY
     var tonemapMode        = CameraMetadata.TONEMAP_MODE_HIGH_QUALITY
@@ -87,13 +87,17 @@ class Camera2Controller {
         }
     }
 
-    // ── Onda 3: aplica os 4 controles de pós-processamento ───────────────────
+    // ── Onda 3: applyPostProcessing() ──────────────────────────────────────────
+    // Aplica EDGE, NR, TONEMAP, HOT_PIXEL sem tocar em AE/AF.
+    // Chamado isoladamente quando o usuário muda um controle de pós-processamento,
+    // e também dentro de applyManualSensor() para garantir persistência quando
+    // o Android reseta flags de qualidade ao mudar CONTROL_MODE.
     private fun applyPostProcessing() {
         val ok = applyOnBuilder { b ->
-            b.set(CaptureRequest.EDGE_MODE,            edgeMode)
-            b.set(CaptureRequest.NOISE_REDUCTION_MODE, noiseReductionMode)
-            b.set(CaptureRequest.TONEMAP_MODE,         tonemapMode)
-            b.set(CaptureRequest.HOT_PIXEL_MODE,       hotPixelMode)
+            b.set(CaptureRequest.EDGE_MODE,             edgeMode)
+            b.set(CaptureRequest.NOISE_REDUCTION_MODE,  noiseReductionMode)
+            b.set(CaptureRequest.TONEMAP_MODE,          tonemapMode)
+            b.set(CaptureRequest.HOT_PIXEL_MODE,        hotPixelMode)
         }
         Log.d(tag, "applyPostProcessing ok=$ok edge=$edgeMode nr=$noiseReductionMode tone=$tonemapMode hot=$hotPixelMode")
     }
@@ -109,7 +113,7 @@ class Camera2Controller {
         }
         val fpsMax = if (safeDuration > 0) (1_000_000_000.0 / safeDuration).toInt() else 0
         Log.d(tag, "applyManualSensor ok=$ok ISO=$isoValue exp=${exposureNs}ns dur=${safeDuration}ns fpsMax=$fpsMax")
-        // Garante que EDGE/NR/Tonemap/HotPixel persistem apos mudar CONTROL_MODE
+        // Onda 3: persistir flags de qualidade após mudança de CONTROL_MODE
         applyPostProcessing()
     }
 
@@ -445,20 +449,20 @@ class Camera2Controller {
             }
         }
 
-        // ── Onda 3: pós-processamento ─────────────────────────────────────────
+        // ── Onda 3: Post-processing params ────────────────────────────────────
         params["edgeMode"]?.let {
-            edgeMode = when ((it as String).lowercase()) {
+            edgeMode = when (it as String) {
                 "off"          -> CameraMetadata.EDGE_MODE_OFF
                 "fast"         -> CameraMetadata.EDGE_MODE_FAST
                 "high_quality" -> CameraMetadata.EDGE_MODE_HIGH_QUALITY
                 else           -> CameraMetadata.EDGE_MODE_HIGH_QUALITY
             }
             applyPostProcessing()
-            Log.d(tag, "edgeMode -> $edgeMode")
+            Log.d(tag, "edgeMode -> $it ($edgeMode)")
         }
 
         params["noiseReduction"]?.let {
-            noiseReductionMode = when ((it as String).lowercase()) {
+            noiseReductionMode = when (it as String) {
                 "off"          -> CameraMetadata.NOISE_REDUCTION_MODE_OFF
                 "fast"         -> CameraMetadata.NOISE_REDUCTION_MODE_FAST
                 "high_quality" -> CameraMetadata.NOISE_REDUCTION_MODE_HIGH_QUALITY
@@ -466,11 +470,11 @@ class Camera2Controller {
                 else           -> CameraMetadata.NOISE_REDUCTION_MODE_HIGH_QUALITY
             }
             applyPostProcessing()
-            Log.d(tag, "noiseReductionMode -> $noiseReductionMode")
+            Log.d(tag, "noiseReduction -> $it ($noiseReductionMode)")
         }
 
         params["tonemap"]?.let {
-            tonemapMode = when ((it as String).lowercase()) {
+            tonemapMode = when (it as String) {
                 "contrast_curve" -> CameraMetadata.TONEMAP_MODE_CONTRAST_CURVE
                 "fast"           -> CameraMetadata.TONEMAP_MODE_FAST
                 "high_quality"   -> CameraMetadata.TONEMAP_MODE_HIGH_QUALITY
@@ -478,18 +482,18 @@ class Camera2Controller {
                 else             -> CameraMetadata.TONEMAP_MODE_HIGH_QUALITY
             }
             applyPostProcessing()
-            Log.d(tag, "tonemapMode -> $tonemapMode")
+            Log.d(tag, "tonemap -> $it ($tonemapMode)")
         }
 
         params["hotPixel"]?.let {
-            hotPixelMode = when ((it as String).lowercase()) {
+            hotPixelMode = when (it as String) {
                 "off"          -> CameraMetadata.HOT_PIXEL_MODE_OFF
                 "fast"         -> CameraMetadata.HOT_PIXEL_MODE_FAST
                 "high_quality" -> CameraMetadata.HOT_PIXEL_MODE_HIGH_QUALITY
                 else           -> CameraMetadata.HOT_PIXEL_MODE_HIGH_QUALITY
             }
             applyPostProcessing()
-            Log.d(tag, "hotPixelMode -> $hotPixelMode")
+            Log.d(tag, "hotPixel -> $it ($hotPixelMode)")
         }
     }
 
