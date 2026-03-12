@@ -97,52 +97,34 @@ class Camera2Controller {
     }
 
     // ── Cinema: Tonemap Curve Builders ────────────────────────────────────────
-    //
-    // REGRA CRÍTICA da Camera2 API:
-    // Ao usar TONEMAP_MODE_CONTRAST_CURVE, o driver aplica a curva APÓS o
-    // pipeline ISP completo (AE + AWB). Se CONTROL_MODE=AUTO ainda estiver
-    // ativo, o ISP já processou a exposição e a curva é aplicada em cima,
-    // causando "double-darkening" em qualquer curva não-linear.
-    //
-    // Solução: applyPostProcessing() seta CONTROL_MODE=OFF + AE_MODE=OFF
-    // quando tonemapMode == CONTRAST_CURVE, e restaura AUTO ao sair.
-    // As curvas são normalizadas para que y(0.5) >= 0.5 (sem perda de brilho).
 
     private fun buildLinear(): FloatArray = floatArrayOf(
         0.0f, 0.0f,
         1.0f, 1.0f
     )
 
-    // S-Curve corrigida: lift mínimo 0.02 nas sombras, sem esmagar pretos
     private fun buildSCurve(): FloatArray {
         val points = mutableListOf<Float>()
         for (i in 0..16) {
             val x = i / 16f
-            // smoothstep clássico, mas com lift leve nas sombras para não perder detalhes
             val smooth = x * x * (3f - 2f * x)
-            // mistura 90% smoothstep + 10% linear = y(0.5)=0.5 preservado
             val y = (smooth * 0.90f + x * 0.10f).coerceIn(0f, 1f)
             points.add(x); points.add(y)
         }
         return points.toFloatArray()
     }
 
-    // Log normalizada: escala para que y(1.0)=1.0 e y(0.5)~=0.65 (log preserva altas luzes)
     private fun buildLogCurve(): FloatArray {
         val points = mutableListOf<Float>()
-        val scale = 1f / (kotlin.math.ln(1f + 9f * 1f) / kotlin.math.ln(10f)) // = 1.0 por construção
         for (i in 0..16) {
             val x = i / 16f
-            // log10(1 + 9x) vai de 0 a 1 — já normalizado
             val rawY = kotlin.math.ln(1f + 9f * x) / kotlin.math.ln(10f)
-            // Mistura 80% log + 20% linear para manter exposição geral
             val y = (rawY * 0.80f + x * 0.20f).coerceIn(0f, 1f)
             points.add(x); points.add(y)
         }
         return points.toFloatArray()
     }
 
-    // Cinematic: lift 0.04 (não 0.05), gain 0.96, mistura 85%/15% com linear
     private fun buildCinematicCurve(): FloatArray {
         val points = mutableListOf<Float>()
         for (i in 0..16) {
@@ -153,14 +135,12 @@ class Camera2Controller {
                 lift + x * (0.5f - lift) * 2f
             else
                 0.5f + (x - 0.5f) * (gain - 0.5f) * 2f
-            // mistura 85% cinematic + 15% linear => y(0.5) fica em ~0.51 (neutro)
             val y = (raw * 0.85f + x * 0.15f).coerceIn(0f, 1f)
             points.add(x); points.add(y)
         }
         return points.toFloatArray()
     }
 
-    // Valida pontos customizados do editor JS
     private fun buildCustomCurve(raw: List<Double>): FloatArray? {
         if (raw.size < 4 || raw.size % 2 != 0) {
             Log.w(tag, "tonemapCurveCustom: tamanho inválido ${raw.size}, ignorando")
@@ -180,7 +160,6 @@ class Camera2Controller {
             Log.w(tag, "tonemapCurveCustom: menos de 2 pontos após filtragem, ignorando")
             return null
         }
-        // Garantir cobertura total [0..1]: forçar primeiro ponto com in=0 e último com in=1
         val withExtremes = limited.toMutableList()
         if (withExtremes.first().first > 0f)
             withExtremes.add(0, Pair(0f, withExtremes.first().second))
@@ -196,48 +175,46 @@ class Camera2Controller {
         return result
     }
 
-    // ── FIX: applyPostProcessing com controle de CONTROL_MODE ─────────────────
+    // ── applyPostProcessing ───────────────────────────────────────────────────
     //
-    // Quando tonemapMode == CONTRAST_CURVE:
-    //   • Desliga AE (CONTROL_MODE=OFF, AE_MODE=OFF) para evitar double-darkening
-    //   • Se manualSensor já estiver ativo, os valores de ISO/shutter já estão certos
-    //   • Se sensor for AUTO, usa os últimos valores capturados pelo AE como ponto
-    //     de partida — a câmera mantém exposição estável por alguns frames
+    // REGRA CORRETA para Samsung Note10+ (e Camera2 em geral):
     //
-    // Quando tonemapMode != CONTRAST_CURVE:
-    //   • Restaura CONTROL_MODE=AUTO + AE_MODE=ON (a menos que manualSensor esteja ON)
+    // TONEMAP_MODE_CONTRAST_CURVE funciona COM CONTROL_MODE=AUTO.
+    // O driver aplica a curva como LUT final sobre a saída do ISP,
+    // independentemente do estado do AE. NÃO é necessário nem correto
+    // desligar o AE para usar curvas de tonemap em modo sensor automático.
+    //
+    // Desligar CONTROL_MODE=OFF com isoValue/exposureNs padrão (100 / 33ms)
+    // congela a câmera em subexposição → imagem escura. Esse era o bug.
+    //
+    // Quando manualSensor=true: applyManualSensor() já setou CONTROL_MODE=OFF
+    // com ISO/shutter corretos. applyPostProcessing() apenas adiciona a curva
+    // por cima, sem tocar em CONTROL_MODE.
+    //
+    // Quando manualSensor=false: nunca tocamos em CONTROL_MODE aqui.
+    // O AE continua livre e a curva é aplicada sobre a imagem resultante.
     private fun applyPostProcessing() {
         val usingCurve = (tonemapMode == CameraMetadata.TONEMAP_MODE_CONTRAST_CURVE)
 
         val ok = applyOnBuilder { b ->
-            // ── EDGE / NR / HOT PIXEL (não dependem de AE) ────────────────────
+            // EDGE / NR / HOT PIXEL — independem do modo AE
             b.set(CaptureRequest.EDGE_MODE,            edgeMode)
             b.set(CaptureRequest.NOISE_REDUCTION_MODE, noiseReductionMode)
             b.set(CaptureRequest.HOT_PIXEL_MODE,       hotPixelMode)
 
             if (usingCurve) {
-                // FIX: desligar AE para que a curva seja aplicada sobre
-                // valores RAW lineares, não sobre imagem já processada
-                if (!manualSensor) {
-                    // Sensor auto: travar AE momentaneamente com os valores
-                    // que o AE escolheu (CONTROL_MODE_OFF + AE_MODE_OFF).
-                    // Isso congela exposição mas elimina o double-darkening.
-                    b.set(CaptureRequest.CONTROL_MODE,    CameraMetadata.CONTROL_MODE_OFF)
-                    b.set(CaptureRequest.CONTROL_AE_MODE, CameraMetadata.CONTROL_AE_MODE_OFF)
-                    // Mantém ISO e shutter nos valores atuais do sensor
-                    b.set(CaptureRequest.SENSOR_SENSITIVITY,   isoValue)
-                    b.set(CaptureRequest.SENSOR_EXPOSURE_TIME, exposureNs)
-                    b.set(CaptureRequest.SENSOR_FRAME_DURATION, frameDurationNs)
-                }
-                // Aplica a curva
+                // Aplica a curva sem interferir no CONTROL_MODE.
+                // Funciona tanto com AE ativo (manualSensor=false)
+                // quanto com AE desligado (manualSensor=true).
                 b.set(CaptureRequest.TONEMAP_MODE, CameraMetadata.TONEMAP_MODE_CONTRAST_CURVE)
                 val curve = android.hardware.camera2.params.TonemapCurve(
                     tonemapCurvePoints, tonemapCurvePoints, tonemapCurvePoints
                 )
                 b.set(CaptureRequest.TONEMAP_CURVE, curve)
-                Log.d(tag, "applyPostProcessing: curva=$customTonemapCurve (${tonemapCurvePoints.size / 2} pts) AE desligado")
+                Log.d(tag, "applyPostProcessing: curva=$customTonemapCurve (${tonemapCurvePoints.size / 2} pts) manualSensor=$manualSensor")
             } else {
-                // FIX: restaurar CONTROL_MODE=AUTO quando não estiver usando curva
+                // Modo de tonemap gerenciado pelo ISP (FAST / HIGH_QUALITY / GAMMA)
+                // Restaura CONTROL_MODE=AUTO se não estiver em modo manual
                 if (!manualSensor) {
                     b.set(CaptureRequest.CONTROL_MODE,    CameraMetadata.CONTROL_MODE_AUTO)
                     b.set(CaptureRequest.CONTROL_AE_MODE, CameraMetadata.CONTROL_AE_MODE_ON)
