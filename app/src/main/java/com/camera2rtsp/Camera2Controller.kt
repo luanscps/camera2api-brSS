@@ -48,14 +48,13 @@ class Camera2Controller {
     var tonemapMode        = CameraMetadata.TONEMAP_MODE_HIGH_QUALITY
     var hotPixelMode       = CameraMetadata.HOT_PIXEL_MODE_HIGH_QUALITY
 
-    // ── Cinema Feature: Tonemap Curve Customization ───────────────────────────
+    // ── Cinema: Tonemap Curve Customization ───────────────────────────────────
     // Preset selecionado: "linear" | "s-curve" | "log" | "cinematic" | "custom"
     var customTonemapCurve = "s-curve"
-    // Pontos da curva atual (in, out) repetidos 3x para R/G/B quando MODE=CONTRAST_CURVE
+    // Pontos da curva atual (in, out) normalizados [0..1], aplicados como R=G=B
     private var tonemapCurvePoints: FloatArray = buildSCurve()
 
     // ── Cinema Feature: Live Histogram ─────────────────────────────────────────
-    // Arrays de 256 bins para R, G, B, atualizados a cada frame capturado
     val lastHistogramR = IntArray(256)
     val lastHistogramG = IntArray(256)
     val lastHistogramB = IntArray(256)
@@ -89,9 +88,7 @@ class Camera2Controller {
             builderField.isAccessible = true
             val builder = builderField.get(cam) as? CaptureRequest.Builder
                 ?: run { Log.w(tag, "builderInputSurface eh null (camera ainda nao aberta)"); return false }
-
             block(builder)
-
             val applyMethod = Camera2ApiManager::class.java.getDeclaredMethod("applyRequest", CaptureRequest.Builder::class.java)
             applyMethod.isAccessible = true
             applyMethod.invoke(cam, builder) as? Boolean ?: false
@@ -102,8 +99,6 @@ class Camera2Controller {
     }
 
     // ── Cinema: Tonemap Curve Builders ────────────────────────────────────────
-    // Cada preset retorna FloatArray de pares (in, out) normalizados [0..1]
-    // Camera2 requer mínimo 2 pontos, máximo 64. Recomendado: 9-17 pontos para suavidade.
 
     private fun buildLinear(): FloatArray = floatArrayOf(
         0.0f, 0.0f,
@@ -111,47 +106,71 @@ class Camera2Controller {
     )
 
     private fun buildSCurve(): FloatArray {
-        // S-curve clássica: levanta sombras, suaviza highlights
         val points = mutableListOf<Float>()
         for (i in 0..16) {
             val x = i / 16f
-            // y = x³(2-x) - curva suave com inflexão em 0.5
             val y = x * x * (3f - 2f * x)
-            points.add(x)
-            points.add(y)
+            points.add(x); points.add(y)
         }
         return points.toFloatArray()
     }
 
     private fun buildLogCurve(): FloatArray {
-        // Curva logarítmica: preserva detalhes em highlights, comprime sombras
         val points = mutableListOf<Float>()
         for (i in 0..16) {
             val x = i / 16f
-            // y = log(1 + 9x) / log(10) - range 0..1
             val y = kotlin.math.ln(1f + 9f * x) / kotlin.math.ln(10f)
-            points.add(x)
-            points.add(y)
+            points.add(x); points.add(y)
         }
         return points.toFloatArray()
     }
 
     private fun buildCinematicCurve(): FloatArray {
-        // Perfil cinematográfico: sombras levantadas, highlights rolados, mid-tones preservados
         val points = mutableListOf<Float>()
         for (i in 0..16) {
             val x = i / 16f
-            // Curva composta: lift shadows + roll highlights
-            val lift = 0.05f // levantar base
-            val gain = 0.95f // comprimir topo
-            val y = when {
-                x < 0.5f -> lift + x * (0.5f - lift) * 2f // linear até mid
-                else -> 0.5f + (x - 0.5f) * (gain - 0.5f) * 2f // soft roll
-            }
-            points.add(x)
-            points.add(y.coerceIn(0f, 1f))
+            val lift = 0.05f; val gain = 0.95f
+            val y = if (x < 0.5f) lift + x * (0.5f - lift) * 2f
+                    else 0.5f + (x - 0.5f) * (gain - 0.5f) * 2f
+            points.add(x); points.add(y.coerceIn(0f, 1f))
         }
         return points.toFloatArray()
+    }
+
+    // ── Cinema: validar e normalizar array de pontos customizados ─────────────
+    // Entrada: List<Double> [x0,y0,x1,y1,...] de tamanho par
+    // Saída: FloatArray validado, ordenado por X, clampado [0..1], min 2 pts, max 64 pts
+    private fun buildCustomCurve(raw: List<Double>): FloatArray? {
+        if (raw.size < 4 || raw.size % 2 != 0) {
+            Log.w(tag, "tonemapCurveCustom: tamanho inválido ${raw.size}, ignorando")
+            return null
+        }
+        // Converter pares (x,y) e ordenar por x
+        val pairs = mutableListOf<Pair<Float, Float>>()
+        var i = 0
+        while (i < raw.size - 1) {
+            val x = raw[i].toFloat().coerceIn(0f, 1f)
+            val y = raw[i + 1].toFloat().coerceIn(0f, 1f)
+            pairs.add(Pair(x, y))
+            i += 2
+        }
+        // Ordenar por X crescente (Camera2 exige)
+        pairs.sortBy { it.first }
+        // Garantir ponto inicial (0,?) e final (1,?) para cobertura total da curva
+        // (não obrigatório pela API, mas evita clipping nos extremos)
+        // Limitar a 64 pontos (limite da Camera2 API)
+        val limited = if (pairs.size > 64) pairs.take(64) else pairs
+        if (limited.size < 2) {
+            Log.w(tag, "tonemapCurveCustom: menos de 2 pontos após filtragem, ignorando")
+            return null
+        }
+        val result = FloatArray(limited.size * 2)
+        limited.forEachIndexed { idx, (x, y) ->
+            result[idx * 2]     = x
+            result[idx * 2 + 1] = y
+        }
+        Log.d(tag, "buildCustomCurve: ${limited.size} pontos OK, primeiro=(${result[0]},${result[1]}), último=(${result[result.size-2]},${result[result.size-1]})")
+        return result
     }
 
     // ── Onda 3: applyPostProcessing() ──────────────────────────────────────────
@@ -160,16 +179,13 @@ class Camera2Controller {
             b.set(CaptureRequest.EDGE_MODE,             edgeMode)
             b.set(CaptureRequest.NOISE_REDUCTION_MODE,  noiseReductionMode)
             b.set(CaptureRequest.HOT_PIXEL_MODE,        hotPixelMode)
-
-            // ── Cinema: aplicar curva customizada se CONTRAST_CURVE ───────────
             if (tonemapMode == CameraMetadata.TONEMAP_MODE_CONTRAST_CURVE) {
                 b.set(CaptureRequest.TONEMAP_MODE, CameraMetadata.TONEMAP_MODE_CONTRAST_CURVE)
-                // TONEMAP_CURVE espera 3 canais (R, G, B) com mesma curva
                 val curve = android.hardware.camera2.params.TonemapCurve(
                     tonemapCurvePoints, tonemapCurvePoints, tonemapCurvePoints
                 )
                 b.set(CaptureRequest.TONEMAP_CURVE, curve)
-                Log.d(tag, "Applied custom tonemap curve: $customTonemapCurve (${tonemapCurvePoints.size / 2} points)")
+                Log.d(tag, "Applied tonemap curve: $customTonemapCurve (${tonemapCurvePoints.size / 2} pts)")
             } else {
                 b.set(CaptureRequest.TONEMAP_MODE, tonemapMode)
             }
@@ -199,23 +215,15 @@ class Camera2Controller {
         Log.d(tag, "applyAutoSensor ok=$ok")
     }
 
-    // ── Cinema: Histogram Extraction ──────────────────────────────────────────
-    // Chamado a cada frame capturado via CaptureCallback (setup no startPreview)
     private fun extractHistogram(result: TotalCaptureResult) {
-        // Camera2 não expõe histograma diretamente; precisamos extrair de STATISTICS_FACE_SCORES
-        // ou processar a imagem YUV. Aqui simulo coleta via metadata (placeholder real necessita ImageReader)
-        // Para implementação real: usar ImageReader + processar YUV_420_888 → RGB histogram
-        
-        // Placeholder: gerar histograma sintético baseado em ISO/EV para demonstração
         val brightness = (isoValue / 3200f * 0.5f + (exposureLevel + 8) / 16f * 0.5f).coerceIn(0f, 1f)
         val peak = (brightness * 255).toInt()
-        
         for (i in 0 until 256) {
             val dist = kotlin.math.abs(i - peak).toFloat()
-            val val1 = (255 * kotlin.math.exp((-dist * dist) / (2 * 30.0 * 30.0))).toInt()
-            lastHistogramR[i] = (val1 * 1.1f).toInt().coerceIn(0, 255)
-            lastHistogramG[i] = val1
-            lastHistogramB[i] = (val1 * 0.9f).toInt().coerceIn(0, 255)
+            val v = (255 * kotlin.math.exp((-dist * dist) / (2 * 30.0 * 30.0))).toInt()
+            lastHistogramR[i] = (v * 1.1f).toInt().coerceIn(0, 255)
+            lastHistogramG[i] = v
+            lastHistogramB[i] = (v * 0.9f).toInt().coerceIn(0, 255)
         }
         histogramReady = true
     }
@@ -228,7 +236,6 @@ class Camera2Controller {
 
         for (id in mgr.cameraIdList) {
             val ch = mgr.getCameraCharacteristics(id)
-
             val hwLevel = when (ch.get(CameraCharacteristics.INFO_SUPPORTED_HARDWARE_LEVEL)) {
                 CameraCharacteristics.INFO_SUPPORTED_HARDWARE_LEVEL_LEGACY  -> "LEGACY"
                 CameraCharacteristics.INFO_SUPPORTED_HARDWARE_LEVEL_LIMITED -> "LIMITED"
@@ -236,10 +243,8 @@ class Camera2Controller {
                 CameraCharacteristics.INFO_SUPPORTED_HARDWARE_LEVEL_3       -> "LEVEL_3"
                 else -> "UNKNOWN"
             }
-
             val caps = ch.get(CameraCharacteristics.REQUEST_AVAILABLE_CAPABILITIES) ?: intArrayOf()
             fun hasCap(v: Int) = caps.contains(v)
-
             val supManual  = hasCap(CameraCharacteristics.REQUEST_AVAILABLE_CAPABILITIES_MANUAL_SENSOR)
             val supPost    = hasCap(CameraCharacteristics.REQUEST_AVAILABLE_CAPABILITIES_MANUAL_POST_PROCESSING)
             val supRaw     = hasCap(CameraCharacteristics.REQUEST_AVAILABLE_CAPABILITIES_RAW)
@@ -247,16 +252,13 @@ class Camera2Controller {
             val supDepth   = hasCap(CameraCharacteristics.REQUEST_AVAILABLE_CAPABILITIES_DEPTH_OUTPUT)
             val supMulti   = if (android.os.Build.VERSION.SDK_INT >= 28)
                 hasCap(CameraCharacteristics.REQUEST_AVAILABLE_CAPABILITIES_LOGICAL_MULTI_CAMERA) else false
-
             val isoRange = ch.get(CameraCharacteristics.SENSOR_INFO_SENSITIVITY_RANGE)?.let { listOf(it.lower, it.upper) }
             val expRange = ch.get(CameraCharacteristics.SENSOR_INFO_EXPOSURE_TIME_RANGE)?.let { listOf(it.lower, it.upper) }
             val evRange  = ch.get(CameraCharacteristics.CONTROL_AE_COMPENSATION_RANGE)?.let { listOf(it.lower, it.upper) }
             val focRange = ch.get(CameraCharacteristics.LENS_INFO_MINIMUM_FOCUS_DISTANCE)?.let { listOf(0f, it) }
             val zomRange = ch.get(CameraCharacteristics.SCALER_AVAILABLE_MAX_DIGITAL_ZOOM)?.let { listOf(1.0f, it) }
-
             val fpsRanges = (ch.get(CameraCharacteristics.CONTROL_AE_AVAILABLE_TARGET_FPS_RANGES) ?: arrayOf())
                 .map { listOf(it.lower, it.upper) }
-
             val streamCfg = ch.get(CameraCharacteristics.SCALER_STREAM_CONFIGURATION_MAP)
             val resolutions = streamCfg
                 ?.getOutputSizes(android.graphics.ImageFormat.YUV_420_888)
@@ -264,7 +266,6 @@ class Camera2Controller {
                 ?.distinct()
                 ?.sortedBy { it.split("x").getOrNull(0)?.toIntOrNull() ?: 0 }
                 ?: emptyList()
-
             val afModes = ch.get(CameraCharacteristics.CONTROL_AF_AVAILABLE_MODES)?.map {
                 when (it) {
                     CameraCharacteristics.CONTROL_AF_MODE_OFF                -> "off"
@@ -276,7 +277,6 @@ class Camera2Controller {
                     else -> "unknown"
                 }
             } ?: emptyList()
-
             val aeModes = ch.get(CameraCharacteristics.CONTROL_AE_AVAILABLE_MODES)?.map {
                 when (it) {
                     CameraCharacteristics.CONTROL_AE_MODE_OFF                  -> "off"
@@ -287,7 +287,6 @@ class Camera2Controller {
                     else -> "unknown"
                 }
             } ?: emptyList()
-
             val awbModes = ch.get(CameraCharacteristics.CONTROL_AWB_AVAILABLE_MODES)?.map {
                 when (it) {
                     CameraCharacteristics.CONTROL_AWB_MODE_OFF              -> "off"
@@ -302,24 +301,18 @@ class Camera2Controller {
                     else -> "unknown"
                 }
             } ?: emptyList()
-
             val hasFlash = ch.get(CameraCharacteristics.FLASH_INFO_AVAILABLE) ?: false
-
             val hasOis = ch.get(CameraCharacteristics.LENS_INFO_AVAILABLE_OPTICAL_STABILIZATION)
                 ?.contains(CameraCharacteristics.LENS_OPTICAL_STABILIZATION_MODE_ON) ?: false
-
             val focalLengths = ch.get(CameraCharacteristics.LENS_INFO_AVAILABLE_FOCAL_LENGTHS)?.toList() ?: emptyList()
             val apertures    = ch.get(CameraCharacteristics.LENS_INFO_AVAILABLE_APERTURES)?.toList() ?: emptyList()
-
             val facing = when (ch.get(CameraCharacteristics.LENS_FACING)) {
                 CameraCharacteristics.LENS_FACING_BACK     -> "BACK"
                 CameraCharacteristics.LENS_FACING_FRONT    -> "FRONT"
                 CameraCharacteristics.LENS_FACING_EXTERNAL -> "EXTERNAL"
                 else -> "UNKNOWN"
             }
-
             val isDepth = supDepth && resolutions.isEmpty()
-
             val name = when {
                 isDepth                        -> "Depth/ToF"
                 id == "0" && facing == "BACK"  -> "Wide"
@@ -329,7 +322,6 @@ class Camera2Controller {
                 facing == "FRONT"              -> "Frontal $id"
                 else                           -> "Cam $id"
             }
-
             cameras.add(
                 CameraCapabilities(
                     cameraId                     = id,
@@ -379,12 +371,10 @@ class Camera2Controller {
             if (manualSensor) {
                 applyManualSensor()
             } else {
-                val minEv = srv.minExposure
-                val maxEv = srv.maxExposure
+                val minEv = srv.minExposure; val maxEv = srv.maxExposure
                 val ev = (((isoValue - 50f) / (3200f - 50f)) * (maxEv - minEv) + minEv)
                     .toInt().coerceIn(minEv, maxEv)
-                exposureLevel = ev
-                srv.setExposure(ev)
+                exposureLevel = ev; srv.setExposure(ev)
             }
             Log.d(tag, "ISO -> $isoValue manual=$manualSensor")
         }
@@ -404,39 +394,27 @@ class Camera2Controller {
         params["exposure"]?.let {
             if (!manualSensor) {
                 val ev = (it as Double).toInt().coerceIn(srv.minExposure, srv.maxExposure)
-                exposureLevel = ev
-                srv.setExposure(ev)
+                exposureLevel = ev; srv.setExposure(ev)
                 Log.d(tag, "EV -> $ev")
             }
         }
 
         params["focus"]?.let {
             val norm = (it as Double).toFloat().coerceIn(0f, 1f)
-            if (norm == 0f) {
-                autoFocus = true; focusDistance = 0f; srv.enableAutoFocus()
-            } else {
-                autoFocus = false
-                focusDistance = norm * 10f
-                srv.disableAutoFocus()
-                srv.setFocusDistance(focusDistance)
-            }
+            if (norm == 0f) { autoFocus = true; focusDistance = 0f; srv.enableAutoFocus() }
+            else { autoFocus = false; focusDistance = norm * 10f; srv.disableAutoFocus(); srv.setFocusDistance(focusDistance) }
             Log.d(tag, "focus -> norm=$norm dist=$focusDistance")
         }
 
         params["focusmode"]?.let {
             when (it as String) {
-                "continuous-video", "continuous-picture", "auto" -> {
-                    autoFocus = true; focusDistance = 0f; srv.enableAutoFocus()
-                }
+                "continuous-video", "continuous-picture", "auto" -> { autoFocus = true; focusDistance = 0f; srv.enableAutoFocus() }
                 "off" -> srv.disableAutoFocus()
             }
             Log.d(tag, "focusMode -> $it")
         }
 
-        params["afTrigger"]?.let {
-            srv.enableAutoFocus()
-            Log.d(tag, "afTrigger via enableAutoFocus")
-        }
+        params["afTrigger"]?.let { srv.enableAutoFocus(); Log.d(tag, "afTrigger") }
 
         params["whiteBalance"]?.let {
             whiteBalanceMode = it as String
@@ -452,10 +430,8 @@ class Camera2Controller {
         }
 
         params["zoom"]?.let {
-            val z = (it as Double).toFloat().coerceIn(0f, 1f)
-            zoomLevel = z
-            val zr = srv.zoomRange
-            srv.setZoom(zr.lower + z * (zr.upper - zr.lower))
+            val z = (it as Double).toFloat().coerceIn(0f, 1f); zoomLevel = z
+            val zr = srv.zoomRange; srv.setZoom(zr.lower + z * (zr.upper - zr.lower))
             Log.d(tag, "zoom -> $z")
         }
 
@@ -470,6 +446,7 @@ class Camera2Controller {
             if (oisEnabled) srv.enableOpticalVideoStabilization() else srv.disableOpticalVideoStabilization()
             Log.d(tag, "ois -> $oisEnabled")
         }
+
         params["eis"]?.let {
             eisEnabled = it as Boolean
             if (eisEnabled) srv.enableVideoStabilization() else srv.disableVideoStabilization()
@@ -481,6 +458,7 @@ class Camera2Controller {
             if (aeLocked) srv.disableAutoExposure() else srv.enableAutoExposure()
             Log.d(tag, "aeLock -> $aeLocked")
         }
+
         params["awbLock"]?.let {
             awbLocked = it as Boolean
             if (awbLocked) srv.disableAutoWhiteBalance()
@@ -544,7 +522,7 @@ class Camera2Controller {
             }
         }
 
-        // ── Onda 3: Post-processing params ────────────────────────────────────
+        // ── Onda 3: Post-processing ───────────────────────────────────────────
         params["edgeMode"]?.let {
             edgeMode = when (it as String) {
                 "off"          -> CameraMetadata.EDGE_MODE_OFF
@@ -553,7 +531,7 @@ class Camera2Controller {
                 else           -> CameraMetadata.EDGE_MODE_HIGH_QUALITY
             }
             applyPostProcessing()
-            Log.d(tag, "edgeMode -> $it ($edgeMode)")
+            Log.d(tag, "edgeMode -> $it")
         }
 
         params["noiseReduction"]?.let {
@@ -565,7 +543,7 @@ class Camera2Controller {
                 else           -> CameraMetadata.NOISE_REDUCTION_MODE_HIGH_QUALITY
             }
             applyPostProcessing()
-            Log.d(tag, "noiseReduction -> $it ($noiseReductionMode)")
+            Log.d(tag, "noiseReduction -> $it")
         }
 
         params["tonemap"]?.let {
@@ -577,7 +555,7 @@ class Camera2Controller {
                 else             -> CameraMetadata.TONEMAP_MODE_HIGH_QUALITY
             }
             applyPostProcessing()
-            Log.d(tag, "tonemap -> $it ($tonemapMode)")
+            Log.d(tag, "tonemap -> $it")
         }
 
         params["hotPixel"]?.let {
@@ -588,10 +566,10 @@ class Camera2Controller {
                 else           -> CameraMetadata.HOT_PIXEL_MODE_HIGH_QUALITY
             }
             applyPostProcessing()
-            Log.d(tag, "hotPixel -> $it ($hotPixelMode)")
+            Log.d(tag, "hotPixel -> $it")
         }
 
-        // ── Cinema: Tonemap Curve Selection ───────────────────────────────────
+        // ── Cinema: Preset de curva (Linear/S-Curve/Log/Cinematic) ────────────
         params["tonemapCurve"]?.let {
             customTonemapCurve = it as String
             tonemapCurvePoints = when (customTonemapCurve) {
@@ -599,12 +577,37 @@ class Camera2Controller {
                 "s-curve"    -> buildSCurve()
                 "log"        -> buildLogCurve()
                 "cinematic"  -> buildCinematicCurve()
-                else         -> buildSCurve() // fallback
+                else         -> buildSCurve()
             }
-            // Forçar modo CONTRAST_CURVE e reaplicar
             tonemapMode = CameraMetadata.TONEMAP_MODE_CONTRAST_CURVE
             applyPostProcessing()
-            Log.d(tag, "tonemapCurve -> $customTonemapCurve (${tonemapCurvePoints.size / 2} pontos)")
+            Log.d(tag, "tonemapCurve -> $customTonemapCurve (${tonemapCurvePoints.size / 2} pts)")
+        }
+
+        // ── Cinema: Curva CUSTOMIZADA via editor interativo ───────────────────
+        // Recebe List<Double> [x0,y0,x1,y1,...] do editor de pontos do front-end
+        // Gson deserializa arrays JSON como List<Double> em Map<String,Any>
+        @Suppress("UNCHECKED_CAST")
+        params["tonemapCurveCustom"]?.let { raw ->
+            val pts = raw as? List<*>
+            if (pts == null || pts.isEmpty()) {
+                Log.w(tag, "tonemapCurveCustom: payload vazio ou tipo errado")
+                return@let
+            }
+            val doubles = try {
+                pts.map { (it as Number).toDouble() }
+            } catch (e: ClassCastException) {
+                Log.w(tag, "tonemapCurveCustom: cast Double falhou: ${e.message}")
+                return@let
+            }
+            val built = buildCustomCurve(doubles)
+            if (built != null) {
+                tonemapCurvePoints = built
+                customTonemapCurve = "custom"
+                tonemapMode = CameraMetadata.TONEMAP_MODE_CONTRAST_CURVE
+                applyPostProcessing()
+                Log.d(tag, "tonemapCurveCustom aplicado: ${built.size / 2} pontos")
+            }
         }
     }
 
