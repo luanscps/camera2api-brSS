@@ -50,13 +50,6 @@ class WebControlServer(
         android.hardware.camera2.CameraMetadata.NOISE_REDUCTION_MODE_HIGH_QUALITY -> "high_quality"
         else -> "high_quality"
     }
-    private fun tonemapModeStr(v: Int) = when (v) {
-        android.hardware.camera2.CameraMetadata.TONEMAP_MODE_CONTRAST_CURVE -> "contrast_curve"
-        android.hardware.camera2.CameraMetadata.TONEMAP_MODE_GAMMA_VALUE    -> "gamma_value"
-        android.hardware.camera2.CameraMetadata.TONEMAP_MODE_FAST           -> "fast"
-        android.hardware.camera2.CameraMetadata.TONEMAP_MODE_HIGH_QUALITY   -> "high_quality"
-        else -> "high_quality"
-    }
     private fun hotPixelModeStr(v: Int) = when (v) {
         android.hardware.camera2.CameraMetadata.HOT_PIXEL_MODE_OFF          -> "off"
         android.hardware.camera2.CameraMetadata.HOT_PIXEL_MODE_FAST         -> "fast"
@@ -95,9 +88,8 @@ class WebControlServer(
             "flash_mode"           to c.flashMode,
             "edge_mode"            to edgeModeStr(c.edgeMode),
             "noise_reduction_mode" to nrModeStr(c.noiseReductionMode),
-            "tonemap_mode"         to tonemapModeStr(c.tonemapMode),
-            "hot_pixel_mode"       to hotPixelModeStr(c.hotPixelMode),
-            "tonemap_curve"        to c.customTonemapCurve
+            "tonemap_mode"         to "high_quality",
+            "hot_pixel_mode"       to hotPixelModeStr(c.hotPixelMode)
         )
 
         val avail = mapOf(
@@ -113,9 +105,8 @@ class WebControlServer(
             "flash_mode"     to listOf("off", "torch", "single"),
             "edge_mode"      to listOf("off", "fast", "high_quality"),
             "noise_reduction_mode" to listOf("off", "minimal", "fast", "high_quality"),
-            "tonemap_mode"   to listOf("contrast_curve", "gamma_value", "fast", "high_quality"),
-            "hot_pixel_mode" to listOf("off", "fast", "high_quality"),
-            "tonemap_curve"  to listOf("linear", "s-curve", "log", "cinematic", "custom")
+            "tonemap_mode"   to listOf("high_quality"),
+            "hot_pixel_mode" to listOf("off", "fast", "high_quality")
         )
 
         val status = mapOf(
@@ -250,19 +241,6 @@ class WebControlServer(
         sb.append("text-transform:uppercase;letter-spacing:.06em;margin-bottom:7px}")
         sb.append(".postproc-presets{display:flex;gap:8px;margin-bottom:14px}")
         sb.append(".postproc-presets button{flex:1;font-size:11px;padding:8px 6px}")
-        // ── Tonemap Curve card styles ─────────────────────────────────────────
-        sb.append(".curve-presets{display:flex;flex-wrap:wrap;gap:6px;margin-bottom:10px}")
-        sb.append(".curve-presets button{flex:1;min-width:60px;font-size:11px;padding:7px 4px}")
-        sb.append(".curve-editor-wrap{position:relative;width:100%;margin-top:8px}")
-        // canvas interativo
-        sb.append(".curve-canvas{width:100%;height:120px;background:#070d1a;border-radius:10px;")
-        sb.append("border:1px solid var(--purple);display:block;cursor:crosshair;touch-action:none}")
-        sb.append(".curve-toolbar{display:flex;align-items:center;justify-content:space-between;margin-top:6px}")
-        sb.append(".curve-label{font-size:10px;color:var(--muted)}")
-        sb.append(".curve-reset{font-size:10px;padding:4px 10px;min-height:0;border-radius:6px;")
-        sb.append("background:var(--surface2);border:1px solid var(--border);color:var(--muted);cursor:pointer}")
-        sb.append(".curve-reset:hover{color:var(--text);border-color:var(--accent)}")
-        sb.append(".curve-hint{font-size:9px;color:var(--muted);margin-top:4px;text-align:center;font-style:italic}")
         sb.append("@media(min-width:480px){.grid2{display:grid;grid-template-columns:1fr 1fr;gap:12px}}")
         sb.append("#toast{position:fixed;bottom:22px;left:50%;transform:translateX(-50%) translateY(80px);")
         sb.append("padding:10px 22px;border-radius:24px;font-size:13px;font-weight:700;")
@@ -306,7 +284,6 @@ class WebControlServer(
         sb.append("<div class=\"info-pill\">FPS: <span id=\"info-fps\">-</span></div>")
         sb.append("<div class=\"info-pill\">Edge: <span id=\"info-edge\">-</span></div>")
         sb.append("<div class=\"info-pill\">NR: <span id=\"info-nr\">-</span></div>")
-        sb.append("<div class=\"info-pill\">Tone: <span id=\"info-tone\">-</span></div>")
         sb.append("<div class=\"info-pill\">HotPx: <span id=\"info-hotpx\">-</span></div>")
         sb.append("</div></div>")
 
@@ -449,33 +426,6 @@ class WebControlServer(
         sb.append("<button data-nr=\"fast\" onclick=\"setNR('fast',this)\">R\u00e1pido</button>")
         sb.append("<button data-nr=\"high_quality\" onclick=\"setNR('high_quality',this)\" class=\"active\">Qualidade</button>")
         sb.append("</div></div>")
-        // TONEMAP
-        sb.append("<div class=\"postproc-section\"><h4>Curva de Tom (Tonemap)</h4><div class=\"btngroup\">")
-        sb.append("<button data-tone=\"contrast_curve\" onclick=\"setTone('contrast_curve',this)\">Curva</button>")
-        sb.append("<button data-tone=\"gamma_value\" onclick=\"setTone('gamma_value',this)\">Gamma</button>")
-        sb.append("<button data-tone=\"fast\" onclick=\"setTone('fast',this)\">R\u00e1pido</button>")
-        sb.append("<button data-tone=\"high_quality\" onclick=\"setTone('high_quality',this)\" class=\"active\">Qualidade</button>")
-        sb.append("</div></div>")
-
-        // ── Card: editor interativo de curva ──────────────────────────────────
-        sb.append("<div class=\"card hidden\" id=\"card-tonecurve\" style=\"margin:10px 0 0 0;background:var(--bg);border-color:var(--purple)\">")
-        sb.append("<h3 style=\"color:var(--purple);font-size:12px\">\uD83D\uDCC8 Editor de Curva</h3>")
-        sb.append("<div class=\"curve-presets\">")
-        sb.append("<button data-curve=\"linear\" onclick=\"setCurve('linear',this)\">Linear</button>")
-        sb.append("<button data-curve=\"s-curve\" onclick=\"setCurve('s-curve',this)\" class=\"active\">S-Curve</button>")
-        sb.append("<button data-curve=\"log\" onclick=\"setCurve('log',this)\">Log</button>")
-        sb.append("<button data-curve=\"cinematic\" onclick=\"setCurve('cinematic',this)\">Cinema</button>")
-        sb.append("</div>")
-        sb.append("<div class=\"curve-editor-wrap\">")
-        sb.append("<canvas id=\"curve-canvas\" class=\"curve-canvas\" width=\"300\" height=\"120\"></canvas>")
-        sb.append("</div>")
-        sb.append("<div class=\"curve-toolbar\">")
-        sb.append("<span class=\"curve-label\" id=\"curve-label\">S-Curve</span>")
-        sb.append("<button class=\"curve-reset\" onclick=\"resetCurve()\">&#8635; Reset</button>")
-        sb.append("</div>")
-        sb.append("<p class=\"curve-hint\">Arraste os pontos para editar a curva em tempo real</p>")
-        sb.append("</div>")
-
         // HOT PIXEL
         sb.append("<div class=\"postproc-section\" style=\"margin-bottom:0\"><h4>Pixel Quente</h4><div class=\"btngroup\">")
         sb.append("<button data-hotpx=\"off\" onclick=\"setHotPx('off',this)\">Desligado</button>")
@@ -485,7 +435,7 @@ class WebControlServer(
         sb.append("</div>") // fim card-postproc
 
         sb.append("<p style=\"text-align:center;margin-top:16px;color:var(--muted);font-size:10px;padding-bottom:20px\">")
-        sb.append("Camera2 API \u00b7 RootEncoder \u00b7 NanoHTTPD \u00b7 v2.6</p>")
+        sb.append("Camera2 API \u00b7 RootEncoder \u00b7 NanoHTTPD \u00b7 v2.7</p>")
         sb.append("</div>")
         sb.append("<div id=\"toast\" class=\"ok\">OK</div>")
 
@@ -505,7 +455,6 @@ class WebControlServer(
         sb.append("var _toastTimer;var _pollFail=0;")
         sb.append("var _brT,_zT,_fT,_iT,_eT,_shT,_frT;")
 
-        // ── Utilitários ──────────────────────────────────────────────────────
         sb.append("function showToast(msg,isErr){")
         sb.append("var t=document.getElementById('toast');")
         sb.append("t.textContent=msg;t.className=isErr?'err':'ok';t.classList.add('show');")
@@ -527,7 +476,6 @@ class WebControlServer(
         sb.append("function showCard(id,show){var el=document.getElementById(id);if(!el)return;")
         sb.append("if(show){el.classList.remove('hidden');}else{el.classList.add('hidden');}}")
 
-        // ── updateManualUI ───────────────────────────────────────────────────
         sb.append("function updateManualUI(isManual){")
         sb.append("_isManual=isManual;")
         sb.append("var badge=document.getElementById('badge-manual');")
@@ -550,182 +498,16 @@ class WebControlServer(
         sb.append("if(chk)chk.disabled=!hasOIS;")
         sb.append("if(hint)hint.textContent=hasOIS?'':'(sem suporte nesta câmera)';}")
 
-        // ── Pós-processamento ────────────────────────────────────────────────
         sb.append("function setEdge(val,btn){markActive('data-edge',val);sendControl({edgeMode:val},btn,'Edge '+val);}")
         sb.append("function setNR(val,btn){markActive('data-nr',val);sendControl({noiseReduction:val},btn,'NR '+val);}")
-        sb.append("function setTone(val,btn){")
-        sb.append("markActive('data-tone',val);")
-        sb.append("sendControl({tonemap:val},btn,'Tone '+val);")
-        sb.append("showCard('card-tonecurve',val==='contrast_curve');")
-        sb.append("if(val==='contrast_curve'){drawCurve();}")
-        sb.append("}")
         sb.append("function setHotPx(val,btn){markActive('data-hotpx',val);sendControl({hotPixel:val},btn,'HotPx '+val);}")
         sb.append("function applyQualityMax(btn){")
-        sb.append("markActive('data-edge','high_quality');markActive('data-nr','high_quality');")
-        sb.append("markActive('data-tone','high_quality');markActive('data-hotpx','high_quality');")
-        sb.append("showCard('card-tonecurve',false);")
-        sb.append("sendControl({edgeMode:'high_quality',noiseReduction:'high_quality',tonemap:'high_quality',hotPixel:'high_quality'},btn,'Qualidade M\u00e1xima');}")
+        sb.append("markActive('data-edge','high_quality');markActive('data-nr','high_quality');markActive('data-hotpx','high_quality');")
+        sb.append("sendControl({edgeMode:'high_quality',noiseReduction:'high_quality',hotPixel:'high_quality'},btn,'Qualidade M\u00e1xima');}")
         sb.append("function applyLatencyMin(btn){")
-        sb.append("markActive('data-edge','off');markActive('data-nr','off');")
-        sb.append("markActive('data-tone','fast');markActive('data-hotpx','off');")
-        sb.append("showCard('card-tonecurve',false);")
-        sb.append("sendControl({edgeMode:'off',noiseReduction:'off',tonemap:'fast',hotPixel:'off'},btn,'Lat\u00eancia M\u00ednima');}")
+        sb.append("markActive('data-edge','off');markActive('data-nr','off');markActive('data-hotpx','off');")
+        sb.append("sendControl({edgeMode:'off',noiseReduction:'off',hotPixel:'off'},btn,'Lat\u00eancia M\u00ednima');}")
 
-        // ══════════════════════════════════════════════════════════════════════
-        // ── EDITOR INTERATIVO DE CURVA ────────────────────────────────────────
-        // ══════════════════════════════════════════════════════════════════════
-        sb.append("var _activeCurve='s-curve';")
-        // 7 pontos de controle: [x, y] normalizados [0..1]
-        sb.append("var _ctrlPts=[[0,0],[0.17,0.21],[0.33,0.42],[0.5,0.5],[0.67,0.72],[0.83,0.88],[1,1]];")
-        sb.append("var _dragIdx=-1;")
-        sb.append("var _sendTimer=null;")
-
-        // Curvas padrão (mesmos algoritmos do Kotlin)
-        sb.append("function _presetPts(name){")
-        sb.append("var pts=[];")
-        sb.append("for(var i=0;i<=6;i++){")
-        sb.append("var x=i/6;var y;")
-        sb.append("if(name==='linear'){y=x;}")
-        sb.append("else if(name==='s-curve'){y=x*x*(3-2*x);}")
-        sb.append("else if(name==='log'){y=Math.log(1+9*x)/Math.log(10);}")
-        sb.append("else if(name==='cinematic'){")
-        sb.append("var lift=0.05,gain=0.95;")
-        sb.append("y=x<0.5?lift+x*(0.5-lift)*2:0.5+(x-0.5)*(gain-0.5)*2;")
-        sb.append("y=Math.max(0,Math.min(1,y));")
-        sb.append("}else{y=x;}")
-        sb.append("pts.push([x,y]);}")
-        sb.append("return pts;}")
-
-        // Desenhar curva no canvas
-        sb.append("function drawCurve(){")
-        sb.append("var canvas=document.getElementById('curve-canvas');if(!canvas)return;")
-        sb.append("var ctx=canvas.getContext('2d');")
-        sb.append("var W=canvas.width,H=canvas.height;")
-        sb.append("ctx.clearRect(0,0,W,H);")
-        // grid
-        sb.append("ctx.strokeStyle='rgba(255,255,255,0.06)';ctx.lineWidth=1;")
-        sb.append("for(var g=1;g<4;g++){")
-        sb.append("var gx=g*(W/4),gy=g*(H/4);")
-        sb.append("ctx.beginPath();ctx.moveTo(gx,0);ctx.lineTo(gx,H);ctx.stroke();")
-        sb.append("ctx.beginPath();ctx.moveTo(0,gy);ctx.lineTo(W,gy);ctx.stroke();}")
-        // diagonal
-        sb.append("ctx.strokeStyle='rgba(255,255,255,0.12)';ctx.lineWidth=1;ctx.setLineDash([4,4]);")
-        sb.append("ctx.beginPath();ctx.moveTo(0,H);ctx.lineTo(W,0);ctx.stroke();ctx.setLineDash([]);")
-        // curva (interpolação linear entre pontos de controle)
-        sb.append("ctx.shadowColor='#a855f7';ctx.shadowBlur=8;")
-        sb.append("ctx.strokeStyle='rgba(168,85,247,0.35)';ctx.lineWidth=5;")
-        sb.append("ctx.beginPath();")
-        sb.append("for(var i=0;i<_ctrlPts.length;i++){")
-        sb.append("var px=_ctrlPts[i][0]*W,py=(1-_ctrlPts[i][1])*H;")
-        sb.append("i===0?ctx.moveTo(px,py):ctx.lineTo(px,py);}")
-        sb.append("ctx.stroke();")
-        sb.append("ctx.shadowBlur=0;ctx.strokeStyle='#38bdf8';ctx.lineWidth=2;")
-        sb.append("ctx.beginPath();")
-        sb.append("for(var i=0;i<_ctrlPts.length;i++){")
-        sb.append("var px=_ctrlPts[i][0]*W,py=(1-_ctrlPts[i][1])*H;")
-        sb.append("i===0?ctx.moveTo(px,py):ctx.lineTo(px,py);}")
-        sb.append("ctx.stroke();")
-        // pontos de controle
-        sb.append("for(var i=0;i<_ctrlPts.length;i++){")
-        sb.append("var px=_ctrlPts[i][0]*W,py=(1-_ctrlPts[i][1])*H;")
-        sb.append("ctx.beginPath();ctx.arc(px,py,i===_dragIdx?8:6,0,Math.PI*2);")
-        sb.append("ctx.fillStyle=i===_dragIdx?'#f59e0b':'#fff';ctx.fill();")
-        sb.append("ctx.strokeStyle='#0f172a';ctx.lineWidth=1.5;ctx.stroke();}")
-        sb.append("}")
-
-        // converter coords canvas → normalizadas
-        sb.append("function _canvasCoords(canvas,e){")
-        sb.append("var r=canvas.getBoundingClientRect();")
-        sb.append("var scaleX=canvas.width/r.width,scaleY=canvas.height/r.height;")
-        sb.append("var cx,cy;")
-        sb.append("if(e.touches){cx=(e.touches[0].clientX-r.left)*scaleX;cy=(e.touches[0].clientY-r.top)*scaleY;}")
-        sb.append("else{cx=(e.clientX-r.left)*scaleX;cy=(e.clientY-r.top)*scaleY;}")
-        sb.append("return[cx/canvas.width,1-cy/canvas.height];}")
-
-        // hit-test: retorna índice do ponto mais próximo dentro do raio
-        sb.append("function _hitTest(nx,ny){")
-        sb.append("var canvas=document.getElementById('curve-canvas');")
-        sb.append("var W=canvas.width,H=canvas.height;")
-        sb.append("var radius=14/W;") // ~14px de tolerância
-        sb.append("var best=-1,bestD=radius;")
-        sb.append("for(var i=0;i<_ctrlPts.length;i++){")
-        sb.append("var dx=_ctrlPts[i][0]-nx,dy=_ctrlPts[i][1]-ny;")
-        sb.append("var d=Math.sqrt(dx*dx+dy*dy);")
-        sb.append("if(d<bestD){bestD=d;best=i;}}")
-        sb.append("return best;}")
-
-        // enviar pontos ao servidor (debounce 80ms)
-        sb.append("function _scheduleSend(){")
-        sb.append("clearTimeout(_sendTimer);")
-        sb.append("_sendTimer=setTimeout(function(){")
-        sb.append("var flat=[];")
-        sb.append("for(var i=0;i<_ctrlPts.length;i++){")
-        sb.append("flat.push(Math.round(_ctrlPts[i][0]*1000)/1000);")
-        sb.append("flat.push(Math.round(_ctrlPts[i][1]*1000)/1000);}")
-        sb.append("sendControl({tonemapCurveCustom:flat},null,'Curva custom');")
-        sb.append("},80);}")
-
-        // mousedown / touchstart
-        sb.append("function _onDown(e){")
-        sb.append("e.preventDefault();")
-        sb.append("var canvas=document.getElementById('curve-canvas');")
-        sb.append("var coords=_canvasCoords(canvas,e);")
-        sb.append("_dragIdx=_hitTest(coords[0],coords[1]);")
-        sb.append("drawCurve();}")
-
-        // mousemove / touchmove
-        sb.append("function _onMove(e){")
-        sb.append("if(_dragIdx<0)return;e.preventDefault();")
-        sb.append("var canvas=document.getElementById('curve-canvas');")
-        sb.append("var coords=_canvasCoords(canvas,e);")
-        sb.append("var nx=Math.max(0,Math.min(1,coords[0]));")
-        sb.append("var ny=Math.max(0,Math.min(1,coords[1]));")
-        // pontos das extremidades: só Y pode mudar, X fixo em 0 e 1
-        sb.append("if(_dragIdx===0){_ctrlPts[0][1]=ny;}")
-        sb.append("else if(_dragIdx===_ctrlPts.length-1){_ctrlPts[_ctrlPts.length-1][1]=ny;}")
-        sb.append("else{")
-        // garantir ordem: X entre vizinhos
-        sb.append("var xMin=_ctrlPts[_dragIdx-1][0]+0.01;")
-        sb.append("var xMax=_ctrlPts[_dragIdx+1][0]-0.01;")
-        sb.append("_ctrlPts[_dragIdx][0]=Math.max(xMin,Math.min(xMax,nx));")
-        sb.append("_ctrlPts[_dragIdx][1]=ny;}")
-        sb.append("drawCurve();_scheduleSend();}")
-
-        // mouseup / touchend
-        sb.append("function _onUp(e){")
-        sb.append("if(_dragIdx>=0){_dragIdx=-1;drawCurve();}")
-        sb.append("}")
-
-        // registrar eventos no canvas após DOM pronto
-        sb.append("function _initCurveEditor(){")
-        sb.append("var canvas=document.getElementById('curve-canvas');if(!canvas)return;")
-        sb.append("canvas.addEventListener('mousedown',_onDown,{passive:false});")
-        sb.append("canvas.addEventListener('mousemove',_onMove,{passive:false});")
-        sb.append("canvas.addEventListener('mouseup',_onUp,{passive:false});")
-        sb.append("canvas.addEventListener('mouseleave',_onUp,{passive:false});")
-        sb.append("canvas.addEventListener('touchstart',_onDown,{passive:false});")
-        sb.append("canvas.addEventListener('touchmove',_onMove,{passive:false});")
-        sb.append("canvas.addEventListener('touchend',_onUp,{passive:false});")
-        sb.append("drawCurve();}")
-
-        // setCurve: preset → repositiona pontos de controle e envia preset
-        sb.append("var CURVE_LABELS={'linear':'Linear','s-curve':'S-Curve','log':'Log','cinematic':'Cinema'};")
-        sb.append("function setCurve(name,btn){")
-        sb.append("_activeCurve=name;")
-        sb.append("_ctrlPts=_presetPts(name);")
-        sb.append("markActive('data-curve',name);")
-        sb.append("var lbl=document.getElementById('curve-label');")
-        sb.append("if(lbl)lbl.textContent=CURVE_LABELS[name]||name;")
-        sb.append("drawCurve();")
-        sb.append("sendControl({tonemapCurve:name},btn,CURVE_LABELS[name]||name);}")
-
-        // reset: volta ao preset ativo
-        sb.append("function resetCurve(){")
-        sb.append("_ctrlPts=_presetPts(_activeCurve);")
-        sb.append("drawCurve();")
-        sb.append("sendControl({tonemapCurve:_activeCurve},null,'Reset '+_activeCurve);}")
-
-        // ── Demais funções de UI ─────────────────────────────────────────────
         sb.append("function updateUIForCamera(camId){")
         sb.append("_currentCamId=String(camId);")
         sb.append("var cap=getCap(camId);")
@@ -733,7 +515,7 @@ class WebControlServer(
         sb.append("showCard('card-iso',true);showCard('card-ev',true);")
         sb.append("showCard('card-shutter',false);showCard('card-frame',false);")
         sb.append("showCard('card-wb',true);showCard('card-extras',true);")
-        sb.append("showCard('card-postproc',false);showCard('card-tonecurve',false);")
+        sb.append("showCard('card-postproc',false);")
         sb.append("updateOISCapability(false);return;}")
         sb.append("var hasZoom=cap.zoom_range&&cap.zoom_range[1]>1.0;showCard('card-zoom',hasZoom!==false);")
         sb.append("var zs=document.getElementById('zoom');if(zs)zs.disabled=!hasZoom;")
@@ -779,8 +561,7 @@ class WebControlServer(
         sb.append("flashGroup.appendChild(b);})(fmodes[m]);}")
         sb.append("flashDiv.appendChild(flashGroup);ef.appendChild(flashDiv);}")
         sb.append("updateOISCapability(!!cap.has_ois);showCard('card-extras',true);")
-        sb.append("var hasPost=!!cap.supports_manual_post_processing;showCard('card-postproc',hasPost);")
-        sb.append("if(!hasPost)showCard('card-tonecurve',false);}")
+        sb.append("var hasPost=!!cap.supports_manual_post_processing;showCard('card-postproc',hasPost);}")
 
         sb.append("function switchCamera(id){markActive('data-cam',id);updateUIForCamera(id);sendControl({camera:id},null,'Cam '+id);}")
         sb.append("function setResolution(res,btn){markActive('data-res',res);sendControl({resolution:res},btn,res);}")
@@ -827,7 +608,6 @@ class WebControlServer(
         sb.append("function syncSlider(id,val,mn,mx){if(!val)return;var el=document.getElementById(id);if(!el)return;")
         sb.append("var v=Math.max(mn,Math.min(mx,+val));if(document.activeElement!==el)el.value=v;}")
 
-        // ── pollStatus ───────────────────────────────────────────────────────
         sb.append("function pollStatus(){")
         sb.append("var t0=Date.now();")
         sb.append("fetch('/api/status')")
@@ -863,23 +643,13 @@ class WebControlServer(
         sb.append("document.getElementById('info-fps').textContent=(c.fps||'-')+'fps';")
         sb.append("var edgeLbl=document.getElementById('info-edge');")
         sb.append("var nrLbl=document.getElementById('info-nr');")
-        sb.append("var toneLbl=document.getElementById('info-tone');")
         sb.append("var hotLbl=document.getElementById('info-hotpx');")
         sb.append("if(edgeLbl&&c.edge_mode)edgeLbl.textContent=c.edge_mode;")
         sb.append("if(nrLbl&&c.noise_reduction_mode)nrLbl.textContent=c.noise_reduction_mode;")
-        sb.append("if(toneLbl&&c.tonemap_mode)toneLbl.textContent=c.tonemap_mode;")
         sb.append("if(hotLbl&&c.hot_pixel_mode)hotLbl.textContent=c.hot_pixel_mode;")
         sb.append("if(c.edge_mode)markActive('data-edge',c.edge_mode);")
         sb.append("if(c.noise_reduction_mode)markActive('data-nr',c.noise_reduction_mode);")
-        sb.append("if(c.tonemap_mode){markActive('data-tone',c.tonemap_mode);showCard('card-tonecurve',c.tonemap_mode==='contrast_curve');}")
         sb.append("if(c.hot_pixel_mode)markActive('data-hotpx',c.hot_pixel_mode);")
-        sb.append("if(c.tonemap_curve&&c.tonemap_curve!=='custom'){")
-        sb.append("if(c.tonemap_curve!==_activeCurve){")
-        sb.append("_activeCurve=c.tonemap_curve;_ctrlPts=_presetPts(c.tonemap_curve);")
-        sb.append("markActive('data-curve',c.tonemap_curve);")
-        sb.append("var lbl=document.getElementById('curve-label');")
-        sb.append("if(lbl)lbl.textContent=CURVE_LABELS[c.tonemap_curve]||c.tonemap_curve;}}")
-        sb.append("if(c.tonemap_mode==='contrast_curve')drawCurve();")
         sb.append("var isManual=c.manual_sensor==='on';syncChk('toggle-manual',isManual);updateManualUI(isManual);")
         sb.append("syncChk('toggle-ois',c.ois==='on');syncChk('toggle-eis',c.eis==='on');")
         sb.append("syncChk('toggle-ae-lock',c.ae_lock==='on');syncChk('toggle-awb-lock',c.awb_lock==='on');")
@@ -893,7 +663,6 @@ class WebControlServer(
         sb.append("if(_pollFail>=3){document.getElementById('dot-stream').className='dot off';")
         sb.append("document.getElementById('lbl-stream').textContent='Sem conexao';}});}")
 
-        // ── initCapabilities ─────────────────────────────────────────────────
         sb.append("function initCapabilities(){")
         sb.append("fetch('/api/capabilities')")
         sb.append(".then(function(r){if(!r.ok)throw new Error('HTTP '+r.status);return r.json();})")
@@ -930,7 +699,7 @@ class WebControlServer(
         sb.append("b.onclick=function(){switchCamera(d.id);};cg.appendChild(b);})(defs[i]);}")
         sb.append("showCard('card-zoom',true);showCard('card-focus',true);showCard('card-iso',true);")
         sb.append("showCard('card-ev',true);showCard('card-shutter',true);showCard('card-frame',true);")
-        sb.append("showCard('card-wb',true);showCard('card-postproc',true);showCard('card-tonecurve',false);")
+        sb.append("showCard('card-wb',true);showCard('card-postproc',true);")
         sb.append("updateOISCapability(false);")
         sb.append("var wg=document.getElementById('btngroup-wb');wg.innerHTML='';")
         sb.append("var wbDef=['auto','daylight','cloudy','tungsten','fluorescent'];")
@@ -949,7 +718,6 @@ class WebControlServer(
         sb.append("initCapabilities();")
         sb.append("pollStatus();")
         sb.append("setInterval(pollStatus,2000);")
-        sb.append("setTimeout(_initCurveEditor,300);")
         sb.append("</script></body></html>")
         return sb.toString()
     }
