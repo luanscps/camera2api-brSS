@@ -25,13 +25,23 @@ data class CameraCapabilities(
 
     // Formatos e resoluções
     val availableResolutions: List<String>,
-    val supportedAFModes: List<String>,
-    val supportedAEModes: List<String>,
-    val supportedAWBModes: List<String>,
+
+    // NOTA sobre nomenclatura de siglas com Gson LOWER_CASE_WITH_UNDERSCORES:
+    // Cada letra maiúscula vira _letra separada. Siglas compostas precisam ser
+    // escritas com apenas a 1ª letra maiúscula para gerar o snake_case correto:
+    //   supportedAFModes  -> supported_a_f_modes  (ERRADO)
+    //   supportedAfModes  -> supported_af_modes   (CORRETO)
+    //   supportedAEModes  -> supported_a_e_modes  (ERRADO)
+    //   supportedAeModes  -> supported_ae_modes   (CORRETO)
+    //   supportedAWBModes -> supported_a_w_b_modes (ERRADO)
+    //   supportedAwbModes -> supported_awb_modes  (CORRETO)
+    val supportedAfModes: List<String>,
+    val supportedAeModes: List<String>,
+    val supportedAwbModes: List<String>,
 
     // Hardware físico
-    // NOTA: hasOis (não hasOIS) — Gson LOWER_CASE_WITH_UNDERSCORES serializa
-    // cada maiúscula separada: hasOIS -> has_o_i_s (quebrado), hasOis -> has_ois (correto)
+    // NOTA: hasOis (não hasOIS) — mesma regra acima
+    //   hasOIS -> has_o_i_s (ERRADO), hasOis -> has_ois (CORRETO)
     val hasFlash: Boolean,
     val hasOis: Boolean,
     val focalLengths: List<Float>,
