@@ -1,6 +1,8 @@
 package com.camera2rtsp
 
 import android.content.Intent
+import android.graphics.Color
+import android.net.Uri
 import android.os.Bundle
 import android.text.Editable
 import android.text.TextWatcher
@@ -10,7 +12,7 @@ import android.widget.EditText
 import android.widget.ProgressBar
 import android.widget.TextView
 import androidx.appcompat.app.AppCompatActivity
-import kotlinx.coroutines.CoroutineScope
+import androidx.lifecycle.lifecycleScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
@@ -36,11 +38,11 @@ class ActivationActivity : AppCompatActivity() {
         progressBar = findViewById(R.id.progressBar)
         btnBuy      = findViewById(R.id.btnBuy)
 
-        // Exibe o device ID do aparelho (útil para suporte)
+        // Exibe o device ID do aparelho (util para suporte)
         val devId = LicenseManager.getDeviceId(this)
-        txtDeviceId.text = "ID: ${devId.take(8)}-${devId.substring(8, 16)}…"
+        txtDeviceId.text = "ID: ${devId.take(8)}-${devId.substring(8, 16)}..."
 
-        // Auto-formata o serial enquanto o usuário digita (XXXX-XXXX-XXXX)
+        // Auto-formata o serial enquanto o usuario digita (XXXX-XXXX-XXXX)
         inputSerial.addTextChangedListener(object : TextWatcher {
             private var isFormatting = false
             override fun beforeTextChanged(s: CharSequence?, start: Int, count: Int, after: Int) {}
@@ -60,11 +62,10 @@ class ActivationActivity : AppCompatActivity() {
 
         btnActivate.setOnClickListener { tryActivate() }
 
-        // Botão de compra — abre link externo (configure seu link aqui)
+        // Botao de compra — abre WhatsApp (substitua pelo seu numero)
         btnBuy.setOnClickListener {
-            val intent = Intent(android.content.Intent.ACTION_VIEW).apply {
-                data = android.net.Uri.parse("https://wa.me/55XXXXXXXXXXX?text=Quero+comprar+Camera2+RTSP")
-            }
+            val intent = Intent(Intent.ACTION_VIEW,
+                Uri.parse("https://wa.me/55XXXXXXXXXXX?text=Quero+comprar+Camera2+RTSP"))
             startActivity(intent)
         }
     }
@@ -79,7 +80,8 @@ class ActivationActivity : AppCompatActivity() {
         setLoading(true)
         showStatus("🔄 Verificando serial...", isError = false)
 
-        CoroutineScope(Dispatchers.IO).launch {
+        // lifecycleScope cancela automaticamente se a Activity for destruida
+        lifecycleScope.launch(Dispatchers.IO) {
             val result = LicenseManager.activate(this@ActivationActivity, serial)
             withContext(Dispatchers.Main) {
                 setLoading(false)
@@ -87,7 +89,7 @@ class ActivationActivity : AppCompatActivity() {
                     is ActivationResult.Success -> {
                         showStatus("✅ Ativado com sucesso! Iniciando...", isError = false)
                         btnActivate.isEnabled = false
-                        CoroutineScope(Dispatchers.Main).launch {
+                        lifecycleScope.launch {
                             delay(1400)
                             startActivity(Intent(this@ActivationActivity, MainActivity::class.java))
                             finish()
@@ -95,12 +97,12 @@ class ActivationActivity : AppCompatActivity() {
                     }
                     is ActivationResult.Failure -> {
                         val msg = when (result.reason) {
-                            "serial_invalido"           -> "❌ Serial não encontrado."
-                            "serial_revogado"           -> "❌ Serial revogado. Contate o suporte."
-                            "serial_outro_dispositivo"  -> "❌ Serial já ativado em outro celular."
-                            "serial_expirado"           -> "❌ Licença expirada."
-                            "sem_conexao"               -> "⚠️ Sem internet. Verifique a conexão."
-                            else                        -> "❌ Erro: ${result.reason}"
+                            "serial_invalido"          -> "❌ Serial nao encontrado."
+                            "serial_revogado"          -> "❌ Serial revogado. Contate o suporte."
+                            "serial_outro_dispositivo" -> "❌ Serial ja ativado em outro celular."
+                            "serial_expirado"          -> "❌ Licenca expirada."
+                            "sem_conexao"              -> "⚠️ Sem internet. Verifique a conexao."
+                            else                       -> "❌ Erro: ${result.reason}"
                         }
                         showStatus(msg, isError = true)
                     }
@@ -111,8 +113,9 @@ class ActivationActivity : AppCompatActivity() {
 
     private fun showStatus(msg: String, isError: Boolean) {
         txtStatus.text = msg
+        // Color.parseColor evita o erro de Long/Int com literais hexadecimais grandes
         txtStatus.setTextColor(
-            if (isError) 0xFFEF4444.toInt() else 0xFF10B981.toInt()
+            if (isError) Color.parseColor("#EF4444") else Color.parseColor("#10B981")
         )
         txtStatus.visibility = View.VISIBLE
     }
