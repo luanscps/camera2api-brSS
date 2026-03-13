@@ -1,0 +1,99 @@
+<?xml version="1.0" encoding="utf-8"?>
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    android:id="@+id/hudContainer"
+    android:layout_width="wrap_content"
+    android:layout_height="wrap_content"
+    android:orientation="vertical"
+    android:background="@drawable/bg_hud"
+    android:padding="12dp"
+    android:visibility="visible">
+
+    <!-- ISO -->
+    <TextView
+        android:id="@+id/hudIso"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:text="ISO: 800"
+        android:textColor="#38bdf8"
+        android:textSize="11sp"
+        android:fontFamily="monospace"
+        android:textStyle="bold" />
+
+    <!-- Exposição -->
+    <TextView
+        android:id="@+id/hudExposure"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:text="EXP: 1/60s"
+        android:textColor="#f1f5f9"
+        android:textSize="11sp"
+        android:fontFamily="monospace"
+        android:layout_marginTop="2dp" />
+
+    <!-- Foco -->
+    <TextView
+        android:id="@+id/hudFocus"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:text="FOCUS: AUTO"
+        android:textColor="#f1f5f9"
+        android:textSize="11sp"
+        android:fontFamily="monospace"
+        android:layout_marginTop="2dp" />
+
+    <!-- FPS -->
+    <TextView
+        android:id="@+id/hudFps"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:text="FPS: 30"
+        android:textColor="#10b981"
+        android:textSize="11sp"
+        android:fontFamily="monospace"
+        android:layout_marginTop="2dp" />
+
+    <!-- Temperatura -->
+    <TextView
+        android:id="@+id/hudTemp"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:text="TEMP: 38°C"
+        android:textColor="#fbbf24"
+        android:textSize="11sp"
+        android:fontFamily="monospace"
+        android:layout_marginTop="2dp" />
+
+    <!-- Bateria -->
+    <TextView
+        android:id="@+id/hudBattery"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:text="BAT: 85%"
+        android:textColor="#10b981"
+        android:textSize="11sp"
+        android:fontFamily="monospace"
+        android:layout_marginTop="2dp" />
+
+    <!-- Clientes conectados -->
+    <TextView
+        android:id="@+id/hudClients"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:text="CLIENTS: 2"
+        android:textColor="#38bdf8"
+        android:textSize="11sp"
+        android:fontFamily="monospace"
+        android:layout_marginTop="2dp" />
+
+    <!-- Tráfego de rede -->
+    <TextView
+        android:id="@+id/hudNetwork"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:text="NET: 2.5MB/s"
+        android:textColor="#f1f5f9"
+        android:textSize="11sp"
+        android:fontFamily="monospace"
+        android:layout_marginTop="2dp" />
+
+</LinearLayout>
