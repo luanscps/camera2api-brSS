@@ -1,0 +1,258 @@
+<?xml version="1.0" encoding="utf-8"?>
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    android:id="@+id/bottomSheetContainer"
+    android:layout_width="match_parent"
+    android:layout_height="wrap_content"
+    android:orientation="vertical"
+    android:background="@drawable/bg_bottom_sheet"
+    android:padding="24dp">
+
+    <!-- Handle do bottom sheet -->
+    <View
+        android:layout_width="40dp"
+        android:layout_height="4dp"
+        android:background="#475569"
+        android:layout_gravity="center_horizontal"
+        android:layout_marginBottom="16dp"
+        android:alpha="0.5" />
+
+    <!-- Título -->
+    <TextView
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:text="⚙️ Controles da Câmera"
+        android:textSize="18sp"
+        android:textStyle="bold"
+        android:textColor="#f1f5f9"
+        android:layout_marginBottom="20dp" />
+
+    <!-- Seleção de Câmera -->
+    <TextView
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:text="📷 Câmera Ativa"
+        android:textSize="14sp"
+        android:textColor="#38bdf8"
+        android:textStyle="bold"
+        android:layout_marginBottom="8dp" />
+
+    <LinearLayout
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:orientation="horizontal"
+        android:layout_marginBottom="20dp">
+
+        <Button
+            android:id="@+id/btnCameraWide"
+            android:layout_width="0dp"
+            android:layout_height="wrap_content"
+            android:layout_weight="1"
+            android:text="Wide"
+            android:textColor="#0f172a"
+            android:textSize="12sp"
+            android:textStyle="bold"
+            android:background="@drawable/bg_button_primary"
+            android:layout_marginEnd="6dp" />
+
+        <Button
+            android:id="@+id/btnCameraUltra"
+            android:layout_width="0dp"
+            android:layout_height="wrap_content"
+            android:layout_weight="1"
+            android:text="Ultra"
+            android:textColor="#38bdf8"
+            android:textSize="12sp"
+            android:background="@drawable/bg_button_secondary"
+            android:layout_marginEnd="6dp" />
+
+        <Button
+            android:id="@+id/btnCameraTele"
+            android:layout_width="0dp"
+            android:layout_height="wrap_content"
+            android:layout_weight="1"
+            android:text="Tele"
+            android:textColor="#38bdf8"
+            android:textSize="12sp"
+            android:background="@drawable/bg_button_secondary"
+            android:layout_marginEnd="6dp" />
+
+        <Button
+            android:id="@+id/btnCameraFront"
+            android:layout_width="0dp"
+            android:layout_height="wrap_content"
+            android:layout_weight="1"
+            android:text="Front"
+            android:textColor="#38bdf8"
+            android:textSize="12sp"
+            android:background="@drawable/bg_button_secondary" />
+
+    </LinearLayout>
+
+    <!-- Controle de ISO -->
+    <TextView
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:text="🔆 ISO"
+        android:textSize="14sp"
+        android:textColor="#38bdf8"
+        android:textStyle="bold"
+        android:layout_marginBottom="8dp" />
+
+    <LinearLayout
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:orientation="horizontal"
+        android:gravity="center_vertical"
+        android:layout_marginBottom="20dp">
+
+        <TextView
+            android:id="@+id/txtIsoValue"
+            android:layout_width="60dp"
+            android:layout_height="wrap_content"
+            android:text="800"
+            android:textSize="16sp"
+            android:textColor="#f1f5f9"
+            android:textStyle="bold"
+            android:fontFamily="monospace" />
+
+        <SeekBar
+            android:id="@+id/seekIso"
+            android:layout_width="0dp"
+            android:layout_height="wrap_content"
+            android:layout_weight="1"
+            android:max="100"
+            android:progress="50"
+            android:progressTint="#38bdf8"
+            android:thumbTint="#38bdf8" />
+
+    </LinearLayout>
+
+    <!-- Controle de Exposição -->
+    <TextView
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:text="☀️ Exposição"
+        android:textSize="14sp"
+        android:textColor="#38bdf8"
+        android:textStyle="bold"
+        android:layout_marginBottom="8dp" />
+
+    <LinearLayout
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:orientation="horizontal"
+        android:gravity="center_vertical"
+        android:layout_marginBottom="20dp">
+
+        <TextView
+            android:id="@+id/txtExposureValue"
+            android:layout_width="80dp"
+            android:layout_height="wrap_content"
+            android:text="1/60s"
+            android:textSize="16sp"
+            android:textColor="#f1f5f9"
+            android:textStyle="bold"
+            android:fontFamily="monospace" />
+
+        <SeekBar
+            android:id="@+id/seekExposure"
+            android:layout_width="0dp"
+            android:layout_height="wrap_content"
+            android:layout_weight="1"
+            android:max="100"
+            android:progress="50"
+            android:progressTint="#38bdf8"
+            android:thumbTint="#38bdf8" />
+
+    </LinearLayout>
+
+    <!-- Controle de Foco -->
+    <TextView
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:text="🎯 Foco"
+        android:textSize="14sp"
+        android:textColor="#38bdf8"
+        android:textStyle="bold"
+        android:layout_marginBottom="8dp" />
+
+    <LinearLayout
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:orientation="horizontal"
+        android:gravity="center_vertical"
+        android:layout_marginBottom="20dp">
+
+        <TextView
+            android:id="@+id/txtFocusValue"
+            android:layout_width="80dp"
+            android:layout_height="wrap_content"
+            android:text="AUTO"
+            android:textSize="16sp"
+            android:textColor="#f1f5f9"
+            android:textStyle="bold"
+            android:fontFamily="monospace" />
+
+        <SeekBar
+            android:id="@+id/seekFocus"
+            android:layout_width="0dp"
+            android:layout_height="wrap_content"
+            android:layout_weight="1"
+            android:max="100"
+            android:progress="0"
+            android:progressTint="#38bdf8"
+            android:thumbTint="#38bdf8" />
+
+    </LinearLayout>
+
+    <!-- Botões de Ação Rápida -->
+    <TextView
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:text="⚡ Ações Rápidas"
+        android:textSize="14sp"
+        android:textColor="#38bdf8"
+        android:textStyle="bold"
+        android:layout_marginBottom="8dp" />
+
+    <LinearLayout
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:orientation="horizontal"
+        android:layout_marginBottom="10dp">
+
+        <Button
+            android:id="@+id/btnLockAE"
+            android:layout_width="0dp"
+            android:layout_height="wrap_content"
+            android:layout_weight="1"
+            android:text="🔒 Exp"
+            android:textColor="#38bdf8"
+            android:textSize="12sp"
+            android:background="@drawable/bg_button_secondary"
+            android:layout_marginEnd="6dp" />
+
+        <Button
+            android:id="@+id/btnLockAF"
+            android:layout_width="0dp"
+            android:layout_height="wrap_content"
+            android:layout_weight="1"
+            android:text="🔒 Foco"
+            android:textColor="#38bdf8"
+            android:textSize="12sp"
+            android:background="@drawable/bg_button_secondary"
+            android:layout_marginEnd="6dp" />
+
+        <Button
+            android:id="@+id/btnFlash"
+            android:layout_width="0dp"
+            android:layout_height="wrap_content"
+            android:layout_weight="1"
+            android:text="💡 Flash"
+            android:textColor="#38bdf8"
+            android:textSize="12sp"
+            android:background="@drawable/bg_button_secondary" />
+
+    </LinearLayout>
+
+</LinearLayout>
