@@ -16,12 +16,6 @@ android {
         testInstrumentationRunner "androidx.test.runner.AndroidJUnitRunner"
     }
 
-    // Desabilita lint no release para evitar falha de rede SSL no Windows
-    lint {
-        checkReleaseBuilds false
-        abortOnError false
-    }
-
     buildTypes {
         release {
             minifyEnabled false
