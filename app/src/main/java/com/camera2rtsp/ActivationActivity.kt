@@ -38,11 +38,9 @@ class ActivationActivity : AppCompatActivity() {
         progressBar = findViewById(R.id.progressBar)
         btnBuy      = findViewById(R.id.btnBuy)
 
-        // Exibe o device ID do aparelho (util para suporte)
         val devId = LicenseManager.getDeviceId(this)
         txtDeviceId.text = "ID: ${devId.take(8)}-${devId.substring(8, 16)}..."
 
-        // Auto-formata o serial enquanto o usuario digita (XXXX-XXXX-XXXX)
         inputSerial.addTextChangedListener(object : TextWatcher {
             private var isFormatting = false
             override fun beforeTextChanged(s: CharSequence?, start: Int, count: Int, after: Int) {}
@@ -62,11 +60,9 @@ class ActivationActivity : AppCompatActivity() {
 
         btnActivate.setOnClickListener { tryActivate() }
 
-        // Botao de compra — abre WhatsApp (substitua pelo seu numero)
         btnBuy.setOnClickListener {
-            val intent = Intent(Intent.ACTION_VIEW,
-                Uri.parse("https://wa.me/55XXXXXXXXXXX?text=Quero+comprar+Camera2+RTSP"))
-            startActivity(intent)
+            startActivity(Intent(Intent.ACTION_VIEW,
+                Uri.parse("https://wa.me/5519989305586?text=Quero+comprar+Camera2+RTSP")))
         }
     }
 
@@ -80,7 +76,6 @@ class ActivationActivity : AppCompatActivity() {
         setLoading(true)
         showStatus("🔄 Verificando serial...", isError = false)
 
-        // lifecycleScope cancela automaticamente se a Activity for destruida
         lifecycleScope.launch(Dispatchers.IO) {
             val result = LicenseManager.activate(this@ActivationActivity, serial)
             withContext(Dispatchers.Main) {
@@ -113,7 +108,6 @@ class ActivationActivity : AppCompatActivity() {
 
     private fun showStatus(msg: String, isError: Boolean) {
         txtStatus.text = msg
-        // Color.parseColor evita o erro de Long/Int com literais hexadecimais grandes
         txtStatus.setTextColor(
             if (isError) Color.parseColor("#EF4444") else Color.parseColor("#10B981")
         )
