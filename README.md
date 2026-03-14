@@ -208,6 +208,40 @@ New-NetFirewallRule -DisplayName "HTTP Control Panel" -Direction Inbound -Protoc
 
 ## 🔧 Solução de Problemas
 
+### ❌ Erro: bind failed: EADDRINUSE (Address already in use)
+
+**Causa mais comum:** VPN ativa no dispositivo Android
+
+Quando uma VPN está ativa, ela cria uma interface de rede virtual que intercepta todo o tráfego. Isso impede que o servidor RTSP consiga fazer bind na porta 8554 da interface de rede real.
+
+**Solução:**
+1. **Desative qualquer VPN** no dispositivo Android:
+   - WireGuard
+   - OpenVPN
+   - Cisco AnyConnect
+   - Ou qualquer outro cliente VPN
+2. Reinicie o app
+3. Verifique o acesso: `rtsp://<IP>:8554/live`
+
+**Outras causas possíveis:**
+- App não foi fechado corretamente (use **Force Stop** nas configurações)
+- Outro app usando porta 8554
+- Reinicie o dispositivo se o problema persistir
+
+**Verificação via ADB:**
+```bash
+# Ver se a porta está em uso
+adb shell netstat -tuln | grep 8554
+
+# Force stop do app
+adb shell am force-stop com.camera2rtsp
+
+# Ver logs do erro
+adb logcat | grep "RtspServer\|EADDRINUSE\|BindException"
+```
+
+---
+
 ### Problema: Não consigo acessar o painel web
 
 **Solução:**
