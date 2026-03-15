@@ -10,33 +10,25 @@ import android.os.IBinder
 import android.os.PowerManager
 import android.util.Log
 import androidx.core.app.NotificationCompat
+import com.pedro.encoder.input.video.CameraHelper
 import java.net.Inet4Address
 import java.net.NetworkInterface
 
-/**
- * Serviço em foreground que mantém o stream RTSP ativo mesmo com a tela desligada.
- *
- * O RtspServer precisa de uma AutoFitTextureView para mostrar o preview.
- * A Activity entrega essa view via attachTextureView() assim que ela estiver pronta.
- * Até lá, o serviço espera em estado "aguardando view".
- */
 class StreamingService : Service() {
 
-    private val TAG        = "StreamingService"
-    private val NOTIF_ID   = 1
-    private val CHANNEL_ID = "camera2rtsp_channel"
+    private val tag        = "StreamingService"
+    private val notifId    = 1
+    private val channelId  = "camera2rtsp_channel"
 
     lateinit var cameraController: Camera2Controller
         private set
-
-    // rtspServer só é criado quando a Activity entrega a TextureView
-    var rtspServer: RtspServer? = null
+    lateinit var rtspServer: RtspServer
         private set
-
     lateinit var httpServer: WebControlServer
         private set
 
     private var wakeLock: PowerManager.WakeLock? = null
+    private var previewFacing = CameraHelper.Facing.BACK
 
     companion object {
         const val ACTION_STOP = "com.camera2rtsp.STOP"
@@ -55,74 +47,58 @@ class StreamingService : Service() {
         if (intent?.action == ACTION_STOP) { stopSelf(); return START_NOT_STICKY }
 
         val ip = getLocalIpAddress()
-        startForeground(NOTIF_ID, buildNotification(ip, "Aguardando preview..."))
+        startForeground(notifId, buildNotification(ip, "Iniciando..."))
 
         val pm = getSystemService(POWER_SERVICE) as PowerManager
         wakeLock = pm.newWakeLock(PowerManager.PARTIAL_WAKE_LOCK, "camera2rtsp:streaming")
             .apply { acquire(12 * 60 * 60 * 1000L) }
 
-        // WebControlServer já pode iniciar (não precisa da TextureView)
         try {
+            rtspServer = RtspServer(applicationContext, cameraController)
+            rtspServer.init()
+            rtspServer.start()
+
             httpServer = WebControlServer(8080, cameraController, applicationContext)
             httpServer.start()
-            Log.i(TAG, "WebControlServer iniciado")
+
+            updateNotification(ip, "● Stream ativo")
+            Log.i(tag, "Serviço ativo — rtsp://$ip:8554/live | http://$ip:8080")
         } catch (e: Exception) {
-            Log.e(TAG, "Erro ao iniciar WebControlServer", e)
+            Log.e(tag, "Erro ao iniciar", e)
         }
 
         return START_STICKY
     }
 
-    /**
-     * Chamado pela MainActivity quando a TextureView está pronta.
-     * Cria o RtspServer com a view e inicia o stream.
-     */
-    fun attachTextureView(tv: com.pedro.library.view.AutoFitTextureView) {
-        if (rtspServer != null) {
-            // Já existe: apenas garante que o preview está ativo
-            rtspServer!!.restartPreview()
-            return
-        }
-        try {
-            val server = RtspServer(applicationContext, cameraController, tv)
-            server.init()
-            server.start()
-            rtspServer = server
-            val ip = getLocalIpAddress()
-            updateNotification(ip, "● Stream ativo")
-            Log.i(TAG, "RtspServer iniciado em rtsp://$ip:${server.port}/live")
-        } catch (e: Exception) {
-            Log.e(TAG, "Erro ao iniciar RtspServer", e)
-        }
+    /** Chamado pela Activity quando a TextureView está pronta: inicia o preview. */
+    fun startPreview(facing: CameraHelper.Facing = CameraHelper.Facing.BACK) {
+        previewFacing = facing
+        if (::rtspServer.isInitialized) rtspServer.startPreview(facing)
     }
 
-    fun detachPreview() {
-        rtspServer?.stopPreview()
+    fun stopPreview() {
+        if (::rtspServer.isInitialized) rtspServer.stopPreview()
     }
 
     override fun onDestroy() {
         super.onDestroy()
         instance = null
         try {
-            rtspServer?.stop()
+            if (::rtspServer.isInitialized)       rtspServer.stop()
             if (::cameraController.isInitialized) cameraController.release()
-            if (::httpServer.isInitialized) httpServer.stop()
-        } catch (e: Exception) { Log.e(TAG, "Erro ao parar", e) }
+            if (::httpServer.isInitialized)       httpServer.stop()
+        } catch (e: Exception) { Log.e(tag, "Erro ao parar", e) }
         wakeLock?.release()
-        wakeLock = null
-        Log.i(TAG, "Serviço encerrado")
+        Log.i(tag, "Serviço encerrado")
     }
 
     override fun onBind(intent: Intent?): IBinder? = null
 
     private fun createNotificationChannel() {
         val channel = NotificationChannel(
-            CHANNEL_ID, "Camera RTSP Streaming",
+            channelId, "Camera2 RTSP Streaming",
             NotificationManager.IMPORTANCE_LOW
-        ).apply {
-            description = "Stream RTSP ativo em segundo plano"
-            setShowBadge(false)
-        }
+        ).apply { description = "Stream RTSP ativo em segundo plano"; setShowBadge(false) }
         getSystemService(NotificationManager::class.java).createNotificationChannel(channel)
     }
 
@@ -136,7 +112,7 @@ class StreamingService : Service() {
             Intent(this, StreamingService::class.java).apply { action = ACTION_STOP },
             PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT
         )
-        return NotificationCompat.Builder(this, CHANNEL_ID)
+        return NotificationCompat.Builder(this, channelId)
             .setContentTitle("Camera2 RTSP")
             .setContentText(status)
             .setSubText("rtsp://$ip:8554/live")
@@ -149,8 +125,7 @@ class StreamingService : Service() {
     }
 
     fun updateNotification(ip: String, status: String) {
-        getSystemService(NotificationManager::class.java)
-            .notify(NOTIF_ID, buildNotification(ip, status))
+        getSystemService(NotificationManager::class.java).notify(notifId, buildNotification(ip, status))
     }
 
     private fun getLocalIpAddress(): String {

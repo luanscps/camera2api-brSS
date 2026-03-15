@@ -24,16 +24,17 @@ import androidx.core.content.ContextCompat
 import androidx.core.view.isVisible
 import com.google.android.material.bottomsheet.BottomSheetBehavior
 import com.google.android.material.floatingactionbutton.FloatingActionButton
+import com.pedro.encoder.input.video.CameraHelper
 import com.pedro.library.view.AutoFitTextureView
 import java.net.Inet4Address
 import java.net.NetworkInterface
 
 class MainActivity : AppCompatActivity() {
 
-    // ── Views ──────────────────────────────────────────────────────────────────
+    // ── Views ─────────────────────────────────────────────────────────────
     private lateinit var statusText: TextView
     private lateinit var rtspIndicator: TextView
-    private lateinit var cameraPreview: AutoFitTextureView   // AutoFitTextureView exigido pela lib
+    private lateinit var cameraPreview: AutoFitTextureView
     private lateinit var topOverlay: LinearLayout
 
     // HUD
@@ -72,39 +73,35 @@ class MainActivity : AppCompatActivity() {
     private lateinit var btnLockAF: Button
     private lateinit var btnFlash: Button
 
-    // ── Estado ────────────────────────────────────────────────────────────────
+    // ── Estado ─────────────────────────────────────────────────────────────
     private var isHudVisible  = true
     private var isFlashOn     = false
     private var isAELocked    = false
     private var isAFLocked    = false
-    private var cameraFacing  = "wide"
+    private var cameraFacing  = CameraHelper.Facing.BACK
 
-    // ── TextureView listener ─────────────────────────────────────────────────
+    // ── SurfaceTextureListener ───────────────────────────────────────────
     private val surfaceListener = object : TextureView.SurfaceTextureListener {
         override fun onSurfaceTextureAvailable(st: SurfaceTexture, w: Int, h: Int) {
-            // Surface pronta: entrega a TextureView ao serviço
-            StreamingService.instance?.attachTextureView(cameraPreview)
+            StreamingService.instance?.startPreview(cameraFacing)
         }
         override fun onSurfaceTextureSizeChanged(st: SurfaceTexture, w: Int, h: Int) {}
         override fun onSurfaceTextureDestroyed(st: SurfaceTexture): Boolean {
-            StreamingService.instance?.detachPreview()
+            StreamingService.instance?.stopPreview()
             return true
         }
         override fun onSurfaceTextureUpdated(st: SurfaceTexture) {}
     }
 
-    // ── Gesture ───────────────────────────────────────────────────────────────
+    // ── Gesture + HUD ────────────────────────────────────────────────────
     private lateinit var gestureDetector: GestureDetector
-
-    // ── HUD ──────────────────────────────────────────────────────────────────
     private val hudHandler  = Handler(Looper.getMainLooper())
     private val hudRunnable = object : Runnable {
         override fun run() { updateHudInfo(); hudHandler.postDelayed(this, 1000) }
     }
-
     private val permissionCode = 100
 
-    // ── Lifecycle ─────────────────────────────────────────────────────────────
+    // ── Lifecycle ───────────────────────────────────────────────────────────
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -121,17 +118,13 @@ class MainActivity : AppCompatActivity() {
 
     override fun onResume() {
         super.onResume()
-        // Se a Surface já existe (app voltou do background), reconecta preview
-        if (cameraPreview.isAvailable) {
-            StreamingService.instance?.attachTextureView(cameraPreview)
-        }
+        if (cameraPreview.isAvailable) StreamingService.instance?.startPreview(cameraFacing)
         updateStatusUI()
     }
 
     override fun onPause() {
         super.onPause()
-        // Para o preview local — o stream RTSP continua no serviço
-        StreamingService.instance?.detachPreview()
+        StreamingService.instance?.stopPreview()
     }
 
     override fun onDestroy() {
@@ -141,29 +134,28 @@ class MainActivity : AppCompatActivity() {
 
     override fun onConfigurationChanged(newConfig: Configuration) {
         super.onConfigurationChanged(newConfig)
-        Log.d("MainActivity", "onConfigurationChanged — stream mantido")
+        Log.d("MainActivity", "onConfigurationChanged")
     }
 
-    // ── initializeViews ───────────────────────────────────────────────────────
+    // ── Views ───────────────────────────────────────────────────────────────
 
     private fun initializeViews() {
         statusText    = findViewById(R.id.statusText)
         rtspIndicator = findViewById(R.id.rtspIndicator)
-        cameraPreview = findViewById(R.id.cameraPreview)    // AutoFitTextureView no XML
+        cameraPreview = findViewById(R.id.cameraPreview)
         topOverlay    = findViewById(R.id.topOverlay)
-
         cameraPreview.surfaceTextureListener = surfaceListener
 
-        val hudLayout = findViewById<View>(R.id.hudLayout)
-        hudContainer  = hudLayout.findViewById(R.id.hudContainer)
-        hudIso        = hudLayout.findViewById(R.id.hudIso)
-        hudExposure   = hudLayout.findViewById(R.id.hudExposure)
-        hudFocus      = hudLayout.findViewById(R.id.hudFocus)
-        hudFps        = hudLayout.findViewById(R.id.hudFps)
-        hudTemp       = hudLayout.findViewById(R.id.hudTemp)
-        hudBattery    = hudLayout.findViewById(R.id.hudBattery)
-        hudClients    = hudLayout.findViewById(R.id.hudClients)
-        hudNetwork    = hudLayout.findViewById(R.id.hudNetwork)
+        val hud      = findViewById<View>(R.id.hudLayout)
+        hudContainer = hud.findViewById(R.id.hudContainer)
+        hudIso       = hud.findViewById(R.id.hudIso)
+        hudExposure  = hud.findViewById(R.id.hudExposure)
+        hudFocus     = hud.findViewById(R.id.hudFocus)
+        hudFps       = hud.findViewById(R.id.hudFps)
+        hudTemp      = hud.findViewById(R.id.hudTemp)
+        hudBattery   = hud.findViewById(R.id.hudBattery)
+        hudClients   = hud.findViewById(R.id.hudClients)
+        hudNetwork   = hud.findViewById(R.id.hudNetwork)
 
         fabSwitchCamera = findViewById(R.id.fabSwitchCamera)
         fabFlash        = findViewById(R.id.fabFlash)
@@ -174,7 +166,7 @@ class MainActivity : AppCompatActivity() {
         bottomSheet     = findViewById(R.id.bottomSheet)
     }
 
-    // ── Bottom Sheet ────────────────────────────────────────────────────────
+    // ── Bottom Sheet ──────────────────────────────────────────────────────
 
     private fun setupBottomSheet() {
         bottomSheetBehavior = BottomSheetBehavior.from(bottomSheet)
@@ -194,7 +186,7 @@ class MainActivity : AppCompatActivity() {
         btnFlash         = bottomSheet.findViewById(R.id.btnFlash)
     }
 
-    // ── FABs ──────────────────────────────────────────────────────────────────
+    // ── FABs ────────────────────────────────────────────────────────────────
 
     private fun setupFABs() {
         fabSwitchCamera.setOnClickListener { cycleCamera(); animateFAB(fabSwitchCamera) }
@@ -220,13 +212,13 @@ class MainActivity : AppCompatActivity() {
         }
     }
 
-    // ── Bottom Sheet Controls ─────────────────────────────────────────────────
+    // ── Bottom Sheet Controls ───────────────────────────────────────────────
 
     private fun setupBottomSheetControls() {
-        btnCameraWide.setOnClickListener  { selectCamera("0", "wide",  btnCameraWide) }
-        btnCameraUltra.setOnClickListener { selectCamera("2", "ultra", btnCameraUltra) }
-        btnCameraTele.setOnClickListener  { selectCamera("3", "tele",  btnCameraTele) }
-        btnCameraFront.setOnClickListener { selectCamera("1", "front", btnCameraFront) }
+        btnCameraWide.setOnClickListener  { selectCamera("0", CameraHelper.Facing.BACK,  "Wide",  btnCameraWide) }
+        btnCameraUltra.setOnClickListener { selectCamera("2", CameraHelper.Facing.BACK,  "Ultra", btnCameraUltra) }
+        btnCameraTele.setOnClickListener  { selectCamera("3", CameraHelper.Facing.BACK,  "Tele",  btnCameraTele) }
+        btnCameraFront.setOnClickListener { selectCamera("1", CameraHelper.Facing.FRONT, "Frontal", btnCameraFront) }
 
         seekIso.setOnSeekBarChangeListener(object : SeekBar.OnSeekBarChangeListener {
             override fun onProgressChanged(s: SeekBar?, p: Int, fromUser: Boolean) {
@@ -266,7 +258,11 @@ class MainActivity : AppCompatActivity() {
         btnLockAF.setOnClickListener {
             isAFLocked = !isAFLocked
             if (isAFLocked) applyCamera("focusmode" to "off")
-            else { applyCamera("focusmode" to "continuous-video"); seekFocus.progress = 0; txtFocusValue.text = "AUTO" }
+            else {
+                applyCamera("focusmode" to "continuous-video")
+                seekFocus.progress = 0
+                txtFocusValue.text = "AUTO"
+            }
             showToast(if (isAFLocked) "Foco bloqueado" else "Foco automático")
         }
 
@@ -288,7 +284,7 @@ class MainActivity : AppCompatActivity() {
         }
     }
 
-    // ── Camera helpers ────────────────────────────────────────────────────────
+    // ── Câmara ─────────────────────────────────────────────────────────────────
 
     private fun applyCamera(vararg pairs: Pair<String, Any>) {
         StreamingService.instance?.cameraController?.updateSettings(mapOf(*pairs))
@@ -297,34 +293,37 @@ class MainActivity : AppCompatActivity() {
 
     private fun cycleCamera() {
         val (id, facing, label) = when (cameraFacing) {
-            "wide"  -> Triple("1", "front", "Frontal")
-            "front" -> Triple("2", "ultra", "Ultra Wide")
-            "ultra" -> Triple("3", "tele",  "Telephoto")
-            else    -> Triple("0", "wide",  "Wide")
+            CameraHelper.Facing.BACK  -> Triple("1", CameraHelper.Facing.FRONT, "Frontal")
+            CameraHelper.Facing.FRONT -> Triple("0", CameraHelper.Facing.BACK,  "Wide")
         }
         cameraFacing = facing
         applyCamera("camera" to id)
+        // Reinicia preview com o novo facing
+        StreamingService.instance?.rtspServer?.stopPreview()
+        StreamingService.instance?.rtspServer?.startPreview(facing)
         showToast(label)
     }
 
-    private fun selectCamera(id: String, facing: String, button: Button) {
+    private fun selectCamera(id: String, facing: CameraHelper.Facing, label: String, button: Button) {
         cameraFacing = facing
         applyCamera("camera" to id)
+        StreamingService.instance?.rtspServer?.stopPreview()
+        StreamingService.instance?.rtspServer?.startPreview(facing)
         listOf(btnCameraWide, btnCameraUltra, btnCameraTele, btnCameraFront).forEach {
             it.setBackgroundResource(R.drawable.bg_button_secondary)
             it.setTextColor(ContextCompat.getColor(this, android.R.color.white))
         }
         button.setBackgroundResource(R.drawable.bg_button_primary)
         button.setTextColor(ContextCompat.getColor(this, android.R.color.black))
-        showToast("${facing.uppercase()} selecionada")
+        showToast("$label selecionada")
     }
 
     private fun takeSnapshot() {
-        val bitmap = cameraPreview.bitmap ?: run { showToast("Preview indisponível"); return }
+        val bmp = cameraPreview.bitmap ?: run { showToast("Preview indisponível"); return }
         try {
             val dir  = getExternalFilesDir(android.os.Environment.DIRECTORY_PICTURES)
             val file = java.io.File(dir, "snapshot_${System.currentTimeMillis()}.jpg")
-            file.outputStream().use { bitmap.compress(android.graphics.Bitmap.CompressFormat.JPEG, 95, it) }
+            file.outputStream().use { bmp.compress(android.graphics.Bitmap.CompressFormat.JPEG, 95, it) }
             showToast("Foto salva: ${file.name}")
         } catch (e: Exception) {
             showToast("Erro ao salvar foto")
@@ -332,7 +331,7 @@ class MainActivity : AppCompatActivity() {
         }
     }
 
-    // ── UI helpers ────────────────────────────────────────────────────────────
+    // ── UI ────────────────────────────────────────────────────────────────────
 
     private fun toggleHud() {
         isHudVisible = !isHudVisible
@@ -395,7 +394,7 @@ class MainActivity : AppCompatActivity() {
 
     private fun showToast(msg: String) = Toast.makeText(this, msg, Toast.LENGTH_SHORT).show()
 
-    // ── Status ─────────────────────────────────────────────────────────────────
+    // ── Status + Permissões ───────────────────────────────────────────────────
 
     private fun updateStatusUI() {
         val ip = getLocalIpAddress()
@@ -418,8 +417,6 @@ class MainActivity : AppCompatActivity() {
         } catch (e: Exception) { Log.e("MainActivity", "Erro IP", e) }
         return "127.0.0.1"
     }
-
-    // ── Permissions ───────────────────────────────────────────────────────────
 
     private fun startStreamingService() {
         startForegroundService(Intent(this, StreamingService::class.java))
