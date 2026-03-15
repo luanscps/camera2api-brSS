@@ -24,12 +24,12 @@ android {
             )
         }
     }
-    
+
     compileOptions {
         sourceCompatibility = JavaVersion.VERSION_1_8
         targetCompatibility = JavaVersion.VERSION_1_8
     }
-    
+
     kotlinOptions {
         jvmTarget = "1.8"
     }
@@ -39,21 +39,20 @@ dependencies {
     implementation("androidx.core:core-ktx:1.12.0")
     implementation("androidx.appcompat:appcompat:1.6.1")
     implementation("com.google.android.material:material:1.11.0")
-    
+
     // NanoHTTPD - Servidor HTTP leve
     implementation("org.nanohttpd:nanohttpd:2.3.1")
-    
-    // Gson - Comunicação JSON
+
+    // Gson
     implementation("com.google.code.gson:gson:2.10.1")
-    
+
     // Coroutines
     implementation("org.jetbrains.kotlinx:kotlinx-coroutines-android:1.7.3")
-    
-    // Camera2
-    implementation("androidx.camera:camera-camera2:1.3.0")
-    implementation("androidx.camera:camera-lifecycle:1.3.0")
-    
-    // RootEncoder - Streaming RTSP/RTMP profissional
-    // Biblioteca completa para streaming H.264 com Camera2
+
+    // RootEncoder - library principal (RTMP/RTSP push + Camera2)
     implementation("com.github.pedroSG94.RootEncoder:library:2.4.5")
+
+    // RootEncoder - modulo servidor RTSP embutido
+    // Fornece RtspServerCamera2, ClientListener, ServerClient
+    implementation("com.github.pedroSG94.RootEncoder:rtsp-server:2.4.5")
 }
