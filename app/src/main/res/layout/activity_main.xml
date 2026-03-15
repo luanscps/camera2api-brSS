@@ -6,8 +6,8 @@
     android:layout_height="match_parent"
     android:background="#0f172a">
 
-    <!-- Preview da câmara (ocupa tela inteira) -->
-    <TextureView
+    <!-- AutoFitTextureView exigido pela biblioteca pedroSG94 para preview -->
+    <com.pedro.library.view.AutoFitTextureView
         android:id="@+id/cameraPreview"
         android:layout_width="match_parent"
         android:layout_height="match_parent" />
@@ -40,14 +40,14 @@
             android:layout_height="wrap_content"
             android:text="● RTSP :8554"
             android:textSize="12sp"
-            android:textColor="#10b981"
+            android:textColor="#ef4444"
             android:background="#0f172a"
             android:paddingHorizontal="8dp"
             android:paddingVertical="4dp" />
 
     </LinearLayout>
 
-    <!-- HUD: canto superior direito, abaixo do topOverlay -->
+    <!-- HUD: canto superior direito -->
     <include
         android:id="@+id/hudLayout"
         layout="@layout/layout_hud"
@@ -57,7 +57,7 @@
         android:layout_marginTop="60dp"
         android:layout_marginEnd="8dp" />
 
-    <!-- Coluna vertical de FABs no lado direito -->
+    <!-- Coluna de FABs lado direito -->
     <LinearLayout
         android:id="@+id/fabContainer"
         android:layout_width="wrap_content"
@@ -68,7 +68,6 @@
         android:gravity="center_horizontal"
         android:elevation="6dp">
 
-        <!-- Trocar câmara -->
         <ImageButton
             android:id="@+id/fabSwitchCamera"
             android:layout_width="52dp"
@@ -79,10 +78,8 @@
             android:tint="#f1f5f9"
             android:contentDescription="Trocar câmara"
             android:scaleType="centerInside"
-            android:padding="12dp"
-            android:elevation="4dp" />
+            android:padding="12dp" />
 
-        <!-- Flash -->
         <ImageButton
             android:id="@+id/fabFlash"
             android:layout_width="52dp"
@@ -90,13 +87,11 @@
             android:layout_marginBottom="12dp"
             android:background="@drawable/bg_fab"
             android:src="@android:drawable/ic_menu_compass"
-            android:tint="#fbbf24"
+            android:tint="#f1f5f9"
             android:contentDescription="Flash"
             android:scaleType="centerInside"
-            android:padding="12dp"
-            android:elevation="4dp" />
+            android:padding="12dp" />
 
-        <!-- Captar foto -->
         <ImageButton
             android:id="@+id/fabTakePhoto"
             android:layout_width="52dp"
@@ -107,10 +102,8 @@
             android:tint="#f1f5f9"
             android:contentDescription="Captar foto"
             android:scaleType="centerInside"
-            android:padding="12dp"
-            android:elevation="4dp" />
+            android:padding="12dp" />
 
-        <!-- Alternar HUD -->
         <ImageButton
             android:id="@+id/fabToggleHud"
             android:layout_width="52dp"
@@ -121,10 +114,8 @@
             android:tint="#38bdf8"
             android:contentDescription="Alternar HUD"
             android:scaleType="centerInside"
-            android:padding="12dp"
-            android:elevation="4dp" />
+            android:padding="12dp" />
 
-        <!-- Abrir controles (Bottom Sheet) -->
         <com.google.android.material.floatingactionbutton.FloatingActionButton
             android:id="@+id/fabControls"
             android:layout_width="wrap_content"
@@ -132,12 +123,11 @@
             android:src="@android:drawable/ic_menu_manage"
             app:tint="#f1f5f9"
             app:backgroundTint="#1e40af"
-            android:contentDescription="Controles"
-            android:elevation="4dp" />
+            android:contentDescription="Controles" />
 
     </LinearLayout>
 
-    <!-- Bottom Sheet (painel de configurações avançadas) -->
+    <!-- Bottom Sheet -->
     <include
         android:id="@+id/bottomSheet"
         layout="@layout/layout_bottom_sheet"

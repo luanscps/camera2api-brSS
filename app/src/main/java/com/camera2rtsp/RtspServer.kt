@@ -1,32 +1,47 @@
 package com.camera2rtsp
 
 import android.content.Context
-import android.view.Surface
 import android.util.Log
+import com.pedro.common.ConnectChecker
+import com.pedro.library.view.AutoFitTextureView
 import com.pedro.rtspserver.RtspServerCamera2
+import com.pedro.rtspserver.server.ClientListener
+import com.pedro.rtspserver.server.ServerClient
 
 /**
- * Wrapper do RtspServerCamera2 da biblioteca rtsp-rtmp-stream.
+ * Wrapper do RtspServerCamera2 (RTSP-Server 1.3.6 + RootEncoder 2.6.1).
  *
- * startBackground() — inicia o encoder + servidor RTSP sem preview local.
- * startPreview(surface) — conecta um Surface externo para ver na tela.
- * stopPreview() — remove o Surface sem interromper o stream.
- * attachTextureView() — compat para chamadas antigas (delega a startPreview).
+ * A TextureView é passada no construtor (exigência da biblioteca).
+ * O preview local começa automaticamente com startPreview().
+ * O stream RTSP começa com startStream().
  */
-class RtspServer(private val context: Context,
-                 private val ctrl: Camera2Controller) {
+class RtspServer(
+    private val context: Context,
+    private val ctrl: Camera2Controller,
+    private val textureView: AutoFitTextureView
+) : ConnectChecker, ClientListener {
 
-    private val TAG  = "RtspServer"
-    val port         = 8554
+    private val TAG = "RtspServer"
+    val port = 8554
+
     private lateinit var camera: RtspServerCamera2
 
-    val connectedClients: Int
-        get() = if (::camera.isInitialized) camera.sctpClient else 0
+    // Número de clientes RTSP conectados no momento
+    var connectedClients: Int = 0
+        private set
 
-    // Prepara e inicia o servidor sem Surface (sem preview na tela)
-    fun startBackground() {
-        camera = RtspServerCamera2(context, true, port)
+    fun init() {
+        camera = RtspServerCamera2(textureView, this, port)
+        camera.streamClient.setClientListener(this)
         ctrl.server = camera
+    }
+
+    // Inicia preview local + prepara encoder + sobe servidor RTSP
+    fun start() {
+        if (!::camera.isInitialized) init()
+
+        // startPreview() sem argumentos — usa a TextureView do construtor
+        if (!camera.isOnPreview) camera.startPreview()
 
         val vOk = camera.prepareVideo(
             ctrl.currentWidth, ctrl.currentHeight,
@@ -39,43 +54,49 @@ class RtspServer(private val context: Context,
             camera.startStream()
             Log.i(TAG, "Stream RTSP iniciado na porta $port")
         } else {
-            Log.e(TAG, "Falha ao preparar: vOk=$vOk aOk=$aOk")
+            Log.e(TAG, "Falha ao preparar encoder: vOk=$vOk aOk=$aOk")
         }
     }
 
-    // Conecta um Surface para exibir preview local
-    fun startPreview(surface: Surface) {
-        if (!::camera.isInitialized) return
-        try {
-            camera.startPreview(surface)
-            Log.d(TAG, "Preview local iniciado")
-        } catch (e: Exception) {
-            Log.e(TAG, "Erro ao iniciar preview", e)
-        }
-    }
-
-    // Remove o preview da tela sem parar o stream
     fun stopPreview() {
         if (!::camera.isInitialized) return
-        try {
-            camera.stopPreview()
-        } catch (e: Exception) {
-            Log.e(TAG, "Erro ao parar preview", e)
-        }
+        try { if (camera.isOnPreview) camera.stopPreview() }
+        catch (e: Exception) { Log.e(TAG, "stopPreview error", e) }
     }
 
-    // Compatibilidade com chamadas legadas
-    fun attachTextureView(tv: android.view.TextureView) {
-        tv.surfaceTexture?.let { startPreview(Surface(it)) }
+    fun restartPreview() {
+        if (!::camera.isInitialized) return
+        try { if (!camera.isOnPreview) camera.startPreview() }
+        catch (e: Exception) { Log.e(TAG, "restartPreview error", e) }
     }
 
-    val isStreaming: Boolean get() = if (::camera.isInitialized) camera.isStreaming else false
+    val isStreaming: Boolean
+        get() = ::camera.isInitialized && camera.isStreaming
 
     fun stop() {
         if (!::camera.isInitialized) return
         try {
             if (camera.isStreaming) camera.stopStream()
-            camera.stopPreview()
-        } catch (e: Exception) { Log.e(TAG, "Erro ao parar", e) }
+            if (camera.isOnPreview) camera.stopPreview()
+        } catch (e: Exception) { Log.e(TAG, "stop error", e) }
     }
+
+    // ── ConnectChecker ───────────────────────────────────────────
+    override fun onConnectionStarted(url: String) { Log.d(TAG, "onConnectionStarted: $url") }
+    override fun onConnectionSuccess()             { Log.i(TAG, "onConnectionSuccess") }
+    override fun onConnectionFailed(reason: String){ Log.e(TAG, "onConnectionFailed: $reason") }
+    override fun onDisconnect()                    { Log.i(TAG, "onDisconnect") }
+    override fun onAuthError()                     { Log.e(TAG, "onAuthError") }
+    override fun onAuthSuccess()                   { Log.i(TAG, "onAuthSuccess") }
+
+    // ── ClientListener ───────────────────────────────────────────
+    override fun onClientConnected(client: ServerClient) {
+        connectedClients++
+        Log.i(TAG, "Cliente conectado: ${client.getAddress()} total=$connectedClients")
+    }
+    override fun onClientDisconnected(client: ServerClient) {
+        connectedClients = maxOf(0, connectedClients - 1)
+        Log.i(TAG, "Cliente desconectado: ${client.getAddress()} total=$connectedClients")
+    }
+    override fun onClientNewBitrate(bitrate: Long, client: ServerClient) {}
 }
