@@ -11,7 +11,6 @@ import android.content.pm.PackageManager
 import android.content.res.Configuration
 import android.hardware.camera2.CameraCharacteristics
 import android.hardware.camera2.CameraManager
-import android.hardware.camera2.CameraMetadata
 import android.os.BatteryManager
 import android.os.Build
 import android.os.Bundle
@@ -88,14 +87,13 @@ class MainActivity : AppCompatActivity() {
     private val DEFAULT_URL  = "rtmp://192.168.1.100:1935/live/stream"
 
     // -- Estado ---------------------------------------------------------------
-    private var isPanelOpen    = false
-    private var isFlashOn      = false
-    private var isStreaming     = false
-    private var isPreviewOn     = true
-    private var activeParamTag  = ""
+    private var isPanelOpen   = false
+    private var isFlashOn     = false
+    private var isStreaming   = false
+    private var isPreviewOn   = true
+    private var activeParamTag = ""
 
     // -- Cameras descobertas em runtime --------------------------------------
-    // Cada entry: (cameraId, displayName, facing)
     private data class CameraEntry(val id: String, val name: String, val facing: CameraHelper.Facing)
     private var cameras: List<CameraEntry> = emptyList()
     private var activeCameraIdx = 0
@@ -124,7 +122,6 @@ class MainActivity : AppCompatActivity() {
         override fun onServiceConnected(name: ComponentName?, binder: IBinder?) {
             val b = binder as? StreamingService.LocalBinder ?: return
             service = b.getService()
-            // So conecta a view quando a Surface estiver pronta
             attachViewIfReady()
         }
         override fun onServiceDisconnected(name: ComponentName?) {
@@ -139,12 +136,12 @@ class MainActivity : AppCompatActivity() {
         super.onCreate(savedInstanceState)
         setContentView(R.layout.activity_main)
         prefs = getSharedPreferences(PREF_FILE, Context.MODE_PRIVATE)
-        bindViews()
-        discoverCameras()
-        setupDials()
-        setupBottomActions()
-        setupSettingsPanel()
-        setupGestures()
+        bindViews()           // 1. faz todos os findViewById (incluindo dials)
+        discoverCameras()     // 2. descobre cameras
+        setupDials()          // 3. configura listeners dos dials
+        setupBottomActions()  // 4. configura botoes (buildLensButtons esta aqui)
+        setupSettingsPanel()  // 5. configura painel
+        setupGestures()       // 6. gestos
         if (checkPermissions()) startAndBindService() else requestPermissions()
         hudHandler.post(hudRunnable)
     }
@@ -152,13 +149,11 @@ class MainActivity : AppCompatActivity() {
     override fun onResume() {
         super.onResume()
         refreshStatusBar()
-        // Se o service ja esta rodando mas nao esta bound, reconecta
         if (service == null) bindToService()
     }
 
     override fun onStop() {
         super.onStop()
-        // Quando a Activity sai da tela, solta a view para nao travar a Surface
         service?.detachView()
         viewAttached = false
         try { unbindService(serviceConnection) } catch (_: Exception) {}
@@ -187,18 +182,10 @@ class MainActivity : AppCompatActivity() {
         bindService(intent, serviceConnection, Context.BIND_AUTO_CREATE)
     }
 
-    /**
-     * Conecta a OpenGlView ao encoder do service.
-     * So pode ser chamado quando:
-     *   1. O service esta conectado (service != null)
-     *   2. A Surface da view esta pronta (surfaceCreated ja foi chamado)
-     */
     private fun attachViewIfReady() {
         if (viewAttached) return
         val svc = service ?: return
-        // OpenGlView herda de SurfaceView — verifica se a surface existe
         if (!cameraPreview.holder.surface.isValid) {
-            // Aguarda a surface ficar pronta
             cameraPreview.holder.addCallback(object : SurfaceHolder.Callback {
                 override fun surfaceCreated(holder: SurfaceHolder) {
                     cameraPreview.holder.removeCallback(this)
@@ -218,93 +205,84 @@ class MainActivity : AppCompatActivity() {
 
     // -- Descobre cameras -----------------------------------------------------
 
-    /**
-     * Lê o CameraManager e monta a lista de cameras com nomes humanos.
-     * Logica de nomes:
-     *   - Traseira principal  -> "Wide" (focal length mais comum)
-     *   - Ultra-wide (focal curta) -> "Ultra Wide"
-     *   - Tele (focal longa)  -> "Tele"
-     *   - Frontal             -> "Frontal"
-     *   - Depth/ToF           -> ignorado (oculto na UI)
-     */
     private fun discoverCameras() {
         val mgr = getSystemService(Context.CAMERA_SERVICE) as CameraManager
         val entries = mutableListOf<CameraEntry>()
 
-        // Coleta cameras traseiras separadas por focal length para classificar
         data class BackInfo(val id: String, val focalLen: Float)
         val backCameras = mutableListOf<BackInfo>()
 
         for (id in mgr.cameraIdList) {
             try {
                 val chars = mgr.getCameraCharacteristics(id)
-
-                // Ignora sensores de profundidade
                 val caps = chars.get(CameraCharacteristics.REQUEST_AVAILABLE_CAPABILITIES) ?: continue
+                // Ignora sensores depth-only
                 if (caps.contains(CameraCharacteristics.REQUEST_AVAILABLE_CAPABILITIES_DEPTH_OUTPUT) &&
                     !caps.contains(CameraCharacteristics.REQUEST_AVAILABLE_CAPABILITIES_BACKWARD_COMPATIBLE)) continue
 
                 val facing = chars.get(CameraCharacteristics.LENS_FACING)
-                val focalLens = chars.get(CameraCharacteristics.LENS_INFO_AVAILABLE_FOCAL_LENGTHS)
+                val focalLen = chars.get(CameraCharacteristics.LENS_INFO_AVAILABLE_FOCAL_LENGTHS)
                     ?.firstOrNull() ?: 4.0f
 
                 if (facing == CameraCharacteristics.LENS_FACING_FRONT) {
                     entries.add(CameraEntry(id, "Frontal", CameraHelper.Facing.FRONT))
                 } else if (facing == CameraCharacteristics.LENS_FACING_BACK) {
-                    backCameras.add(BackInfo(id, focalLens))
+                    backCameras.add(BackInfo(id, focalLen))
                 }
-            } catch (e: Exception) { /* ignora cameras inacessiveis */ }
+            } catch (_: Exception) {}
         }
 
-        // Classifica traseiras por focal length
         if (backCameras.isNotEmpty()) {
             val sorted = backCameras.sortedBy { it.focalLen }
             val minF = sorted.first().focalLen
             val maxF = sorted.last().focalLen
-            val midF = if (sorted.size >= 3) sorted[sorted.size / 2].focalLen else -1f
-
             for (bc in backCameras) {
                 val name = when {
-                    backCameras.size == 1          -> "Traseira"
-                    bc.focalLen == minF            -> "Ultra Wide"
-                    bc.focalLen == maxF            -> "Tele"
-                    else                           -> "Wide"
+                    backCameras.size == 1 -> "Traseira"
+                    bc.focalLen == minF   -> "Ultra Wide"
+                    bc.focalLen == maxF   -> "Tele"
+                    else                  -> "Wide"
                 }
                 entries.add(CameraEntry(bc.id, name, CameraHelper.Facing.BACK))
             }
         }
 
-        // Ordena: Wide primeiro, depois Ultra Wide, Tele, Frontal
         cameras = entries.sortedWith(compareBy {
             when (it.name) { "Wide" -> 0; "Ultra Wide" -> 1; "Tele" -> 2; else -> 3 }
         })
-
         android.util.Log.i("MainActivity", "Cameras: ${cameras.map { "${it.name}(${it.id})" }}")
     }
 
     // -- Bind views -----------------------------------------------------------
 
     private fun bindViews() {
-        cameraPreview  = findViewById(R.id.cameraPreview)
-        gridOverlay    = findViewById(R.id.gridOverlay)
-        topBar         = findViewById(R.id.topBar)
-        statusText     = findViewById(R.id.statusText)
-        rtspBadge      = findViewById(R.id.rtspBadge)
-        clientsBadge   = findViewById(R.id.clientsBadge)
-        batteryText    = findViewById(R.id.batteryText)
-        hudLeft        = findViewById(R.id.hudLeft)
-        hudFps         = findViewById(R.id.hudFps)
-        hudBitrate     = findViewById(R.id.hudBitrate)
-        hudResolution  = findViewById(R.id.hudResolution)
-        bottomActions  = findViewById(R.id.bottomActions)
-        paramsBar      = findViewById(R.id.paramsBar)
-        settingsPanel  = findViewById(R.id.settingsPanel)
-        lensContainer  = findViewById(R.id.lensContainer)
-        previewToggle  = findViewById(R.id.btnPreviewToggle)
-        btnShutter     = findViewById(R.id.btnShutter)
-        btnFlashToggle = findViewById(R.id.btnFlashToggle)
-        btnSwitchCamera= findViewById(R.id.btnSwitchCamera)
-        btnSettings    = findViewById(R.id.btnSettings)
+        cameraPreview   = findViewById(R.id.cameraPreview)
+        gridOverlay     = findViewById(R.id.gridOverlay)
+        topBar          = findViewById(R.id.topBar)
+        statusText      = findViewById(R.id.statusText)
+        rtspBadge       = findViewById(R.id.rtspBadge)
+        clientsBadge    = findViewById(R.id.clientsBadge)
+        batteryText     = findViewById(R.id.batteryText)
+        hudLeft         = findViewById(R.id.hudLeft)
+        hudFps          = findViewById(R.id.hudFps)
+        hudBitrate      = findViewById(R.id.hudBitrate)
+        hudResolution   = findViewById(R.id.hudResolution)
+        bottomActions   = findViewById(R.id.bottomActions)
+        paramsBar       = findViewById(R.id.paramsBar)
+        settingsPanel   = findViewById(R.id.settingsPanel)
+        lensContainer   = findViewById(R.id.lensContainer)
+        previewToggle   = findViewById(R.id.btnPreviewToggle)
+        btnShutter      = findViewById(R.id.btnShutter)
+        btnFlashToggle  = findViewById(R.id.btnFlashToggle)
+        btnSwitchCamera = findViewById(R.id.btnSwitchCamera)
+        btnSettings     = findViewById(R.id.btnSettings)
+
+        // *** FIX: dials precisam de findViewById ANTES de setDialLabel ***
+        paramIso     = findViewById(R.id.paramIso)
+        paramShutter = findViewById(R.id.paramShutter)
+        paramWb      = findViewById(R.id.paramWb)
+        paramFocus   = findViewById(R.id.paramFocus)
+        paramZoom    = findViewById(R.id.paramZoom)
 
         btnClosePanel   = settingsPanel.findViewById(R.id.btnClosePanel)
         editRtmpUrl     = settingsPanel.findViewById(R.id.editRtmpUrl)
@@ -321,6 +299,7 @@ class MainActivity : AppCompatActivity() {
         val savedUrl = prefs.getString(KEY_RTMP_URL, DEFAULT_URL) ?: DEFAULT_URL
         editRtmpUrl.setText(savedUrl)
 
+        // Agora e seguro chamar setDialLabel — todas as views ja foram inicializadas
         setDialLabel(paramIso,     "ISO",  isoSteps[isoIdx])
         setDialLabel(paramShutter, "SS",   shutterSteps[shutterIdx])
         setDialLabel(paramWb,      "WB",   wbSteps[wbIdx])
@@ -330,20 +309,14 @@ class MainActivity : AppCompatActivity() {
 
     // -- Botoes de lente dinamicos --------------------------------------------
 
-    /**
-     * Cria um TextView de lente para cada camera descoberta.
-     * Chamado depois de discoverCameras() e bindViews().
-     */
     private fun buildLensButtons() {
         lensContainer.removeAllViews()
-        val dp6 = (6 * resources.displayMetrics.density).toInt()
+        val dp6  = (6  * resources.displayMetrics.density).toInt()
         val size = (36 * resources.displayMetrics.density).toInt()
 
         cameras.forEachIndexed { idx, cam ->
             val tv = TextView(this).apply {
-                layoutParams = LinearLayout.LayoutParams(size, size).apply {
-                    marginEnd = dp6
-                }
+                layoutParams = LinearLayout.LayoutParams(size, size).apply { marginEnd = dp6 }
                 gravity = android.view.Gravity.CENTER
                 text = cam.name
                 textSize = if (cam.name.length <= 4) 13f else 9f
@@ -357,25 +330,22 @@ class MainActivity : AppCompatActivity() {
     }
 
     private fun selectCamera(idx: Int) {
-        if (idx == activeCameraIdx) return
+        if (idx == activeCameraIdx && service != null) return
         activeCameraIdx = idx
         val cam = cameras[idx]
-
-        // Atualiza visual dos botoes
         for (i in 0 until lensContainer.childCount) {
             val tv = lensContainer.getChildAt(i) as? TextView ?: continue
             tv.setBackgroundResource(if (i == idx) R.drawable.bg_lens_selected else R.drawable.bg_lens_idle)
             tv.setTextColor(if (i == idx) 0xFF000000.toInt() else 0xFF94a3b8.toInt())
         }
-
-        // Troca a camera no service (atualiza preview automaticamente)
         service?.switchCamera(cam.id, cam.facing)
     }
 
     // -- Dials ----------------------------------------------------------------
 
     private fun setupDials() {
-        fun attachDial(view: View, tag: String, steps: Array<String>, getIdx: () -> Int, setIdx: (Int) -> Unit, onApply: (String) -> Unit) {
+        fun attachDial(view: View, tag: String, steps: Array<String>,
+                       getIdx: () -> Int, setIdx: (Int) -> Unit, onApply: (String) -> Unit) {
             view.setOnClickListener {
                 if (activeParamTag == tag) { closeWheel(); return@setOnClickListener }
                 openWheel(view, tag, steps, getIdx, setIdx, onApply)
@@ -449,7 +419,6 @@ class MainActivity : AppCompatActivity() {
     // -- Bottom actions -------------------------------------------------------
 
     private fun setupBottomActions() {
-        // Shutter: liga/desliga stream
         btnShutter.setOnClickListener {
             isStreaming = !isStreaming
             if (isStreaming) service?.startStream()
@@ -458,7 +427,6 @@ class MainActivity : AppCompatActivity() {
             showToast(if (isStreaming) "Transmitindo..." else "Stream parado")
         }
 
-        // Flash
         btnFlashToggle.setOnClickListener {
             isFlashOn = !isFlashOn
             btnFlashToggle.setImageResource(R.drawable.ic_flash_off)
@@ -467,7 +435,6 @@ class MainActivity : AppCompatActivity() {
             animatePop(btnFlashToggle)
         }
 
-        // Troca para proxima camera da lista
         btnSwitchCamera.setOnClickListener {
             if (cameras.isEmpty()) return@setOnClickListener
             val nextIdx = (activeCameraIdx + 1) % cameras.size
@@ -475,17 +442,14 @@ class MainActivity : AppCompatActivity() {
             animatePop(btnSwitchCamera)
         }
 
-        // Preview toggle
         previewToggle.setOnClickListener {
             isPreviewOn = !isPreviewOn
             if (isPreviewOn) {
                 service?.startPreview()
-                previewToggle.setImageResource(android.R.drawable.ic_menu_view)
                 previewToggle.setColorFilter(0xFF38bdf8.toInt())
                 showToast("Preview ligado")
             } else {
                 service?.stopPreview()
-                previewToggle.setImageResource(android.R.drawable.ic_menu_view)
                 previewToggle.setColorFilter(0xFF94a3b8.toInt())
                 showToast("Preview desligado")
             }
@@ -494,7 +458,6 @@ class MainActivity : AppCompatActivity() {
         btnSettings.setOnClickListener { togglePanel() }
         btnClosePanel.setOnClickListener { closePanel() }
 
-        // Constroi botoes de lente depois que as cameras foram descobertas
         buildLensButtons()
     }
 
