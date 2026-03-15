@@ -4,6 +4,7 @@ import android.Manifest
 import android.animation.ObjectAnimator
 import android.content.Context
 import android.content.Intent
+import android.content.SharedPreferences
 import android.content.pm.PackageManager
 import android.content.res.Configuration
 import android.graphics.SurfaceTexture
@@ -17,6 +18,7 @@ import android.view.MotionEvent
 import android.view.TextureView
 import android.view.View
 import android.view.animation.DecelerateInterpolator
+import android.view.inputmethod.InputMethodManager
 import android.widget.*
 import androidx.appcompat.app.AppCompatActivity
 import androidx.core.app.ActivityCompat
@@ -29,7 +31,7 @@ import java.net.NetworkInterface
 
 class MainActivity : AppCompatActivity() {
 
-    // ── Views principais ──────────────────────────────────────────────────────
+    // -- Views principais ----------------------------------------------------
     private lateinit var cameraPreview: AutoFitTextureView
     private lateinit var gridOverlay: GridOverlayView
     private lateinit var topBar: View
@@ -45,17 +47,17 @@ class MainActivity : AppCompatActivity() {
     private lateinit var paramsBar: View
     private lateinit var settingsPanel: View
 
-    // ── Barra de parâmetros (dials) ───────────────────────────────────────────
+    // -- Dials ----------------------------------------------------------------
     private lateinit var paramIso: View
     private lateinit var paramShutter: View
     private lateinit var paramWb: View
     private lateinit var paramFocus: View
     private lateinit var paramZoom: View
 
-    // ── Roda de ajuste ────────────────────────────────────────────────────────
+    // -- Roda de ajuste -------------------------------------------------------
     private var wheelContainer: View? = null
 
-    // ── Bottom actions ────────────────────────────────────────────────────────
+    // -- Bottom actions -------------------------------------------------------
     private lateinit var btnShutter: View
     private lateinit var btnFlashToggle: ImageButton
     private lateinit var btnSwitchCamera: ImageButton
@@ -64,8 +66,10 @@ class MainActivity : AppCompatActivity() {
     private lateinit var btnLens05x: TextView
     private lateinit var btnLens3x: TextView
 
-    // ── Painel de configurações ───────────────────────────────────────────────
+    // -- Painel de configuracoes ----------------------------------------------
     private lateinit var btnClosePanel: ImageButton
+    private lateinit var editRtmpUrl: EditText
+    private lateinit var btnApplyRtmpUrl: Button
     private lateinit var spinResolution: Spinner
     private lateinit var spinFrameRate: Spinner
     private lateinit var spinBitrate: Spinner
@@ -75,34 +79,38 @@ class MainActivity : AppCompatActivity() {
     private lateinit var switchAudio: Switch
     private lateinit var seekMicGain: SeekBar
 
-    // ── Estado ────────────────────────────────────────────────────────────────
-    private var isPanelOpen    = false
-    private var isFlashOn      = false
-    private var isStreaming    = false
-    private var cameraFacing   = CameraHelper.Facing.BACK
+    // -- SharedPreferences ----------------------------------------------------
+    private lateinit var prefs: SharedPreferences
+    private val PREF_FILE    = "camera2rtmp_prefs"
+    private val KEY_RTMP_URL = "rtmp_url"
+    private val DEFAULT_URL  = "rtmp://192.168.1.100:1935/live/stream"
+
+    // -- Estado ---------------------------------------------------------------
+    private var isPanelOpen  = false
+    private var isFlashOn    = false
+    private var isStreaming  = false
+    private var cameraFacing = CameraHelper.Facing.BACK
     private var activeParamTag = ""
 
-    // ── Valores dos parâmetros ────────────────────────────────────────────────
+    // -- Valores dos parametros -----------------------------------------------
     private val isoSteps     = arrayOf("AUTO","50","100","200","400","800","1600","3200")
     private val shutterSteps = arrayOf("AUTO","1/8000","1/4000","1/2000","1/1000","1/500","1/250","1/125","1/60","1/30","1/15")
     private val wbSteps      = arrayOf("AUTO","2700K","3200K","4200K","5600K","6500K","7500K")
     private val focusSteps   = arrayOf("AUTO","0.1","0.2","0.3","0.4","0.5","0.6","0.7","0.8","0.9","1.0")
-    private val zoomSteps    = arrayOf("1×","1.5×","2×","3×","4×","5×")
+    private val zoomSteps    = arrayOf("1x","1.5x","2x","3x","4x","5x")
     private var isoIdx = 0; private var shutterIdx = 0; private var wbIdx = 0
     private var focusIdx = 0; private var zoomIdx = 0
 
-    // ── HUD ticker ────────────────────────────────────────────────────────────
+    // -- HUD ticker -----------------------------------------------------------
     private val hudHandler  = Handler(Looper.getMainLooper())
     private val hudRunnable = object : Runnable {
         override fun run() { tickHud(); hudHandler.postDelayed(this, 1000) }
     }
     private val permissionCode = 100
 
-    // ── SurfaceTexture listener ────────────────────────────────────────────────
+    // -- SurfaceTexture listener ----------------------------------------------
     private val surfaceListener = object : TextureView.SurfaceTextureListener {
         override fun onSurfaceTextureAvailable(st: SurfaceTexture, w: Int, h: Int) {
-            // Surface disponível — tenta iniciar preview imediatamente;
-            // se o serviço ainda não iniciou, agenda um retry.
             tryStartPreview()
         }
         override fun onSurfaceTextureSizeChanged(st: SurfaceTexture, w: Int, h: Int) {}
@@ -113,11 +121,12 @@ class MainActivity : AppCompatActivity() {
         override fun onSurfaceTextureUpdated(st: SurfaceTexture) {}
     }
 
-    // ── Lifecycle ──────────────────────────────────────────────────────────────
+    // -- Lifecycle ------------------------------------------------------------
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         setContentView(R.layout.activity_main)
+        prefs = getSharedPreferences(PREF_FILE, Context.MODE_PRIVATE)
         bindViews()
         setupDials()
         setupBottomActions()
@@ -129,8 +138,6 @@ class MainActivity : AppCompatActivity() {
 
     override fun onResume() {
         super.onResume()
-        // Surface já pode estar disponível (volta de onPause); tenta iniciar preview.
-        // tryStartPreview usa retry interno caso o serviço ainda esteja inicializando.
         if (cameraPreview.isAvailable) tryStartPreview()
         refreshStatusBar()
     }
@@ -147,19 +154,18 @@ class MainActivity : AppCompatActivity() {
 
     override fun onConfigurationChanged(newConfig: Configuration) { super.onConfigurationChanged(newConfig) }
 
-    // ── Inicia preview com retry caso o serviço ainda esteja inicializando ─────
+    // -- Preview com retry ----------------------------------------------------
 
     private fun tryStartPreview(retries: Int = 10) {
         val svc = StreamingService.instance
         if (svc != null && cameraPreview.isAvailable) {
             svc.startPreview(cameraPreview, cameraFacing)
         } else if (retries > 0) {
-            // Serviço ainda não está pronto — aguarda 200ms e tenta novamente
             hudHandler.postDelayed({ tryStartPreview(retries - 1) }, 200)
         }
     }
 
-    // ── Bind views ─────────────────────────────────────────────────────────────
+    // -- Bind views -----------------------------------------------------------
 
     private fun bindViews() {
         cameraPreview  = findViewById(R.id.cameraPreview)
@@ -188,7 +194,10 @@ class MainActivity : AppCompatActivity() {
         btnLens1x      = findViewById(R.id.btnLens1x)
         btnLens05x     = findViewById(R.id.btnLens05x)
         btnLens3x      = findViewById(R.id.btnLens3x)
+
         btnClosePanel  = settingsPanel.findViewById(R.id.btnClosePanel)
+        editRtmpUrl    = settingsPanel.findViewById(R.id.editRtmpUrl)
+        btnApplyRtmpUrl= settingsPanel.findViewById(R.id.btnApplyRtmpUrl)
         spinResolution = settingsPanel.findViewById(R.id.spinResolution)
         spinFrameRate  = settingsPanel.findViewById(R.id.spinFrameRate)
         spinBitrate    = settingsPanel.findViewById(R.id.spinBitrate)
@@ -200,14 +209,19 @@ class MainActivity : AppCompatActivity() {
 
         cameraPreview.surfaceTextureListener = surfaceListener
 
-        setDialLabel(paramIso,     "ISO",   isoSteps[isoIdx])
-        setDialLabel(paramShutter, "SS",    shutterSteps[shutterIdx])
-        setDialLabel(paramWb,      "WB",    wbSteps[wbIdx])
-        setDialLabel(paramFocus,   "FOCO",  focusSteps[focusIdx])
-        setDialLabel(paramZoom,    "ZOOM",  zoomSteps[zoomIdx])
+        // Carrega URL salva
+        val savedUrl = prefs.getString(KEY_RTMP_URL, DEFAULT_URL) ?: DEFAULT_URL
+        editRtmpUrl.setText(savedUrl)
+        StreamingService.instance?.rtmpUrl = savedUrl
+
+        setDialLabel(paramIso,     "ISO",  isoSteps[isoIdx])
+        setDialLabel(paramShutter, "SS",   shutterSteps[shutterIdx])
+        setDialLabel(paramWb,      "WB",   wbSteps[wbIdx])
+        setDialLabel(paramFocus,   "FOCO", focusSteps[focusIdx])
+        setDialLabel(paramZoom,    "ZOOM", zoomSteps[zoomIdx])
     }
 
-    // ── Dials da barra de parâmetros ───────────────────────────────────────────
+    // -- Dials ----------------------------------------------------------------
 
     private fun setupDials() {
         fun attachDial(view: View, tag: String, steps: Array<String>, getIdx: () -> Int, setIdx: (Int) -> Unit, onApply: (String) -> Unit) {
@@ -226,15 +240,14 @@ class MainActivity : AppCompatActivity() {
             }
             view.tag = tag
         }
-
-        attachDial(paramIso,     "ISO",    isoSteps,     { isoIdx },     { isoIdx = it },     { v -> applyCamera("iso" to (v.toDoubleOrNull() ?: 0.0)) })
-        attachDial(paramShutter, "SS",     shutterSteps, { shutterIdx }, { shutterIdx = it }, { v -> applyCamera("shutterSpeed" to v) })
-        attachDial(paramWb,      "WB",     wbSteps,      { wbIdx },      { wbIdx = it },      { v -> applyCamera("whiteBalance" to v) })
-        attachDial(paramFocus,   "FOCO",   focusSteps,   { focusIdx },   { focusIdx = it },   { v -> applyCamera("focus" to (v.replace("×","").toDoubleOrNull() ?: 0.0)) })
-        attachDial(paramZoom,    "ZOOM",   zoomSteps,    { zoomIdx },    { zoomIdx = it },    { v -> applyCamera("zoom" to v.replace("×","").toFloat()) })
+        attachDial(paramIso,     "ISO",  isoSteps,     { isoIdx },     { isoIdx = it },     { v -> applyCamera("iso" to (v.toDoubleOrNull() ?: 0.0)) })
+        attachDial(paramShutter, "SS",   shutterSteps, { shutterIdx }, { shutterIdx = it }, { v -> applyCamera("shutterSpeed" to v) })
+        attachDial(paramWb,      "WB",   wbSteps,      { wbIdx },      { wbIdx = it },      { v -> applyCamera("whiteBalance" to v) })
+        attachDial(paramFocus,   "FOCO", focusSteps,   { focusIdx },   { focusIdx = it },   { v -> applyCamera("focus" to (v.replace("x","").toDoubleOrNull() ?: 0.0)) })
+        attachDial(paramZoom,    "ZOOM", zoomSteps,    { zoomIdx },    { zoomIdx = it },    { v -> applyCamera("zoom" to v.replace("x","").toFloat()) })
     }
 
-    // ── Roda de ajuste ─────────────────────────────────────────────────────────
+    // -- Roda de ajuste -------------------------------------------------------
 
     private fun openWheel(
         anchor: View, tag: String, steps: Array<String>,
@@ -254,12 +267,9 @@ class MainActivity : AppCompatActivity() {
 
         wheelSeek.setOnSeekBarChangeListener(object : SeekBar.OnSeekBarChangeListener {
             override fun onProgressChanged(s: SeekBar?, p: Int, fromUser: Boolean) {
-                setIdx(p)
-                val v = steps[p]
-                wheelValue.text = v
-                wheelAuto.isVisible = p == 0
-                setDialLabel(anchor, tag, v)
-                if (fromUser) onApply(v)
+                setIdx(p); val v = steps[p]
+                wheelValue.text = v; wheelAuto.isVisible = p == 0
+                setDialLabel(anchor, tag, v); if (fromUser) onApply(v)
             }
             override fun onStartTrackingTouch(s: SeekBar?) {}
             override fun onStopTrackingTouch(s: SeekBar?) {}
@@ -275,11 +285,8 @@ class MainActivity : AppCompatActivity() {
     }
 
     private fun closeWheel() {
-        wheelContainer?.let {
-            (it.parent as? android.view.ViewGroup)?.removeView(it)
-        }
-        wheelContainer = null
-        activeParamTag = ""
+        wheelContainer?.let { (it.parent as? android.view.ViewGroup)?.removeView(it) }
+        wheelContainer = null; activeParamTag = ""
     }
 
     private fun setDialLabel(view: View, label: String, value: String) {
@@ -288,13 +295,15 @@ class MainActivity : AppCompatActivity() {
         view.findViewById<TextView>(R.id.paramLock)?.text  = if (value == "AUTO") "A" else "M"
     }
 
-    // ── Bottom actions ─────────────────────────────────────────────────────────
+    // -- Bottom actions -------------------------------------------------------
 
     private fun setupBottomActions() {
         btnShutter.setOnClickListener {
             isStreaming = !isStreaming
+            if (isStreaming) StreamingService.instance?.startStream()
+            else             StreamingService.instance?.stopStream()
             btnShutter.setBackgroundResource(if (isStreaming) R.drawable.bg_shutter_active else R.drawable.bg_shutter_inner)
-            showToast(if (isStreaming) "A transmitir…" else "Transmissão parada")
+            showToast(if (isStreaming) "Transmitindo..." else "Stream parado")
         }
 
         btnFlashToggle.setOnClickListener {
@@ -302,7 +311,6 @@ class MainActivity : AppCompatActivity() {
             btnFlashToggle.setImageResource(R.drawable.ic_flash_off)
             btnFlashToggle.setColorFilter(if (isFlashOn) 0xFFfbbf24.toInt() else 0xFF94a3b8.toInt())
             applyCamera("lantern" to isFlashOn)
-            showToast(if (isFlashOn) "Flash LIGADO" else "Flash DESLIGADO")
             animatePop(btnFlashToggle)
         }
 
@@ -332,7 +340,7 @@ class MainActivity : AppCompatActivity() {
         btnLens3x.setOnClickListener  { selectLens(btnLens3x,  "3") }
     }
 
-    // ── Painel lateral ─────────────────────────────────────────────────────────
+    // -- Painel de configuracoes ----------------------------------------------
 
     private fun setupSettingsPanel() {
         ArrayAdapter.createFromResource(this, R.array.resolutions, android.R.layout.simple_spinner_item)
@@ -342,11 +350,33 @@ class MainActivity : AppCompatActivity() {
         ArrayAdapter.createFromResource(this, R.array.bitrates, android.R.layout.simple_spinner_item)
             .also { it.setDropDownViewResource(android.R.layout.simple_spinner_dropdown_item); spinBitrate.adapter = it }
 
+        // Aplica URL RTMP e salva em SharedPreferences
+        btnApplyRtmpUrl.setOnClickListener {
+            val url = editRtmpUrl.text.toString().trim()
+            if (url.isEmpty() || !url.startsWith("rtmp://")) {
+                showToast("URL invalida. Use rtmp://IP:1935/live/stream")
+                return@setOnClickListener
+            }
+            // Salva persistido
+            prefs.edit().putString(KEY_RTMP_URL, url).apply()
+            // Aplica no servico e reconecta
+            StreamingService.instance?.let { svc ->
+                svc.rtmpUrl = url
+                svc.stopStream()
+                svc.startStream()
+                showToast("Reconectando para $url")
+            } ?: showToast("URL salva. Sera usada no proximo inicio.")
+            // Fecha teclado
+            val imm = getSystemService(Context.INPUT_METHOD_SERVICE) as InputMethodManager
+            imm.hideSoftInputFromWindow(editRtmpUrl.windowToken, 0)
+            statusText.text = url
+        }
+
         spinResolution.onItemSelectedListener = object : AdapterView.OnItemSelectedListener {
             override fun onItemSelected(p: AdapterView<*>?, v: View?, pos: Int, id: Long) {
                 val (w, h) = when (pos) { 0 -> 1920 to 1080; 1 -> 1280 to 720; else -> 640 to 480 }
                 applyCamera("width" to w, "height" to h)
-                hudResolution.text = "${w}×${h}"
+                hudResolution.text = "${w}x${h}"
             }
             override fun onNothingSelected(p: AdapterView<*>?) {}
         }
@@ -380,6 +410,9 @@ class MainActivity : AppCompatActivity() {
 
     private fun openPanel() {
         isPanelOpen = true
+        // Atualiza o campo com a URL atual antes de abrir
+        val url = prefs.getString(KEY_RTMP_URL, DEFAULT_URL) ?: DEFAULT_URL
+        editRtmpUrl.setText(url)
         ObjectAnimator.ofFloat(settingsPanel, "translationX", 0f).apply {
             duration = 280; interpolator = DecelerateInterpolator(); start()
         }
@@ -393,20 +426,18 @@ class MainActivity : AppCompatActivity() {
         }
     }
 
-    // ── Gestos ─────────────────────────────────────────────────────────────────
+    // -- Gestos ---------------------------------------------------------------
 
     private fun setupGestures() {
         val gd = GestureDetector(this, object : GestureDetector.SimpleOnGestureListener() {
             override fun onDoubleTap(e: MotionEvent): Boolean {
                 if (activeParamTag.isNotEmpty()) { closeWheel(); return true }
                 if (isPanelOpen) { closePanel(); return true }
-                toggleCleanUI()
-                return true
+                toggleCleanUI(); return true
             }
         })
         cameraPreview.setOnTouchListener { v, e ->
-            if (gd.onTouchEvent(e)) v.performClick()
-            true
+            if (gd.onTouchEvent(e)) v.performClick(); true
         }
     }
 
@@ -415,22 +446,20 @@ class MainActivity : AppCompatActivity() {
         cleanUiMode = !cleanUiMode
         val a = if (cleanUiMode) 0f else 1f
         listOf(topBar, paramsBar, bottomActions, hudLeft).forEach {
-            it.animate().alpha(a).setDuration(300).start()
-            it.isVisible = true
+            it.animate().alpha(a).setDuration(300).start(); it.isVisible = true
         }
     }
 
-    // ── HUD ticker ─────────────────────────────────────────────────────────────
+    // -- HUD ticker -----------------------------------------------------------
 
     private fun tickHud() {
         val ctrl    = StreamingService.instance?.cameraController
-        val clients = StreamingService.instance?.rtspServer?.connectedClients ?: 0
+        val streaming = StreamingService.instance?.rtmpStreamer?.isStreaming ?: false
         hudFps.text       = "${ctrl?.currentFps ?: 30} fps"
         hudBitrate.text   = "${ctrl?.currentBitrate ?: 4000} kbps"
-        clientsBadge.text = "$clients CLI"
-        clientsBadge.setTextColor(if (clients > 0) 0xFF22c55e.toInt() else 0xFF64748b.toInt())
-        rtspBadge.setBackgroundResource(if (clients > 0) R.drawable.bg_badge_red else R.drawable.bg_badge_green)
-        batteryText.text = "${getBattery()}%"
+        rtspBadge.text    = if (streaming) "LIVE" else "OFF"
+        rtspBadge.setBackgroundResource(if (streaming) R.drawable.bg_badge_red else R.drawable.bg_badge_green)
+        batteryText.text  = "${getBattery()}%"
         batteryText.setTextColor(when {
             getBattery() > 50 -> 0xFF22c55e.toInt()
             getBattery() > 20 -> 0xFFfbbf24.toInt()
@@ -438,15 +467,15 @@ class MainActivity : AppCompatActivity() {
         })
     }
 
-    // ── Helpers ────────────────────────────────────────────────────────────────
+    // -- Helpers --------------------------------------------------------------
 
     private fun applyCamera(vararg pairs: Pair<String, Any>) {
         StreamingService.instance?.cameraController?.updateSettings(mapOf(*pairs))
     }
 
     private fun refreshStatusBar() {
-        val ip = getLocalIpAddress()
-        statusText.text = "rtsp://$ip:8554/live"
+        val url = prefs.getString(KEY_RTMP_URL, DEFAULT_URL) ?: DEFAULT_URL
+        statusText.text = url
     }
 
     private fun getBattery(): Int =
@@ -477,9 +506,14 @@ class MainActivity : AppCompatActivity() {
         return "127.0.0.1"
     }
 
-    // ── Permissões ─────────────────────────────────────────────────────────────
+    // -- Permissoes -----------------------------------------------------------
 
-    private fun startStreamingService() = startForegroundService(Intent(this, StreamingService::class.java))
+    private fun startStreamingService() {
+        val url = prefs.getString(KEY_RTMP_URL, DEFAULT_URL) ?: DEFAULT_URL
+        val intent = Intent(this, StreamingService::class.java)
+            .putExtra(StreamingService.EXTRA_RTMP_URL, url)
+        startForegroundService(intent)
+    }
 
     private fun checkPermissions() =
         ContextCompat.checkSelfPermission(this, Manifest.permission.CAMERA) == PackageManager.PERMISSION_GRANTED &&
@@ -487,7 +521,8 @@ class MainActivity : AppCompatActivity() {
 
     private fun requestPermissions() {
         val p = mutableListOf(Manifest.permission.CAMERA, Manifest.permission.RECORD_AUDIO,
-            Manifest.permission.INTERNET, Manifest.permission.ACCESS_NETWORK_STATE, Manifest.permission.ACCESS_WIFI_STATE)
+            Manifest.permission.INTERNET, Manifest.permission.ACCESS_NETWORK_STATE,
+            Manifest.permission.ACCESS_WIFI_STATE)
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) p.add(Manifest.permission.POST_NOTIFICATIONS)
         ActivityCompat.requestPermissions(this, p.toTypedArray(), permissionCode)
     }
