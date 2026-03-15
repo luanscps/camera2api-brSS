@@ -11,6 +11,7 @@ import android.os.PowerManager
 import android.util.Log
 import androidx.core.app.NotificationCompat
 import com.pedro.encoder.input.video.CameraHelper
+import com.pedro.library.view.AutoFitTextureView
 import java.net.Inet4Address
 import java.net.NetworkInterface
 
@@ -70,10 +71,13 @@ class StreamingService : Service() {
         return START_STICKY
     }
 
-    /** Chamado pela Activity quando a TextureView está pronta: inicia o preview. */
-    fun startPreview(facing: CameraHelper.Facing = CameraHelper.Facing.BACK) {
+    /** Chamado pela Activity quando a TextureView está pronta. */
+    fun startPreview(
+        view: AutoFitTextureView,
+        facing: CameraHelper.Facing = CameraHelper.Facing.BACK
+    ) {
         previewFacing = facing
-        if (::rtspServer.isInitialized) rtspServer.startPreview(facing)
+        if (::rtspServer.isInitialized) rtspServer.startPreview(view, facing)
     }
 
     fun stopPreview() {

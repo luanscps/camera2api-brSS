@@ -53,7 +53,7 @@ class MainActivity : AppCompatActivity() {
     private lateinit var paramZoom: View
 
     // ── Roda de ajuste ────────────────────────────────────────────────────────
-    private var wheelContainer: View? = null   // inflado dinamicamente
+    private var wheelContainer: View? = null
 
     // ── Bottom actions ────────────────────────────────────────────────────────
     private lateinit var btnShutter: View
@@ -101,11 +101,14 @@ class MainActivity : AppCompatActivity() {
     // ── SurfaceTexture listener ────────────────────────────────────────────────
     private val surfaceListener = object : TextureView.SurfaceTextureListener {
         override fun onSurfaceTextureAvailable(st: SurfaceTexture, w: Int, h: Int) {
-            StreamingService.instance?.startPreview(cameraFacing)
+            // Surface disponível — tenta iniciar preview imediatamente;
+            // se o serviço ainda não iniciou, agenda um retry.
+            tryStartPreview()
         }
         override fun onSurfaceTextureSizeChanged(st: SurfaceTexture, w: Int, h: Int) {}
         override fun onSurfaceTextureDestroyed(st: SurfaceTexture): Boolean {
-            StreamingService.instance?.stopPreview(); return true
+            StreamingService.instance?.stopPreview()
+            return true
         }
         override fun onSurfaceTextureUpdated(st: SurfaceTexture) {}
     }
@@ -126,7 +129,9 @@ class MainActivity : AppCompatActivity() {
 
     override fun onResume() {
         super.onResume()
-        if (cameraPreview.isAvailable) StreamingService.instance?.startPreview(cameraFacing)
+        // Surface já pode estar disponível (volta de onPause); tenta iniciar preview.
+        // tryStartPreview usa retry interno caso o serviço ainda esteja inicializando.
+        if (cameraPreview.isAvailable) tryStartPreview()
         refreshStatusBar()
     }
 
@@ -137,10 +142,22 @@ class MainActivity : AppCompatActivity() {
 
     override fun onDestroy() {
         super.onDestroy()
-        hudHandler.removeCallbacks(hudRunnable)
+        hudHandler.removeCallbacksAndMessages(null)
     }
 
     override fun onConfigurationChanged(newConfig: Configuration) { super.onConfigurationChanged(newConfig) }
+
+    // ── Inicia preview com retry caso o serviço ainda esteja inicializando ─────
+
+    private fun tryStartPreview(retries: Int = 10) {
+        val svc = StreamingService.instance
+        if (svc != null && cameraPreview.isAvailable) {
+            svc.startPreview(cameraPreview, cameraFacing)
+        } else if (retries > 0) {
+            // Serviço ainda não está pronto — aguarda 200ms e tenta novamente
+            hudHandler.postDelayed({ tryStartPreview(retries - 1) }, 200)
+        }
+    }
 
     // ── Bind views ─────────────────────────────────────────────────────────────
 
@@ -183,7 +200,6 @@ class MainActivity : AppCompatActivity() {
 
         cameraPreview.surfaceTextureListener = surfaceListener
 
-        // Configura rótulos dos dials
         setDialLabel(paramIso,     "ISO",   isoSteps[isoIdx])
         setDialLabel(paramShutter, "SS",    shutterSteps[shutterIdx])
         setDialLabel(paramWb,      "WB",    wbSteps[wbIdx])
@@ -200,7 +216,6 @@ class MainActivity : AppCompatActivity() {
                 openWheel(view, tag, steps, getIdx, setIdx, onApply)
             }
             view.setOnLongClickListener {
-                // Toque longo — alterna AUTO
                 if (steps[0] == "AUTO") {
                     val newIdx = if (getIdx() == 0) 4 else 0
                     setIdx(newIdx)
@@ -276,37 +291,34 @@ class MainActivity : AppCompatActivity() {
     // ── Bottom actions ─────────────────────────────────────────────────────────
 
     private fun setupBottomActions() {
-        // Botão STREAM / shutter
         btnShutter.setOnClickListener {
             isStreaming = !isStreaming
-            val color = if (isStreaming) 0xFF22c55e.toInt() else 0xFFef4444.toInt()
             btnShutter.setBackgroundResource(if (isStreaming) R.drawable.bg_shutter_active else R.drawable.bg_shutter_inner)
             showToast(if (isStreaming) "A transmitir…" else "Transmissão parada")
         }
 
-        // Flash
         btnFlashToggle.setOnClickListener {
             isFlashOn = !isFlashOn
-            btnFlashToggle.setImageResource(if (isFlashOn) R.drawable.ic_flash_off else R.drawable.ic_flash_off)
+            btnFlashToggle.setImageResource(R.drawable.ic_flash_off)
             btnFlashToggle.setColorFilter(if (isFlashOn) 0xFFfbbf24.toInt() else 0xFF94a3b8.toInt())
             applyCamera("lantern" to isFlashOn)
             showToast(if (isFlashOn) "Flash LIGADO" else "Flash DESLIGADO")
             animatePop(btnFlashToggle)
         }
 
-        // Trocar câmara
         btnSwitchCamera.setOnClickListener {
             cameraFacing = if (cameraFacing == CameraHelper.Facing.BACK) CameraHelper.Facing.FRONT else CameraHelper.Facing.BACK
-            StreamingService.instance?.apply { stopPreview(); startPreview(cameraFacing) }
+            StreamingService.instance?.apply {
+                stopPreview()
+                startPreview(cameraPreview, cameraFacing)
+            }
             animatePop(btnSwitchCamera)
         }
 
-        // Painel de configurações
         btnSettings.setOnClickListener { togglePanel() }
         btnClosePanel.setOnClickListener { closePanel() }
 
-        // Seletor de lente
-        fun selectLens(btn: TextView, id: String, label: String) {
+        fun selectLens(btn: TextView, id: String) {
             listOf(btnLens1x, btnLens05x, btnLens3x).forEach {
                 it.setBackgroundResource(R.drawable.bg_lens_idle)
                 it.setTextColor(0xFF94a3b8.toInt())
@@ -315,23 +327,18 @@ class MainActivity : AppCompatActivity() {
             btn.setTextColor(0xFF000000.toInt())
             applyCamera("camera" to id)
         }
-        btnLens1x.setOnClickListener  { selectLens(btnLens1x,  "0", "1×")  }
-        btnLens05x.setOnClickListener { selectLens(btnLens05x, "2", ".5×") }
-        btnLens3x.setOnClickListener  { selectLens(btnLens3x,  "3", "3×")  }
+        btnLens1x.setOnClickListener  { selectLens(btnLens1x,  "0") }
+        btnLens05x.setOnClickListener { selectLens(btnLens05x, "2") }
+        btnLens3x.setOnClickListener  { selectLens(btnLens3x,  "3") }
     }
 
     // ── Painel lateral ─────────────────────────────────────────────────────────
 
     private fun setupSettingsPanel() {
-        // Resolução
         ArrayAdapter.createFromResource(this, R.array.resolutions, android.R.layout.simple_spinner_item)
             .also { it.setDropDownViewResource(android.R.layout.simple_spinner_dropdown_item); spinResolution.adapter = it }
-
-        // Frame rate
         ArrayAdapter.createFromResource(this, R.array.frame_rates, android.R.layout.simple_spinner_item)
             .also { it.setDropDownViewResource(android.R.layout.simple_spinner_dropdown_item); spinFrameRate.adapter = it }
-
-        // Bitrate
         ArrayAdapter.createFromResource(this, R.array.bitrates, android.R.layout.simple_spinner_item)
             .also { it.setDropDownViewResource(android.R.layout.simple_spinner_dropdown_item); spinBitrate.adapter = it }
 
@@ -343,7 +350,6 @@ class MainActivity : AppCompatActivity() {
             }
             override fun onNothingSelected(p: AdapterView<*>?) {}
         }
-
         spinFrameRate.onItemSelectedListener = object : AdapterView.OnItemSelectedListener {
             override fun onItemSelected(p: AdapterView<*>?, v: View?, pos: Int, id: Long) {
                 val fps = when (pos) { 0 -> 30; 1 -> 60; 2 -> 24; else -> 30 }
@@ -351,7 +357,6 @@ class MainActivity : AppCompatActivity() {
             }
             override fun onNothingSelected(p: AdapterView<*>?) {}
         }
-
         spinBitrate.onItemSelectedListener = object : AdapterView.OnItemSelectedListener {
             override fun onItemSelected(p: AdapterView<*>?, v: View?, pos: Int, id: Long) {
                 val kbps = when (pos) { 0 -> 4000; 1 -> 8000; 2 -> 2000; else -> 4000 }
@@ -393,7 +398,6 @@ class MainActivity : AppCompatActivity() {
     private fun setupGestures() {
         val gd = GestureDetector(this, object : GestureDetector.SimpleOnGestureListener() {
             override fun onDoubleTap(e: MotionEvent): Boolean {
-                // Duplo toque: fecha roda/painel ou alterna UI limpa
                 if (activeParamTag.isNotEmpty()) { closeWheel(); return true }
                 if (isPanelOpen) { closePanel(); return true }
                 toggleCleanUI()
@@ -421,8 +425,8 @@ class MainActivity : AppCompatActivity() {
     private fun tickHud() {
         val ctrl    = StreamingService.instance?.cameraController
         val clients = StreamingService.instance?.rtspServer?.connectedClients ?: 0
-        hudFps.text     = "${ctrl?.currentFps ?: 30} fps"
-        hudBitrate.text = "${(StreamingService.instance?.cameraController?.let { 4000 } ?: 4000)} kbps"
+        hudFps.text       = "${ctrl?.currentFps ?: 30} fps"
+        hudBitrate.text   = "${ctrl?.currentBitrate ?: 4000} kbps"
         clientsBadge.text = "$clients CLI"
         clientsBadge.setTextColor(if (clients > 0) 0xFF22c55e.toInt() else 0xFF64748b.toInt())
         rtspBadge.setBackgroundResource(if (clients > 0) R.drawable.bg_badge_red else R.drawable.bg_badge_green)

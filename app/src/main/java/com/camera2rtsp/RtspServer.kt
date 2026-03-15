@@ -4,17 +4,11 @@ import android.content.Context
 import android.util.Log
 import com.pedro.common.ConnectChecker
 import com.pedro.encoder.input.video.CameraHelper
+import com.pedro.library.view.AutoFitTextureView
 import com.pedro.rtspserver.RtspServerCamera2
 import com.pedro.rtspserver.server.ClientListener
 import com.pedro.rtspserver.server.ServerClient
 
-/**
- * Wrapper do RtspServerCamera2 (RTSP-Server 1.3.6 + RootEncoder 2.6.1).
- *
- * Construtor correto: RtspServerCamera2(context, ConnectChecker, port)
- * Preview local:      startPreview(CameraHelper.Facing.BACK)
- * Sem preview:        stopPreview()
- */
 class RtspServer(
     private val context: Context,
     private val ctrl: Camera2Controller
@@ -50,11 +44,18 @@ class RtspServer(
         }
     }
 
-    /** Inicia o preview local na TextureView (CameraHelper.Facing indica qual lente). */
-    fun startPreview(facing: CameraHelper.Facing = CameraHelper.Facing.BACK) {
+    /**
+     * Inicia o preview local na TextureView fornecida.
+     * A view É obrigatória — sem ela a biblioteca não renderiza nada no ecra.
+     */
+    fun startPreview(
+        view: AutoFitTextureView,
+        facing: CameraHelper.Facing = CameraHelper.Facing.BACK
+    ) {
         if (!::camera.isInitialized) return
         try {
-            if (!camera.isOnPreview) camera.startPreview(facing)
+            if (!camera.isOnPreview) camera.startPreview(facing, view)
+            else Log.d(tag, "preview já ativo, ignorando")
         } catch (e: Exception) {
             Log.e(tag, "Erro ao iniciar preview", e)
         }
