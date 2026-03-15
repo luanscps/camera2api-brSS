@@ -21,7 +21,7 @@ class Camera2Controller {
     var currentBitrate  = 4000   // kbps
     var currentCameraId = "0"
 
-    // -- Controles de lente / sensor --
+    // -- Controles basicos --
     var zoomLevel        = 1f
     var autoFocus        = true
     var focusDistance    = 0f
@@ -30,6 +30,17 @@ class Camera2Controller {
     var isoValue         = 100
     var oisEnabled       = false
     var eisEnabled       = false
+
+    // -- Controles avancados de sensor (usados pelo WebControlServer) --
+    var exposureNs       = 0L       // tempo de exposicao em nanosegundos
+    var frameDurationNs  = 0L       // duracao de frame em nanosegundos
+    var manualSensor     = false    // modo sensor manual (ISO + exposicao manual)
+    var aeLocked         = false    // auto-exposure lock
+    var awbLocked        = false    // auto-white-balance lock
+    var flashMode        = "off"    // off | torch | single
+    var edgeMode         = CameraMetadata.EDGE_MODE_HIGH_QUALITY
+    var noiseReductionMode = CameraMetadata.NOISE_REDUCTION_MODE_HIGH_QUALITY
+    var hotPixelMode     = CameraMetadata.HOT_PIXEL_MODE_HIGH_QUALITY
 
     fun updateSettings(params: Map<String, Any>) {
         applyLocally(params)
@@ -41,55 +52,58 @@ class Camera2Controller {
     }
 
     private fun applyLocally(params: Map<String, Any>) {
-        (params["width"]        as? Number)?.let  { currentWidth       = it.toInt() }
-        (params["height"]       as? Number)?.let  { currentHeight      = it.toInt() }
-        (params["fps"]          as? Number)?.let  { currentFps         = it.toInt() }
-        (params["bitrate"]      as? Number)?.let  { currentBitrate     = it.toInt() }
-        (params["camera"]       as? String)?.let  { currentCameraId    = it }
-        (params["zoom"]         as? Number)?.let  { zoomLevel          = it.toFloat().coerceAtLeast(1f) }
-        (params["iso"]          as? Number)?.let  { isoValue           = it.toInt() }
-        (params["ois"]          as? Boolean)?.let { oisEnabled         = it }
-        (params["eis"]          as? Boolean)?.let { eisEnabled         = it }
-        (params["lantern"]      as? Boolean)?.let { lanternEnabled     = it }
-        (params["whiteBalance"] as? String)?.let  { whiteBalanceMode   = it }
+        (params["width"]        as? Number)?.let  { currentWidth          = it.toInt() }
+        (params["height"]       as? Number)?.let  { currentHeight         = it.toInt() }
+        (params["fps"]          as? Number)?.let  { currentFps            = it.toInt() }
+        (params["bitrate"]      as? Number)?.let  { currentBitrate        = it.toInt() }
+        (params["camera"]       as? String)?.let  { currentCameraId       = it }
+        (params["zoom"]         as? Number)?.let  { zoomLevel             = it.toFloat().coerceAtLeast(1f) }
+        (params["iso"]          as? Number)?.let  { isoValue              = it.toInt() }
+        (params["ois"]          as? Boolean)?.let { oisEnabled            = it }
+        (params["eis"]          as? Boolean)?.let { eisEnabled            = it }
+        (params["lantern"]      as? Boolean)?.let { lanternEnabled        = it }
+        (params["whiteBalance"] as? String)?.let  { whiteBalanceMode      = it }
+        (params["exposureNs"]   as? Number)?.let  { exposureNs            = it.toLong() }
+        (params["frameDuration"]as? Number)?.let  { frameDurationNs       = it.toLong() }
+        (params["manualSensor"] as? Boolean)?.let { manualSensor          = it }
+        (params["aeLock"]       as? Boolean)?.let { aeLocked              = it }
+        (params["awbLock"]      as? Boolean)?.let { awbLocked             = it }
+        (params["flashMode"]    as? String)?.let  { flashMode             = it }
+        (params["edgeMode"]     as? Number)?.let  { edgeMode              = it.toInt() }
+        (params["noiseReduction"]as? Number)?.let { noiseReductionMode    = it.toInt() }
+        (params["hotPixel"]     as? Number)?.let  { hotPixelMode          = it.toInt() }
     }
 
     private fun applyCameraParams(cam: RtmpCamera2, params: Map<String, Any>) {
         try {
-            // Zoom (nivel real >= 1.0)
             (params["zoom"] as? Number)?.let {
                 val z = it.toFloat().coerceAtLeast(1f)
                 cam.setZoom(z); zoomLevel = z
             }
 
-            // Lanterna
             (params["lantern"] as? Boolean)?.let { on ->
                 try { if (on) cam.enableLantern() else cam.disableLantern(); lanternEnabled = on }
                 catch (e: Exception) { Log.w(tag, "Lanterna nao suportada: ${e.message}") }
             }
 
-            // OIS - enableOpticalVideoStabilization / disableOpticalVideoStabilization
             (params["ois"] as? Boolean)?.let { on ->
                 if (on) cam.enableOpticalVideoStabilization()
                 else    cam.disableOpticalVideoStabilization()
                 oisEnabled = on
             }
 
-            // EIS
             (params["eis"] as? Boolean)?.let { on ->
                 if (on) cam.enableVideoStabilization()
                 else    cam.disableVideoStabilization()
                 eisEnabled = on
             }
 
-            // Foco manual: setFocusDistance(float); 0 = auto
             (params["focus"] as? Number)?.let {
                 val d = it.toFloat()
                 if (d <= 0f) { cam.enableAutoFocus(); autoFocus = true; focusDistance = 0f }
                 else { cam.disableAutoFocus(); cam.setFocusDistance(d); autoFocus = false; focusDistance = d }
             }
 
-            // Balanco de branco: enableAutoWhiteBalance(int mode)
             (params["whiteBalance"] as? String)?.let { wb ->
                 val mode = when (wb) {
                     "daylight"                -> CameraMetadata.CONTROL_AWB_MODE_DAYLIGHT
@@ -101,20 +115,17 @@ class Camera2Controller {
                 cam.enableAutoWhiteBalance(mode); whiteBalanceMode = wb
             }
 
-            // Troca de camera: switchCamera(String cameraId)
             (params["camera"] as? String)?.let { id ->
                 try { cam.switchCamera(id); currentCameraId = id }
                 catch (e: Exception) { Log.w(tag, "switchCamera falhou: ${e.message}") }
             }
 
-            // Bitrate em tempo real (kbps -> bps)
             (params["bitrate"] as? Number)?.let {
                 val kbps = it.toInt()
                 if (cam.isStreaming) cam.setVideoBitrateOnFly(kbps * 1024)
                 currentBitrate = kbps
             }
 
-            // Exposicao EV
             (params["exposure"] as? Number)?.let { cam.setExposure(it.toInt()) }
 
         } catch (e: Exception) {

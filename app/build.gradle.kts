@@ -40,7 +40,7 @@ dependencies {
     implementation("androidx.appcompat:appcompat:1.6.1")
     implementation("com.google.android.material:material:1.11.0")
 
-    // NanoHTTPD - Servidor HTTP leve
+    // NanoHTTPD - servidor HTTP leve para WebControlServer
     implementation("org.nanohttpd:nanohttpd:2.3.1")
 
     // Gson
@@ -49,10 +49,8 @@ dependencies {
     // Coroutines
     implementation("org.jetbrains.kotlinx:kotlinx-coroutines-android:1.7.3")
 
-    // RootEncoder - library principal (RTMP/RTSP push + Camera2)
+    // RootEncoder - unico artefato disponivel no JitPack
+    // Inclui: RtmpCamera2, RtspCamera2, Camera2Base, CameraHelper, ConnectChecker, etc.
+    // NAO existe artefato separado rtsp-server no JitPack.
     implementation("com.github.pedroSG94.RootEncoder:library:2.4.5")
-
-    // RootEncoder - modulo servidor RTSP embutido
-    // Fornece: RtspServerCamera2, ClientListener, ServerClient
-    implementation("com.github.pedroSG94.RootEncoder:rtsp-server:2.4.5")
 }
