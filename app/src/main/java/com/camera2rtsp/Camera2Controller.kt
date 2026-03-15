@@ -39,7 +39,6 @@ class Camera2Controller {
     var currentBitrate   = 4000
     var currentFps       = 30
 
-    // Onda 3: Post-processing — tonemap fixo HIGH_QUALITY, sem curvas
     var edgeMode           = CameraMetadata.EDGE_MODE_HIGH_QUALITY
     var noiseReductionMode = CameraMetadata.NOISE_REDUCTION_MODE_HIGH_QUALITY
     var hotPixelMode       = CameraMetadata.HOT_PIXEL_MODE_HIGH_QUALITY
@@ -48,6 +47,9 @@ class Camera2Controller {
     private val worker = Handler(workerThread.looper)
     private fun post(block: () -> Unit) =
         worker.post { runCatching(block).onFailure { Log.e(tag, "worker error", it) } }
+
+    /** Converte qualquer Number (Int, Long, Double, Float) para Double com segurança */
+    private fun Any.toSafeDouble(): Double? = (this as? Number)?.toDouble()
 
     // -------------------------------------------------------------------------
     // Reflection helpers
@@ -80,7 +82,7 @@ class Camera2Controller {
     }
 
     // -------------------------------------------------------------------------
-    // Post-processing (EDGE + NR + HotPixel; tonemap sempre HIGH_QUALITY)
+    // Post-processing
     // -------------------------------------------------------------------------
 
     private fun applyPostProcessing() {
@@ -90,7 +92,7 @@ class Camera2Controller {
             b.set(CaptureRequest.HOT_PIXEL_MODE,       hotPixelMode)
             b.set(CaptureRequest.TONEMAP_MODE,         CameraMetadata.TONEMAP_MODE_HIGH_QUALITY)
         }
-        Log.d(tag, "applyPostProcessing ok=$ok edge=$edgeMode nr=$noiseReductionMode hot=$hotPixelMode tonemap=HIGH_QUALITY")
+        Log.d(tag, "applyPostProcessing ok=$ok")
     }
 
     // -------------------------------------------------------------------------
@@ -106,8 +108,7 @@ class Camera2Controller {
             b.set(CaptureRequest.SENSOR_EXPOSURE_TIME,  exposureNs)
             b.set(CaptureRequest.SENSOR_FRAME_DURATION, safeDuration)
         }
-        val fpsMax = if (safeDuration > 0) (1_000_000_000.0 / safeDuration).toInt() else 0
-        Log.d(tag, "applyManualSensor ok=$ok ISO=$isoValue exp=${exposureNs}ns dur=${safeDuration}ns fpsMax=$fpsMax")
+        Log.d(tag, "applyManualSensor ok=$ok ISO=$isoValue exp=${exposureNs}ns")
         applyPostProcessing()
     }
 
@@ -243,7 +244,7 @@ class Camera2Controller {
         }
 
         params["iso"]?.let {
-            isoValue = (it as Double).toInt()
+            isoValue = it.toSafeDouble()?.toInt() ?: return@let
             if (manualSensor) applyManualSensor()
             else {
                 val minEv = srv.minExposure; val maxEv = srv.maxExposure
@@ -268,14 +269,14 @@ class Camera2Controller {
 
         params["exposure"]?.let {
             if (!manualSensor) {
-                val ev = (it as Double).toInt().coerceIn(srv.minExposure, srv.maxExposure)
+                val ev = it.toSafeDouble()?.toInt()?.coerceIn(srv.minExposure, srv.maxExposure) ?: return@let
                 exposureLevel = ev; srv.setExposure(ev)
                 Log.d(tag, "EV -> $ev")
             }
         }
 
         params["focus"]?.let {
-            val norm = (it as Double).toFloat().coerceIn(0f, 1f)
+            val norm = it.toSafeDouble()?.toFloat()?.coerceIn(0f, 1f) ?: return@let
             if (norm == 0f) { autoFocus = true; focusDistance = 0f; srv.enableAutoFocus() }
             else { autoFocus = false; focusDistance = norm * 10f; srv.disableAutoFocus(); srv.setFocusDistance(focusDistance) }
             Log.d(tag, "focus norm=$norm dist=$focusDistance")
@@ -307,7 +308,8 @@ class Camera2Controller {
         }
 
         params["zoom"]?.let {
-            val z = (it as Double).toFloat().coerceIn(0f, 1f); zoomLevel = z
+            val z = it.toSafeDouble()?.toFloat()?.coerceIn(0f, 1f) ?: return@let
+            zoomLevel = z
             val zr = srv.zoomRange; srv.setZoom(zr.lower + z * (zr.upper - zr.lower))
             Log.d(tag, "zoom -> $z")
         }
@@ -353,13 +355,13 @@ class Camera2Controller {
         }
 
         params["bitrate"]?.let {
-            currentBitrate = (it as Double).toInt()
+            currentBitrate = it.toSafeDouble()?.toInt() ?: return@let
             srv.setVideoBitrateOnFly(currentBitrate * 1024)
             Log.d(tag, "bitrate -> ${currentBitrate}kbps")
         }
 
         params["fps"]?.let { value ->
-            val fps = (value as Double).toInt().coerceIn(15, 30)
+            val fps = value.toSafeDouble()?.toInt()?.coerceIn(15, 30) ?: return@let
             currentFps = fps
             if (!manualSensor) frameDurationNs = 1_000_000_000L / fps
             post {
@@ -399,7 +401,6 @@ class Camera2Controller {
             }
         }
 
-        // Onda 3: Edge / NR / HotPixel (tonemap sempre HIGH_QUALITY, sem selecao)
         params["edgeMode"]?.let {
             edgeMode = when (it as String) {
                 "off"          -> CameraMetadata.EDGE_MODE_OFF
