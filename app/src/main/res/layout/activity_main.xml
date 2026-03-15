@@ -1,34 +1,30 @@
 <?xml version="1.0" encoding="utf-8"?>
 <!--
-  Layout inspirado em Blackmagic Camera + FiLMiC Pro:
-  - Preview ocupa 100% do ecrã
-  - Barra de estado superior (codec/fps/bitrate/REC)
-  - Barra de parâmetros inferior (ISO | SS | WB | FOCUS | ZOOM)
-  - Coluna de ações à direita (shutter, flash, trocar câmara, foto)
-  - HUD visor cinema no topo esquerdo
-  - Painel de controlo desliza da direita (SettingsPanel)
+  Layout Camera2 RTMP
+  - OpenGlView ocupa 100% da tela (substitui AutoFitTextureView)
+  - Botoes de lente dinamicos via LinearLayout (lensContainer)
+  - Botao previewToggle para ligar/desligar preview
 -->
 <androidx.coordinatorlayout.widget.CoordinatorLayout
     xmlns:android="http://schemas.android.com/apk/res/android"
-    xmlns:app="http://schemas.android.com/apk/res-auto"
     android:layout_width="match_parent"
     android:layout_height="match_parent"
     android:background="#000000">
 
-    <!-- ░░ PREVIEW ░░ -->
-    <com.pedro.library.view.AutoFitTextureView
+    <!-- PREVIEW: OpenGlView para renderizar frames do RtmpCamera2 -->
+    <com.pedro.library.view.OpenGlView
         android:id="@+id/cameraPreview"
         android:layout_width="match_parent"
         android:layout_height="match_parent" />
 
-    <!-- ░░ GUIAS DE ENQUADRAMENTO (grade 3x3) ░░ -->
+    <!-- GRADE 3x3 -->
     <com.camera2rtsp.GridOverlayView
         android:id="@+id/gridOverlay"
         android:layout_width="match_parent"
         android:layout_height="match_parent"
         android:visibility="gone" />
 
-    <!-- ░░ BARRA SUPERIOR ░░ -->
+    <!-- BARRA SUPERIOR -->
     <LinearLayout
         android:id="@+id/topBar"
         android:layout_width="match_parent"
@@ -39,44 +35,30 @@
         android:orientation="horizontal"
         android:paddingHorizontal="14dp">
 
-        <!-- Indicador REC -->
-        <TextView
-            android:id="@+id/recIndicator"
-            android:layout_width="wrap_content"
-            android:layout_height="wrap_content"
-            android:text="● REC"
-            android:textSize="12sp"
-            android:textStyle="bold"
-            android:textColor="#ef4444"
-            android:visibility="gone" />
-
-        <!-- RTSP badge -->
         <TextView
             android:id="@+id/rtspBadge"
             android:layout_width="wrap_content"
             android:layout_height="26dp"
             android:paddingHorizontal="8dp"
             android:gravity="center"
-            android:text="RTSP"
+            android:text="OFF"
             android:textSize="10sp"
             android:textStyle="bold"
             android:textColor="#000000"
-            android:background="@drawable/bg_badge_red"
+            android:background="@drawable/bg_badge_green"
             android:layout_marginEnd="8dp" />
 
-        <!-- URL stream -->
         <TextView
             android:id="@+id/statusText"
             android:layout_width="0dp"
             android:layout_height="wrap_content"
             android:layout_weight="1"
-            android:text="rtsp://0.0.0.0:8554/live"
+            android:text="rtmp://..."
             android:textSize="10sp"
             android:textColor="#94a3b8"
             android:fontFamily="monospace"
             android:singleLine="true" />
 
-        <!-- Clientes conectados -->
         <TextView
             android:id="@+id/clientsBadge"
             android:layout_width="wrap_content"
@@ -87,7 +69,6 @@
             android:fontFamily="monospace"
             android:layout_marginStart="8dp" />
 
-        <!-- Bateria -->
         <TextView
             android:id="@+id/batteryText"
             android:layout_width="wrap_content"
@@ -100,7 +81,7 @@
 
     </LinearLayout>
 
-    <!-- ░░ HUD VISOR — canto superior esquerdo ░░ -->
+    <!-- HUD canto superior esquerdo -->
     <LinearLayout
         android:id="@+id/hudLeft"
         android:layout_width="wrap_content"
@@ -115,7 +96,7 @@
             android:id="@+id/hudResolution"
             android:layout_width="wrap_content"
             android:layout_height="wrap_content"
-            android:text="1920×1080"
+            android:text="1920x1080"
             android:textSize="11sp"
             android:textStyle="bold"
             android:textColor="#f8fafc"
@@ -134,14 +115,14 @@
             android:id="@+id/hudBitrate"
             android:layout_width="wrap_content"
             android:layout_height="wrap_content"
-            android:text="4.0 Mbps"
+            android:text="4000 kbps"
             android:textSize="11sp"
             android:textColor="#94a3b8"
             android:fontFamily="monospace" />
 
     </LinearLayout>
 
-    <!-- ░░ BARRA DE PARÂMETROS INFERIOR ░░ -->
+    <!-- BARRA DE PARAMETROS -->
     <HorizontalScrollView
         android:id="@+id/paramsBar"
         android:layout_width="match_parent"
@@ -152,7 +133,6 @@
         android:scrollbars="none">
 
         <LinearLayout
-            android:id="@+id/paramsRow"
             android:layout_width="wrap_content"
             android:layout_height="wrap_content"
             android:orientation="horizontal"
@@ -160,42 +140,20 @@
             android:paddingHorizontal="8dp"
             android:gravity="center_vertical">
 
-            <!-- ISO -->
-            <include layout="@layout/item_param_dial"
-                android:id="@+id/paramIso" />
-
-            <View android:layout_width="1dp" android:layout_height="28dp"
-                android:background="#334155" android:layout_marginHorizontal="4dp"/>
-
-            <!-- Velocidade de obturação -->
-            <include layout="@layout/item_param_dial"
-                android:id="@+id/paramShutter" />
-
-            <View android:layout_width="1dp" android:layout_height="28dp"
-                android:background="#334155" android:layout_marginHorizontal="4dp"/>
-
-            <!-- Balanço de brancos -->
-            <include layout="@layout/item_param_dial"
-                android:id="@+id/paramWb" />
-
-            <View android:layout_width="1dp" android:layout_height="28dp"
-                android:background="#334155" android:layout_marginHorizontal="4dp"/>
-
-            <!-- Foco -->
-            <include layout="@layout/item_param_dial"
-                android:id="@+id/paramFocus" />
-
-            <View android:layout_width="1dp" android:layout_height="28dp"
-                android:background="#334155" android:layout_marginHorizontal="4dp"/>
-
-            <!-- Zoom -->
-            <include layout="@layout/item_param_dial"
-                android:id="@+id/paramZoom" />
+            <include layout="@layout/item_param_dial" android:id="@+id/paramIso" />
+            <View android:layout_width="1dp" android:layout_height="28dp" android:background="#334155" android:layout_marginHorizontal="4dp"/>
+            <include layout="@layout/item_param_dial" android:id="@+id/paramShutter" />
+            <View android:layout_width="1dp" android:layout_height="28dp" android:background="#334155" android:layout_marginHorizontal="4dp"/>
+            <include layout="@layout/item_param_dial" android:id="@+id/paramWb" />
+            <View android:layout_width="1dp" android:layout_height="28dp" android:background="#334155" android:layout_marginHorizontal="4dp"/>
+            <include layout="@layout/item_param_dial" android:id="@+id/paramFocus" />
+            <View android:layout_width="1dp" android:layout_height="28dp" android:background="#334155" android:layout_marginHorizontal="4dp"/>
+            <include layout="@layout/item_param_dial" android:id="@+id/paramZoom" />
 
         </LinearLayout>
     </HorizontalScrollView>
 
-    <!-- ░░ BARRA DE AÇÕES INFERIOR ░░ -->
+    <!-- BARRA DE ACOES INFERIOR -->
     <LinearLayout
         android:id="@+id/bottomActions"
         android:layout_width="match_parent"
@@ -206,52 +164,16 @@
         android:orientation="horizontal"
         android:paddingHorizontal="16dp">
 
-        <!-- Seletor de lente -->
+        <!-- Botoes de lente dinamicos -->
         <LinearLayout
+            android:id="@+id/lensContainer"
             android:layout_width="0dp"
             android:layout_height="wrap_content"
             android:layout_weight="1"
             android:orientation="horizontal"
-            android:gravity="center_vertical">
+            android:gravity="center_vertical" />
 
-            <TextView
-                android:id="@+id/btnLens1x"
-                android:layout_width="36dp"
-                android:layout_height="36dp"
-                android:gravity="center"
-                android:text="1×"
-                android:textSize="13sp"
-                android:textStyle="bold"
-                android:textColor="#fbbf24"
-                android:background="@drawable/bg_lens_selected"
-                android:layout_marginEnd="6dp" />
-
-            <TextView
-                android:id="@+id/btnLens05x"
-                android:layout_width="36dp"
-                android:layout_height="36dp"
-                android:gravity="center"
-                android:text=".5×"
-                android:textSize="13sp"
-                android:textStyle="bold"
-                android:textColor="#94a3b8"
-                android:background="@drawable/bg_lens_idle"
-                android:layout_marginEnd="6dp" />
-
-            <TextView
-                android:id="@+id/btnLens3x"
-                android:layout_width="36dp"
-                android:layout_height="36dp"
-                android:gravity="center"
-                android:text="3×"
-                android:textSize="13sp"
-                android:textStyle="bold"
-                android:textColor="#94a3b8"
-                android:background="@drawable/bg_lens_idle" />
-
-        </LinearLayout>
-
-        <!-- Botão STREAM (shutter) -->
+        <!-- Botao STREAM -->
         <FrameLayout
             android:layout_width="64dp"
             android:layout_height="64dp"
@@ -271,13 +193,25 @@
 
         </FrameLayout>
 
-        <!-- Ações direita -->
+        <!-- Acoes direita -->
         <LinearLayout
             android:layout_width="0dp"
             android:layout_height="wrap_content"
             android:layout_weight="1"
             android:orientation="horizontal"
             android:gravity="center_vertical|end">
+
+            <!-- Toggle preview ON/OFF -->
+            <ImageButton
+                android:id="@+id/btnPreviewToggle"
+                android:layout_width="36dp"
+                android:layout_height="36dp"
+                android:background="@drawable/bg_action_btn"
+                android:src="@android:drawable/ic_menu_view"
+                android:scaleType="centerInside"
+                android:padding="8dp"
+                android:layout_marginEnd="8dp"
+                android:contentDescription="Preview" />
 
             <ImageButton
                 android:id="@+id/btnFlashToggle"
@@ -299,7 +233,7 @@
                 android:scaleType="centerInside"
                 android:padding="8dp"
                 android:layout_marginEnd="8dp"
-                android:contentDescription="Trocar câmara" />
+                android:contentDescription="Trocar camera" />
 
             <ImageButton
                 android:id="@+id/btnSettings"
@@ -309,13 +243,13 @@
                 android:src="@android:drawable/ic_menu_manage"
                 android:scaleType="centerInside"
                 android:padding="8dp"
-                android:contentDescription="Definições" />
+                android:contentDescription="Configuracoes" />
 
         </LinearLayout>
 
     </LinearLayout>
 
-    <!-- ░░ PAINEL LATERAL DE CONFIGURAÇÕES (desliza da direita) ░░ -->
+    <!-- PAINEL LATERAL -->
     <include
         android:id="@+id/settingsPanel"
         layout="@layout/layout_settings_panel"

@@ -6,12 +6,14 @@ import android.app.NotificationManager
 import android.app.PendingIntent
 import android.app.Service
 import android.content.Intent
+import android.os.Binder
 import android.os.IBinder
 import android.os.PowerManager
 import android.util.Log
 import androidx.core.app.NotificationCompat
 import com.pedro.common.ConnectChecker
 import com.pedro.encoder.input.video.CameraHelper
+import com.pedro.library.view.OpenGlView
 import java.net.Inet4Address
 import java.net.NetworkInterface
 
@@ -29,8 +31,16 @@ class StreamingService : Service(), ConnectChecker {
         private set
 
     private var wakeLock: PowerManager.WakeLock? = null
+    private var currentFacing = CameraHelper.Facing.BACK
 
     var rtmpUrl = "rtmp://192.168.1.100:1935/live/stream"
+
+    // -- Binder para a Activity se conectar ao Service -----------------------
+    inner class LocalBinder : Binder() {
+        fun getService(): StreamingService = this@StreamingService
+    }
+    private val binder = LocalBinder()
+    override fun onBind(intent: Intent?): IBinder = binder
 
     companion object {
         const val ACTION_STOP    = "com.camera2rtsp.STOP"
@@ -39,21 +49,23 @@ class StreamingService : Service(), ConnectChecker {
             private set
     }
 
+    // -- Lifecycle ------------------------------------------------------------
+
     override fun onCreate() {
         super.onCreate()
         instance = this
         createNotificationChannel()
         cameraController = Camera2Controller()
         rtmpStreamer      = RtmpStreamer(cameraController, this)
-        // Inicializa com Context (modo background) -- nao precisa de View
-        rtmpStreamer.init(applicationContext)
+        // Inicia em modo background ate a Activity conectar a view
+        rtmpStreamer.initBackground(applicationContext)
     }
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
         if (intent?.action == ACTION_STOP) { stopSelf(); return START_NOT_STICKY }
         intent?.getStringExtra(EXTRA_RTMP_URL)?.let { rtmpUrl = it }
 
-        startForeground(notifId, buildNotification("Iniciando..."))
+        startForeground(notifId, buildNotification("Aguardando preview..."))
 
         val pm = getSystemService(POWER_SERVICE) as PowerManager
         wakeLock = pm.newWakeLock(PowerManager.PARTIAL_WAKE_LOCK, "camera2rtsp:streaming")
@@ -67,24 +79,8 @@ class StreamingService : Service(), ConnectChecker {
             Log.e(tag, "Erro ao iniciar httpServer", e)
         }
 
-        // Inicia preview e stream imediatamente (modo background)
-        startPreview()
-        if (rtmpUrl.isNotEmpty()) startStream()
-
         return START_STICKY
     }
-
-    fun startPreview(facing: CameraHelper.Facing = CameraHelper.Facing.BACK) {
-        rtmpStreamer.startPreview(facing)
-    }
-
-    fun stopPreview() = rtmpStreamer.stopPreview()
-
-    fun startStream() {
-        rtmpStreamer.startStream(applicationContext, rtmpUrl)
-    }
-
-    fun stopStream() = rtmpStreamer.stopStream()
 
     override fun onDestroy() {
         super.onDestroy()
@@ -98,7 +94,54 @@ class StreamingService : Service(), ConnectChecker {
         Log.i(tag, "Servico encerrado")
     }
 
-    override fun onBind(intent: Intent?): IBinder? = null
+    // -- API chamada pela Activity --------------------------------------------
+
+    /**
+     * Chamado pela MainActivity quando a TextureView esta pronta.
+     * Reconecta o RtmpCamera2 com a view para exibir o preview.
+     */
+    fun attachView(view: OpenGlView) {
+        Log.i(tag, "attachView: conectando TextureView ao encoder")
+        rtmpStreamer.initWithView(view, applicationContext)
+        rtmpStreamer.startPreview(currentFacing)
+        updateNotification("Preview ativo")
+    }
+
+    /**
+     * Chamado quando a Activity e destruida/pausada.
+     * Volta ao modo background para nao segurar a Surface.
+     */
+    fun detachView() {
+        Log.i(tag, "detachView: voltando ao modo background")
+        val wasStreaming = rtmpStreamer.isStreaming
+        rtmpStreamer.stop()
+        rtmpStreamer.initBackground(applicationContext)
+        if (wasStreaming) rtmpStreamer.startStream(applicationContext, rtmpUrl)
+    }
+
+    /**
+     * Troca a camera pelo ID e facing.
+     * Para o preview, recria e reinicia — a view ja esta conectada.
+     */
+    fun switchCamera(cameraId: String, facing: CameraHelper.Facing) {
+        currentFacing = facing
+        cameraController.currentCameraId = cameraId
+        rtmpStreamer.switchCameraById(cameraId, facing)
+        Log.i(tag, "switchCamera: id=$cameraId facing=$facing")
+    }
+
+    fun startPreview(facing: CameraHelper.Facing = currentFacing) {
+        currentFacing = facing
+        rtmpStreamer.startPreview(facing)
+    }
+
+    fun stopPreview() = rtmpStreamer.stopPreview()
+
+    fun startStream() {
+        rtmpStreamer.startStream(applicationContext, rtmpUrl)
+    }
+
+    fun stopStream() = rtmpStreamer.stopStream()
 
     // -- ConnectChecker -------------------------------------------------------
     override fun onConnectionStarted(url: String) {
