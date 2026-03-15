@@ -1,0 +1,288 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  Painel lateral direito estilo Blackmagic:
+  desliza sobre o preview com configurações avançadas.
+-->
+<LinearLayout
+    xmlns:android="http://schemas.android.com/apk/res/android"
+    android:layout_width="280dp"
+    android:layout_height="match_parent"
+    android:orientation="vertical"
+    android:background="#F0060d17"
+    android:paddingTop="56dp"
+    android:paddingHorizontal="16dp"
+    android:paddingBottom="80dp">
+
+    <!-- Cabeçalho -->
+    <LinearLayout
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:orientation="horizontal"
+        android:gravity="center_vertical"
+        android:layout_marginBottom="20dp">
+
+        <TextView
+            android:layout_width="0dp"
+            android:layout_height="wrap_content"
+            android:layout_weight="1"
+            android:text="CONFIGURAÇÕES"
+            android:textSize="11sp"
+            android:textStyle="bold"
+            android:textColor="#94a3b8"
+            android:letterSpacing="0.15" />
+
+        <ImageButton
+            android:id="@+id/btnClosePanel"
+            android:layout_width="32dp"
+            android:layout_height="32dp"
+            android:background="@android:color/transparent"
+            android:src="@android:drawable/ic_menu_close_clear_cancel"
+            android:tint="#64748b"
+            android:contentDescription="Fechar" />
+
+    </LinearLayout>
+
+    <!-- Secção: Vídeo -->
+    <TextView
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:text="VÍDEO"
+        android:textSize="9sp"
+        android:textColor="#38bdf8"
+        android:textStyle="bold"
+        android:letterSpacing="0.2"
+        android:layout_marginBottom="10dp" />
+
+    <!-- Resolução -->
+    <LinearLayout
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:orientation="horizontal"
+        android:gravity="center_vertical"
+        android:layout_marginBottom="12dp">
+
+        <TextView
+            android:layout_width="0dp"
+            android:layout_height="wrap_content"
+            android:layout_weight="1"
+            android:text="Resolução"
+            android:textSize="13sp"
+            android:textColor="#cbd5e1" />
+
+        <Spinner
+            android:id="@+id/spinResolution"
+            android:layout_width="120dp"
+            android:layout_height="32dp"
+            android:background="@drawable/bg_spinner"
+            android:popupBackground="#1e293b" />
+
+    </LinearLayout>
+
+    <!-- Frame rate -->
+    <LinearLayout
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:orientation="horizontal"
+        android:gravity="center_vertical"
+        android:layout_marginBottom="12dp">
+
+        <TextView
+            android:layout_width="0dp"
+            android:layout_height="wrap_content"
+            android:layout_weight="1"
+            android:text="Frame Rate"
+            android:textSize="13sp"
+            android:textColor="#cbd5e1" />
+
+        <Spinner
+            android:id="@+id/spinFrameRate"
+            android:layout_width="120dp"
+            android:layout_height="32dp"
+            android:background="@drawable/bg_spinner"
+            android:popupBackground="#1e293b" />
+
+    </LinearLayout>
+
+    <!-- Bitrate -->
+    <LinearLayout
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:orientation="horizontal"
+        android:gravity="center_vertical"
+        android:layout_marginBottom="20dp">
+
+        <TextView
+            android:layout_width="0dp"
+            android:layout_height="wrap_content"
+            android:layout_weight="1"
+            android:text="Bitrate"
+            android:textSize="13sp"
+            android:textColor="#cbd5e1" />
+
+        <Spinner
+            android:id="@+id/spinBitrate"
+            android:layout_width="120dp"
+            android:layout_height="32dp"
+            android:background="@drawable/bg_spinner"
+            android:popupBackground="#1e293b" />
+
+    </LinearLayout>
+
+    <!-- Divisor -->
+    <View android:layout_width="match_parent" android:layout_height="1dp"
+        android:background="#1e293b" android:layout_marginBottom="16dp"/>
+
+    <!-- Secção: Câmara -->
+    <TextView
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:text="CÂMARA"
+        android:textSize="9sp"
+        android:textColor="#38bdf8"
+        android:textStyle="bold"
+        android:letterSpacing="0.2"
+        android:layout_marginBottom="10dp" />
+
+    <!-- Estabilização -->
+    <LinearLayout
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:orientation="horizontal"
+        android:gravity="center_vertical"
+        android:layout_marginBottom="12dp">
+
+        <TextView
+            android:layout_width="0dp"
+            android:layout_height="wrap_content"
+            android:layout_weight="1"
+            android:text="Estabilização OIS"
+            android:textSize="13sp"
+            android:textColor="#cbd5e1" />
+
+        <Switch
+            android:id="@+id/switchOis"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:checked="true"
+            android:thumbTint="#38bdf8"
+            android:trackTint="#1e40af" />
+
+    </LinearLayout>
+
+    <!-- Grade de enquadramento -->
+    <LinearLayout
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:orientation="horizontal"
+        android:gravity="center_vertical"
+        android:layout_marginBottom="12dp">
+
+        <TextView
+            android:layout_width="0dp"
+            android:layout_height="wrap_content"
+            android:layout_weight="1"
+            android:text="Grade 3×3"
+            android:textSize="13sp"
+            android:textColor="#cbd5e1" />
+
+        <Switch
+            android:id="@+id/switchGrid"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:thumbTint="#38bdf8"
+            android:trackTint="#334155" />
+
+    </LinearLayout>
+
+    <!-- Zebras (overexposure) -->
+    <LinearLayout
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:orientation="horizontal"
+        android:gravity="center_vertical"
+        android:layout_marginBottom="12dp">
+
+        <TextView
+            android:layout_width="0dp"
+            android:layout_height="wrap_content"
+            android:layout_weight="1"
+            android:text="HUD info"
+            android:textSize="13sp"
+            android:textColor="#cbd5e1" />
+
+        <Switch
+            android:id="@+id/switchHud"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:checked="true"
+            android:thumbTint="#38bdf8"
+            android:trackTint="#1e40af" />
+
+    </LinearLayout>
+
+    <!-- Divisor -->
+    <View android:layout_width="match_parent" android:layout_height="1dp"
+        android:background="#1e293b" android:layout_marginBottom="16dp"/>
+
+    <!-- Secção: Áudio -->
+    <TextView
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:text="ÁUDIO"
+        android:textSize="9sp"
+        android:textColor="#38bdf8"
+        android:textStyle="bold"
+        android:letterSpacing="0.2"
+        android:layout_marginBottom="10dp" />
+
+    <LinearLayout
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:orientation="horizontal"
+        android:gravity="center_vertical"
+        android:layout_marginBottom="12dp">
+
+        <TextView
+            android:layout_width="0dp"
+            android:layout_height="wrap_content"
+            android:layout_weight="1"
+            android:text="Áudio no stream"
+            android:textSize="13sp"
+            android:textColor="#cbd5e1" />
+
+        <Switch
+            android:id="@+id/switchAudio"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:checked="true"
+            android:thumbTint="#38bdf8"
+            android:trackTint="#1e40af" />
+
+    </LinearLayout>
+
+    <LinearLayout
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:orientation="horizontal"
+        android:gravity="center_vertical">
+
+        <TextView
+            android:layout_width="0dp"
+            android:layout_height="wrap_content"
+            android:layout_weight="1"
+            android:text="Ganho de microfone"
+            android:textSize="13sp"
+            android:textColor="#cbd5e1" />
+
+        <SeekBar
+            android:id="@+id/seekMicGain"
+            android:layout_width="100dp"
+            android:layout_height="wrap_content"
+            android:max="100"
+            android:progress="70"
+            android:progressTint="#38bdf8"
+            android:thumbTint="#38bdf8" />
+
+    </LinearLayout>
+
+</LinearLayout>

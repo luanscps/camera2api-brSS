@@ -12,18 +12,16 @@ import android.os.Build
 import android.os.Bundle
 import android.os.Handler
 import android.os.Looper
-import android.util.Log
 import android.view.GestureDetector
 import android.view.MotionEvent
 import android.view.TextureView
 import android.view.View
+import android.view.animation.DecelerateInterpolator
 import android.widget.*
 import androidx.appcompat.app.AppCompatActivity
 import androidx.core.app.ActivityCompat
 import androidx.core.content.ContextCompat
 import androidx.core.view.isVisible
-import com.google.android.material.bottomsheet.BottomSheetBehavior
-import com.google.android.material.floatingactionbutton.FloatingActionButton
 import com.pedro.encoder.input.video.CameraHelper
 import com.pedro.library.view.AutoFitTextureView
 import java.net.Inet4Address
@@ -31,95 +29,105 @@ import java.net.NetworkInterface
 
 class MainActivity : AppCompatActivity() {
 
-    // ── Views ─────────────────────────────────────────────────────────────
-    private lateinit var statusText: TextView
-    private lateinit var rtspIndicator: TextView
+    // ── Views principais ──────────────────────────────────────────────────────
     private lateinit var cameraPreview: AutoFitTextureView
-    private lateinit var topOverlay: LinearLayout
-
-    // HUD
-    private lateinit var hudContainer: LinearLayout
-    private lateinit var hudIso: TextView
-    private lateinit var hudExposure: TextView
-    private lateinit var hudFocus: TextView
+    private lateinit var gridOverlay: GridOverlayView
+    private lateinit var topBar: View
+    private lateinit var statusText: TextView
+    private lateinit var rtspBadge: TextView
+    private lateinit var clientsBadge: TextView
+    private lateinit var batteryText: TextView
+    private lateinit var hudLeft: View
     private lateinit var hudFps: TextView
-    private lateinit var hudTemp: TextView
-    private lateinit var hudBattery: TextView
-    private lateinit var hudClients: TextView
-    private lateinit var hudNetwork: TextView
+    private lateinit var hudBitrate: TextView
+    private lateinit var hudResolution: TextView
+    private lateinit var bottomActions: View
+    private lateinit var paramsBar: View
+    private lateinit var settingsPanel: View
 
-    // FABs
-    private lateinit var fabSwitchCamera: ImageButton
-    private lateinit var fabFlash: ImageButton
-    private lateinit var fabTakePhoto: ImageButton
-    private lateinit var fabToggleHud: ImageButton
-    private lateinit var fabControls: FloatingActionButton
-    private lateinit var fabContainer: LinearLayout
+    // ── Barra de parâmetros (dials) ───────────────────────────────────────────
+    private lateinit var paramIso: View
+    private lateinit var paramShutter: View
+    private lateinit var paramWb: View
+    private lateinit var paramFocus: View
+    private lateinit var paramZoom: View
 
-    // Bottom Sheet
-    private lateinit var bottomSheet: View
-    private lateinit var bottomSheetBehavior: BottomSheetBehavior<View>
-    private lateinit var btnCameraWide: Button
-    private lateinit var btnCameraUltra: Button
-    private lateinit var btnCameraTele: Button
-    private lateinit var btnCameraFront: Button
-    private lateinit var seekIso: SeekBar
-    private lateinit var txtIsoValue: TextView
-    private lateinit var seekExposure: SeekBar
-    private lateinit var txtExposureValue: TextView
-    private lateinit var seekFocus: SeekBar
-    private lateinit var txtFocusValue: TextView
-    private lateinit var btnLockAE: Button
-    private lateinit var btnLockAF: Button
-    private lateinit var btnFlash: Button
+    // ── Roda de ajuste ────────────────────────────────────────────────────────
+    private var wheelContainer: View? = null   // inflado dinamicamente
 
-    // ── Estado ─────────────────────────────────────────────────────────────
-    private var isHudVisible  = true
-    private var isFlashOn     = false
-    private var isAELocked    = false
-    private var isAFLocked    = false
-    private var cameraFacing  = CameraHelper.Facing.BACK
+    // ── Bottom actions ────────────────────────────────────────────────────────
+    private lateinit var btnShutter: View
+    private lateinit var btnFlashToggle: ImageButton
+    private lateinit var btnSwitchCamera: ImageButton
+    private lateinit var btnSettings: ImageButton
+    private lateinit var btnLens1x: TextView
+    private lateinit var btnLens05x: TextView
+    private lateinit var btnLens3x: TextView
 
-    // ── SurfaceTextureListener ───────────────────────────────────────────
+    // ── Painel de configurações ───────────────────────────────────────────────
+    private lateinit var btnClosePanel: ImageButton
+    private lateinit var spinResolution: Spinner
+    private lateinit var spinFrameRate: Spinner
+    private lateinit var spinBitrate: Spinner
+    private lateinit var switchOis: Switch
+    private lateinit var switchGrid: Switch
+    private lateinit var switchHud: Switch
+    private lateinit var switchAudio: Switch
+    private lateinit var seekMicGain: SeekBar
+
+    // ── Estado ────────────────────────────────────────────────────────────────
+    private var isPanelOpen    = false
+    private var isFlashOn      = false
+    private var isStreaming    = false
+    private var cameraFacing   = CameraHelper.Facing.BACK
+    private var activeParamTag = ""
+
+    // ── Valores dos parâmetros ────────────────────────────────────────────────
+    private val isoSteps     = arrayOf("AUTO","50","100","200","400","800","1600","3200")
+    private val shutterSteps = arrayOf("AUTO","1/8000","1/4000","1/2000","1/1000","1/500","1/250","1/125","1/60","1/30","1/15")
+    private val wbSteps      = arrayOf("AUTO","2700K","3200K","4200K","5600K","6500K","7500K")
+    private val focusSteps   = arrayOf("AUTO","0.1","0.2","0.3","0.4","0.5","0.6","0.7","0.8","0.9","1.0")
+    private val zoomSteps    = arrayOf("1×","1.5×","2×","3×","4×","5×")
+    private var isoIdx = 0; private var shutterIdx = 0; private var wbIdx = 0
+    private var focusIdx = 0; private var zoomIdx = 0
+
+    // ── HUD ticker ────────────────────────────────────────────────────────────
+    private val hudHandler  = Handler(Looper.getMainLooper())
+    private val hudRunnable = object : Runnable {
+        override fun run() { tickHud(); hudHandler.postDelayed(this, 1000) }
+    }
+    private val permissionCode = 100
+
+    // ── SurfaceTexture listener ────────────────────────────────────────────────
     private val surfaceListener = object : TextureView.SurfaceTextureListener {
         override fun onSurfaceTextureAvailable(st: SurfaceTexture, w: Int, h: Int) {
             StreamingService.instance?.startPreview(cameraFacing)
         }
         override fun onSurfaceTextureSizeChanged(st: SurfaceTexture, w: Int, h: Int) {}
         override fun onSurfaceTextureDestroyed(st: SurfaceTexture): Boolean {
-            StreamingService.instance?.stopPreview()
-            return true
+            StreamingService.instance?.stopPreview(); return true
         }
         override fun onSurfaceTextureUpdated(st: SurfaceTexture) {}
     }
 
-    // ── Gesture + HUD ────────────────────────────────────────────────────
-    private lateinit var gestureDetector: GestureDetector
-    private val hudHandler  = Handler(Looper.getMainLooper())
-    private val hudRunnable = object : Runnable {
-        override fun run() { updateHudInfo(); hudHandler.postDelayed(this, 1000) }
-    }
-    private val permissionCode = 100
-
-    // ── Lifecycle ───────────────────────────────────────────────────────────
+    // ── Lifecycle ──────────────────────────────────────────────────────────────
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         setContentView(R.layout.activity_main)
-        initializeViews()
-        setupBottomSheet()
-        setupFABs()
-        setupBottomSheetControls()
-        setupGestureDetector()
-        if (checkPermissions()) startStreamingService()
-        else requestPermissions()
+        bindViews()
+        setupDials()
+        setupBottomActions()
+        setupSettingsPanel()
+        setupGestures()
+        if (checkPermissions()) startStreamingService() else requestPermissions()
         hudHandler.post(hudRunnable)
     }
 
     override fun onResume() {
         super.onResume()
         if (cameraPreview.isAvailable) StreamingService.instance?.startPreview(cameraFacing)
-        updateStatusUI()
+        refreshStatusBar()
     }
 
     override fun onPause() {
@@ -132,320 +140,358 @@ class MainActivity : AppCompatActivity() {
         hudHandler.removeCallbacks(hudRunnable)
     }
 
-    override fun onConfigurationChanged(newConfig: Configuration) {
-        super.onConfigurationChanged(newConfig)
-        Log.d("MainActivity", "onConfigurationChanged")
-    }
+    override fun onConfigurationChanged(newConfig: Configuration) { super.onConfigurationChanged(newConfig) }
 
-    // ── Views ───────────────────────────────────────────────────────────────
+    // ── Bind views ─────────────────────────────────────────────────────────────
 
-    private fun initializeViews() {
-        statusText    = findViewById(R.id.statusText)
-        rtspIndicator = findViewById(R.id.rtspIndicator)
-        cameraPreview = findViewById(R.id.cameraPreview)
-        topOverlay    = findViewById(R.id.topOverlay)
+    private fun bindViews() {
+        cameraPreview  = findViewById(R.id.cameraPreview)
+        gridOverlay    = findViewById(R.id.gridOverlay)
+        topBar         = findViewById(R.id.topBar)
+        statusText     = findViewById(R.id.statusText)
+        rtspBadge      = findViewById(R.id.rtspBadge)
+        clientsBadge   = findViewById(R.id.clientsBadge)
+        batteryText    = findViewById(R.id.batteryText)
+        hudLeft        = findViewById(R.id.hudLeft)
+        hudFps         = findViewById(R.id.hudFps)
+        hudBitrate     = findViewById(R.id.hudBitrate)
+        hudResolution  = findViewById(R.id.hudResolution)
+        bottomActions  = findViewById(R.id.bottomActions)
+        paramsBar      = findViewById(R.id.paramsBar)
+        settingsPanel  = findViewById(R.id.settingsPanel)
+        paramIso       = findViewById(R.id.paramIso)
+        paramShutter   = findViewById(R.id.paramShutter)
+        paramWb        = findViewById(R.id.paramWb)
+        paramFocus     = findViewById(R.id.paramFocus)
+        paramZoom      = findViewById(R.id.paramZoom)
+        btnShutter     = findViewById(R.id.btnShutter)
+        btnFlashToggle = findViewById(R.id.btnFlashToggle)
+        btnSwitchCamera= findViewById(R.id.btnSwitchCamera)
+        btnSettings    = findViewById(R.id.btnSettings)
+        btnLens1x      = findViewById(R.id.btnLens1x)
+        btnLens05x     = findViewById(R.id.btnLens05x)
+        btnLens3x      = findViewById(R.id.btnLens3x)
+        btnClosePanel  = settingsPanel.findViewById(R.id.btnClosePanel)
+        spinResolution = settingsPanel.findViewById(R.id.spinResolution)
+        spinFrameRate  = settingsPanel.findViewById(R.id.spinFrameRate)
+        spinBitrate    = settingsPanel.findViewById(R.id.spinBitrate)
+        switchOis      = settingsPanel.findViewById(R.id.switchOis)
+        switchGrid     = settingsPanel.findViewById(R.id.switchGrid)
+        switchHud      = settingsPanel.findViewById(R.id.switchHud)
+        switchAudio    = settingsPanel.findViewById(R.id.switchAudio)
+        seekMicGain    = settingsPanel.findViewById(R.id.seekMicGain)
+
         cameraPreview.surfaceTextureListener = surfaceListener
 
-        val hud      = findViewById<View>(R.id.hudLayout)
-        hudContainer = hud.findViewById(R.id.hudContainer)
-        hudIso       = hud.findViewById(R.id.hudIso)
-        hudExposure  = hud.findViewById(R.id.hudExposure)
-        hudFocus     = hud.findViewById(R.id.hudFocus)
-        hudFps       = hud.findViewById(R.id.hudFps)
-        hudTemp      = hud.findViewById(R.id.hudTemp)
-        hudBattery   = hud.findViewById(R.id.hudBattery)
-        hudClients   = hud.findViewById(R.id.hudClients)
-        hudNetwork   = hud.findViewById(R.id.hudNetwork)
-
-        fabSwitchCamera = findViewById(R.id.fabSwitchCamera)
-        fabFlash        = findViewById(R.id.fabFlash)
-        fabTakePhoto    = findViewById(R.id.fabTakePhoto)
-        fabToggleHud    = findViewById(R.id.fabToggleHud)
-        fabControls     = findViewById(R.id.fabControls)
-        fabContainer    = findViewById(R.id.fabContainer)
-        bottomSheet     = findViewById(R.id.bottomSheet)
+        // Configura rótulos dos dials
+        setDialLabel(paramIso,     "ISO",   isoSteps[isoIdx])
+        setDialLabel(paramShutter, "SS",    shutterSteps[shutterIdx])
+        setDialLabel(paramWb,      "WB",    wbSteps[wbIdx])
+        setDialLabel(paramFocus,   "FOCO",  focusSteps[focusIdx])
+        setDialLabel(paramZoom,    "ZOOM",  zoomSteps[zoomIdx])
     }
 
-    // ── Bottom Sheet ──────────────────────────────────────────────────────
+    // ── Dials da barra de parâmetros ───────────────────────────────────────────
 
-    private fun setupBottomSheet() {
-        bottomSheetBehavior = BottomSheetBehavior.from(bottomSheet)
-        bottomSheetBehavior.state = BottomSheetBehavior.STATE_HIDDEN
-        btnCameraWide    = bottomSheet.findViewById(R.id.btnCameraWide)
-        btnCameraUltra   = bottomSheet.findViewById(R.id.btnCameraUltra)
-        btnCameraTele    = bottomSheet.findViewById(R.id.btnCameraTele)
-        btnCameraFront   = bottomSheet.findViewById(R.id.btnCameraFront)
-        seekIso          = bottomSheet.findViewById(R.id.seekIso)
-        txtIsoValue      = bottomSheet.findViewById(R.id.txtIsoValue)
-        seekExposure     = bottomSheet.findViewById(R.id.seekExposure)
-        txtExposureValue = bottomSheet.findViewById(R.id.txtExposureValue)
-        seekFocus        = bottomSheet.findViewById(R.id.seekFocus)
-        txtFocusValue    = bottomSheet.findViewById(R.id.txtFocusValue)
-        btnLockAE        = bottomSheet.findViewById(R.id.btnLockAE)
-        btnLockAF        = bottomSheet.findViewById(R.id.btnLockAF)
-        btnFlash         = bottomSheet.findViewById(R.id.btnFlash)
+    private fun setupDials() {
+        fun attachDial(view: View, tag: String, steps: Array<String>, getIdx: () -> Int, setIdx: (Int) -> Unit, onApply: (String) -> Unit) {
+            view.setOnClickListener {
+                if (activeParamTag == tag) { closeWheel(); return@setOnClickListener }
+                openWheel(view, tag, steps, getIdx, setIdx, onApply)
+            }
+            view.setOnLongClickListener {
+                // Toque longo — alterna AUTO
+                if (steps[0] == "AUTO") {
+                    val newIdx = if (getIdx() == 0) 4 else 0
+                    setIdx(newIdx)
+                    setDialLabel(view, view.tag.toString(), steps[newIdx])
+                    onApply(steps[newIdx])
+                }
+                true
+            }
+            view.tag = tag
+        }
+
+        attachDial(paramIso,     "ISO",    isoSteps,     { isoIdx },     { isoIdx = it },     { v -> applyCamera("iso" to (v.toDoubleOrNull() ?: 0.0)) })
+        attachDial(paramShutter, "SS",     shutterSteps, { shutterIdx }, { shutterIdx = it }, { v -> applyCamera("shutterSpeed" to v) })
+        attachDial(paramWb,      "WB",     wbSteps,      { wbIdx },      { wbIdx = it },      { v -> applyCamera("whiteBalance" to v) })
+        attachDial(paramFocus,   "FOCO",   focusSteps,   { focusIdx },   { focusIdx = it },   { v -> applyCamera("focus" to (v.replace("×","").toDoubleOrNull() ?: 0.0)) })
+        attachDial(paramZoom,    "ZOOM",   zoomSteps,    { zoomIdx },    { zoomIdx = it },    { v -> applyCamera("zoom" to v.replace("×","").toFloat()) })
     }
 
-    // ── FABs ────────────────────────────────────────────────────────────────
+    // ── Roda de ajuste ─────────────────────────────────────────────────────────
 
-    private fun setupFABs() {
-        fabSwitchCamera.setOnClickListener { cycleCamera(); animateFAB(fabSwitchCamera) }
+    private fun openWheel(
+        anchor: View, tag: String, steps: Array<String>,
+        getIdx: () -> Int, setIdx: (Int) -> Unit, onApply: (String) -> Unit
+    ) {
+        closeWheel()
+        activeParamTag = tag
+        val inflated = layoutInflater.inflate(R.layout.layout_param_wheel, null)
+        inflated.findViewById<TextView>(R.id.wheelLabel).text = tag
+        val wheelValue = inflated.findViewById<TextView>(R.id.wheelValue)
+        val wheelAuto  = inflated.findViewById<TextView>(R.id.wheelAuto)
+        val wheelSeek  = inflated.findViewById<SeekBar>(R.id.wheelSeek)
+        wheelSeek.max = steps.size - 1
+        wheelSeek.progress = getIdx()
+        wheelValue.text = steps[getIdx()]
+        wheelAuto.isVisible = getIdx() == 0
 
-        fabFlash.setOnClickListener {
+        wheelSeek.setOnSeekBarChangeListener(object : SeekBar.OnSeekBarChangeListener {
+            override fun onProgressChanged(s: SeekBar?, p: Int, fromUser: Boolean) {
+                setIdx(p)
+                val v = steps[p]
+                wheelValue.text = v
+                wheelAuto.isVisible = p == 0
+                setDialLabel(anchor, tag, v)
+                if (fromUser) onApply(v)
+            }
+            override fun onStartTrackingTouch(s: SeekBar?) {}
+            override fun onStopTrackingTouch(s: SeekBar?) {}
+        })
+
+        val root = findViewById<android.view.ViewGroup>(android.R.id.content)
+        val params = android.widget.FrameLayout.LayoutParams(
+            android.view.ViewGroup.LayoutParams.MATCH_PARENT,
+            android.view.ViewGroup.LayoutParams.WRAP_CONTENT
+        ).apply { gravity = android.view.Gravity.BOTTOM; bottomMargin = resources.getDimensionPixelSize(R.dimen.params_bar_height) }
+        root.addView(inflated, params)
+        wheelContainer = inflated
+    }
+
+    private fun closeWheel() {
+        wheelContainer?.let {
+            (it.parent as? android.view.ViewGroup)?.removeView(it)
+        }
+        wheelContainer = null
+        activeParamTag = ""
+    }
+
+    private fun setDialLabel(view: View, label: String, value: String) {
+        view.findViewById<TextView>(R.id.paramLabel)?.text = label
+        view.findViewById<TextView>(R.id.paramValue)?.text = value
+        view.findViewById<TextView>(R.id.paramLock)?.text  = if (value == "AUTO") "A" else "M"
+    }
+
+    // ── Bottom actions ─────────────────────────────────────────────────────────
+
+    private fun setupBottomActions() {
+        // Botão STREAM / shutter
+        btnShutter.setOnClickListener {
+            isStreaming = !isStreaming
+            val color = if (isStreaming) 0xFF22c55e.toInt() else 0xFFef4444.toInt()
+            btnShutter.setBackgroundResource(if (isStreaming) R.drawable.bg_shutter_active else R.drawable.bg_shutter_inner)
+            showToast(if (isStreaming) "A transmitir…" else "Transmissão parada")
+        }
+
+        // Flash
+        btnFlashToggle.setOnClickListener {
             isFlashOn = !isFlashOn
+            btnFlashToggle.setImageResource(if (isFlashOn) R.drawable.ic_flash_off else R.drawable.ic_flash_off)
+            btnFlashToggle.setColorFilter(if (isFlashOn) 0xFFfbbf24.toInt() else 0xFF94a3b8.toInt())
             applyCamera("lantern" to isFlashOn)
-            fabFlash.setColorFilter(if (isFlashOn) 0xFFfbbf24.toInt() else 0xFFf1f5f9.toInt())
             showToast(if (isFlashOn) "Flash LIGADO" else "Flash DESLIGADO")
-            animateFAB(fabFlash)
+            animatePop(btnFlashToggle)
         }
 
-        fabTakePhoto.setOnClickListener { takeSnapshot(); animateFAB(fabTakePhoto) }
-        fabToggleHud.setOnClickListener { toggleHud() }
+        // Trocar câmara
+        btnSwitchCamera.setOnClickListener {
+            cameraFacing = if (cameraFacing == CameraHelper.Facing.BACK) CameraHelper.Facing.FRONT else CameraHelper.Facing.BACK
+            StreamingService.instance?.apply { stopPreview(); startPreview(cameraFacing) }
+            animatePop(btnSwitchCamera)
+        }
 
-        fabControls.setOnClickListener {
-            if (bottomSheetBehavior.state == BottomSheetBehavior.STATE_HIDDEN) {
-                bottomSheet.isVisible = true
-                bottomSheetBehavior.state = BottomSheetBehavior.STATE_COLLAPSED
-            } else {
-                bottomSheetBehavior.state = BottomSheetBehavior.STATE_HIDDEN
+        // Painel de configurações
+        btnSettings.setOnClickListener { togglePanel() }
+        btnClosePanel.setOnClickListener { closePanel() }
+
+        // Seletor de lente
+        fun selectLens(btn: TextView, id: String, label: String) {
+            listOf(btnLens1x, btnLens05x, btnLens3x).forEach {
+                it.setBackgroundResource(R.drawable.bg_lens_idle)
+                it.setTextColor(0xFF94a3b8.toInt())
             }
+            btn.setBackgroundResource(R.drawable.bg_lens_selected)
+            btn.setTextColor(0xFF000000.toInt())
+            applyCamera("camera" to id)
+        }
+        btnLens1x.setOnClickListener  { selectLens(btnLens1x,  "0", "1×")  }
+        btnLens05x.setOnClickListener { selectLens(btnLens05x, "2", ".5×") }
+        btnLens3x.setOnClickListener  { selectLens(btnLens3x,  "3", "3×")  }
+    }
+
+    // ── Painel lateral ─────────────────────────────────────────────────────────
+
+    private fun setupSettingsPanel() {
+        // Resolução
+        ArrayAdapter.createFromResource(this, R.array.resolutions, android.R.layout.simple_spinner_item)
+            .also { it.setDropDownViewResource(android.R.layout.simple_spinner_dropdown_item); spinResolution.adapter = it }
+
+        // Frame rate
+        ArrayAdapter.createFromResource(this, R.array.frame_rates, android.R.layout.simple_spinner_item)
+            .also { it.setDropDownViewResource(android.R.layout.simple_spinner_dropdown_item); spinFrameRate.adapter = it }
+
+        // Bitrate
+        ArrayAdapter.createFromResource(this, R.array.bitrates, android.R.layout.simple_spinner_item)
+            .also { it.setDropDownViewResource(android.R.layout.simple_spinner_dropdown_item); spinBitrate.adapter = it }
+
+        spinResolution.onItemSelectedListener = object : AdapterView.OnItemSelectedListener {
+            override fun onItemSelected(p: AdapterView<*>?, v: View?, pos: Int, id: Long) {
+                val (w, h) = when (pos) { 0 -> 1920 to 1080; 1 -> 1280 to 720; else -> 640 to 480 }
+                applyCamera("width" to w, "height" to h)
+                hudResolution.text = "${w}×${h}"
+            }
+            override fun onNothingSelected(p: AdapterView<*>?) {}
+        }
+
+        spinFrameRate.onItemSelectedListener = object : AdapterView.OnItemSelectedListener {
+            override fun onItemSelected(p: AdapterView<*>?, v: View?, pos: Int, id: Long) {
+                val fps = when (pos) { 0 -> 30; 1 -> 60; 2 -> 24; else -> 30 }
+                applyCamera("fps" to fps)
+            }
+            override fun onNothingSelected(p: AdapterView<*>?) {}
+        }
+
+        spinBitrate.onItemSelectedListener = object : AdapterView.OnItemSelectedListener {
+            override fun onItemSelected(p: AdapterView<*>?, v: View?, pos: Int, id: Long) {
+                val kbps = when (pos) { 0 -> 4000; 1 -> 8000; 2 -> 2000; else -> 4000 }
+                applyCamera("bitrate" to kbps)
+            }
+            override fun onNothingSelected(p: AdapterView<*>?) {}
+        }
+
+        switchGrid.setOnCheckedChangeListener  { _, on -> gridOverlay.isVisible = on }
+        switchHud.setOnCheckedChangeListener   { _, on -> hudLeft.isVisible = on }
+        switchOis.setOnCheckedChangeListener   { _, on -> applyCamera("ois" to on) }
+        switchAudio.setOnCheckedChangeListener { _, on -> applyCamera("audio" to on) }
+        seekMicGain.setOnSeekBarChangeListener(object : SeekBar.OnSeekBarChangeListener {
+            override fun onProgressChanged(s: SeekBar?, p: Int, fromUser: Boolean) { if (fromUser) applyCamera("micGain" to p) }
+            override fun onStartTrackingTouch(s: SeekBar?) {}
+            override fun onStopTrackingTouch(s: SeekBar?) {}
+        })
+    }
+
+    private fun togglePanel() { if (isPanelOpen) closePanel() else openPanel() }
+
+    private fun openPanel() {
+        isPanelOpen = true
+        ObjectAnimator.ofFloat(settingsPanel, "translationX", 0f).apply {
+            duration = 280; interpolator = DecelerateInterpolator(); start()
         }
     }
 
-    // ── Bottom Sheet Controls ───────────────────────────────────────────────
-
-    private fun setupBottomSheetControls() {
-        btnCameraWide.setOnClickListener  { selectCamera("0", CameraHelper.Facing.BACK,  "Wide",  btnCameraWide) }
-        btnCameraUltra.setOnClickListener { selectCamera("2", CameraHelper.Facing.BACK,  "Ultra", btnCameraUltra) }
-        btnCameraTele.setOnClickListener  { selectCamera("3", CameraHelper.Facing.BACK,  "Tele",  btnCameraTele) }
-        btnCameraFront.setOnClickListener { selectCamera("1", CameraHelper.Facing.FRONT, "Frontal", btnCameraFront) }
-
-        seekIso.setOnSeekBarChangeListener(object : SeekBar.OnSeekBarChangeListener {
-            override fun onProgressChanged(s: SeekBar?, p: Int, fromUser: Boolean) {
-                val iso = mapProgressToIso(p)
-                txtIsoValue.text = iso.toString()
-                if (fromUser) applyCamera("iso" to iso.toDouble())
-            }
-            override fun onStartTrackingTouch(s: SeekBar?) {}
-            override fun onStopTrackingTouch(s: SeekBar?) {}
-        })
-
-        seekExposure.setOnSeekBarChangeListener(object : SeekBar.OnSeekBarChangeListener {
-            override fun onProgressChanged(s: SeekBar?, p: Int, fromUser: Boolean) {
-                val exp = mapProgressToExposure(p)
-                txtExposureValue.text = exp
-                if (fromUser) applyCamera("shutterSpeed" to exp)
-            }
-            override fun onStartTrackingTouch(s: SeekBar?) {}
-            override fun onStopTrackingTouch(s: SeekBar?) {}
-        })
-
-        seekFocus.setOnSeekBarChangeListener(object : SeekBar.OnSeekBarChangeListener {
-            override fun onProgressChanged(s: SeekBar?, p: Int, fromUser: Boolean) {
-                txtFocusValue.text = if (p == 0) "AUTO" else "$p%"
-                if (fromUser) applyCamera("focus" to p / 100.0)
-            }
-            override fun onStartTrackingTouch(s: SeekBar?) {}
-            override fun onStopTrackingTouch(s: SeekBar?) {}
-        })
-
-        btnLockAE.setOnClickListener {
-            isAELocked = !isAELocked
-            applyCamera("aeLock" to isAELocked)
-            showToast(if (isAELocked) "Exposição bloqueada" else "Exposição desbloqueada")
-        }
-
-        btnLockAF.setOnClickListener {
-            isAFLocked = !isAFLocked
-            if (isAFLocked) applyCamera("focusmode" to "off")
-            else {
-                applyCamera("focusmode" to "continuous-video")
-                seekFocus.progress = 0
-                txtFocusValue.text = "AUTO"
-            }
-            showToast(if (isAFLocked) "Foco bloqueado" else "Foco automático")
-        }
-
-        btnFlash.setOnClickListener {
-            fabFlash.performClick()
-            btnFlash.text = if (isFlashOn) "Flash ON" else "Flash OFF"
+    private fun closePanel() {
+        isPanelOpen = false
+        val w = settingsPanel.width.toFloat().takeIf { it > 0f } ?: 280f.dpToPx()
+        ObjectAnimator.ofFloat(settingsPanel, "translationX", w).apply {
+            duration = 280; interpolator = DecelerateInterpolator(); start()
         }
     }
 
-    // ── Gesture ────────────────────────────────────────────────────────────────
+    // ── Gestos ─────────────────────────────────────────────────────────────────
 
-    private fun setupGestureDetector() {
-        gestureDetector = GestureDetector(this, object : GestureDetector.SimpleOnGestureListener() {
-            override fun onDoubleTap(e: MotionEvent): Boolean { toggleUICompactMode(); return true }
+    private fun setupGestures() {
+        val gd = GestureDetector(this, object : GestureDetector.SimpleOnGestureListener() {
+            override fun onDoubleTap(e: MotionEvent): Boolean {
+                // Duplo toque: fecha roda/painel ou alterna UI limpa
+                if (activeParamTag.isNotEmpty()) { closeWheel(); return true }
+                if (isPanelOpen) { closePanel(); return true }
+                toggleCleanUI()
+                return true
+            }
         })
-        cameraPreview.setOnTouchListener { v, event ->
-            if (gestureDetector.onTouchEvent(event)) v.performClick()
+        cameraPreview.setOnTouchListener { v, e ->
+            if (gd.onTouchEvent(e)) v.performClick()
             true
         }
     }
 
-    // ── Câmara ─────────────────────────────────────────────────────────────────
+    private var cleanUiMode = false
+    private fun toggleCleanUI() {
+        cleanUiMode = !cleanUiMode
+        val a = if (cleanUiMode) 0f else 1f
+        listOf(topBar, paramsBar, bottomActions, hudLeft).forEach {
+            it.animate().alpha(a).setDuration(300).start()
+            it.isVisible = true
+        }
+    }
+
+    // ── HUD ticker ─────────────────────────────────────────────────────────────
+
+    private fun tickHud() {
+        val ctrl    = StreamingService.instance?.cameraController
+        val clients = StreamingService.instance?.rtspServer?.connectedClients ?: 0
+        hudFps.text     = "${ctrl?.currentFps ?: 30} fps"
+        hudBitrate.text = "${(StreamingService.instance?.cameraController?.let { 4000 } ?: 4000)} kbps"
+        clientsBadge.text = "$clients CLI"
+        clientsBadge.setTextColor(if (clients > 0) 0xFF22c55e.toInt() else 0xFF64748b.toInt())
+        rtspBadge.setBackgroundResource(if (clients > 0) R.drawable.bg_badge_red else R.drawable.bg_badge_green)
+        batteryText.text = "${getBattery()}%"
+        batteryText.setTextColor(when {
+            getBattery() > 50 -> 0xFF22c55e.toInt()
+            getBattery() > 20 -> 0xFFfbbf24.toInt()
+            else              -> 0xFFef4444.toInt()
+        })
+    }
+
+    // ── Helpers ────────────────────────────────────────────────────────────────
 
     private fun applyCamera(vararg pairs: Pair<String, Any>) {
         StreamingService.instance?.cameraController?.updateSettings(mapOf(*pairs))
-            ?: Log.w("MainActivity", "cameraController indisponível")
     }
 
-    private fun cycleCamera() {
-        val (id, facing, label) = when (cameraFacing) {
-            CameraHelper.Facing.BACK  -> Triple("1", CameraHelper.Facing.FRONT, "Frontal")
-            CameraHelper.Facing.FRONT -> Triple("0", CameraHelper.Facing.BACK,  "Wide")
-        }
-        cameraFacing = facing
-        applyCamera("camera" to id)
-        // Reinicia preview com o novo facing
-        StreamingService.instance?.rtspServer?.stopPreview()
-        StreamingService.instance?.rtspServer?.startPreview(facing)
-        showToast(label)
+    private fun refreshStatusBar() {
+        val ip = getLocalIpAddress()
+        statusText.text = "rtsp://$ip:8554/live"
     }
 
-    private fun selectCamera(id: String, facing: CameraHelper.Facing, label: String, button: Button) {
-        cameraFacing = facing
-        applyCamera("camera" to id)
-        StreamingService.instance?.rtspServer?.stopPreview()
-        StreamingService.instance?.rtspServer?.startPreview(facing)
-        listOf(btnCameraWide, btnCameraUltra, btnCameraTele, btnCameraFront).forEach {
-            it.setBackgroundResource(R.drawable.bg_button_secondary)
-            it.setTextColor(ContextCompat.getColor(this, android.R.color.white))
-        }
-        button.setBackgroundResource(R.drawable.bg_button_primary)
-        button.setTextColor(ContextCompat.getColor(this, android.R.color.black))
-        showToast("$label selecionada")
-    }
-
-    private fun takeSnapshot() {
-        val bmp = cameraPreview.bitmap ?: run { showToast("Preview indisponível"); return }
-        try {
-            val dir  = getExternalFilesDir(android.os.Environment.DIRECTORY_PICTURES)
-            val file = java.io.File(dir, "snapshot_${System.currentTimeMillis()}.jpg")
-            file.outputStream().use { bmp.compress(android.graphics.Bitmap.CompressFormat.JPEG, 95, it) }
-            showToast("Foto salva: ${file.name}")
-        } catch (e: Exception) {
-            showToast("Erro ao salvar foto")
-            Log.e("MainActivity", "Erro snapshot", e)
-        }
-    }
-
-    // ── UI ────────────────────────────────────────────────────────────────────
-
-    private fun toggleHud() {
-        isHudVisible = !isHudVisible
-        hudContainer.isVisible = isHudVisible
-        animateFAB(fabToggleHud)
-    }
-
-    private fun toggleUICompactMode() {
-        val compact = topOverlay.isVisible
-        topOverlay.isVisible    = !compact
-        fabContainer.isVisible  = !compact
-        rtspIndicator.isVisible = !compact
-        hudContainer.isVisible  = !compact && isHudVisible
-        showToast(if (compact) "Modo Compacto" else "Modo Normal")
-    }
-
-    private fun updateHudInfo() {
-        val ctrl = StreamingService.instance?.cameraController
-        hudIso.text      = "ISO: ${ctrl?.isoValue ?: "--"}"
-        hudExposure.text = "EXP: ${txtExposureValue.text}"
-        hudFocus.text    = "FOCUS: ${if (ctrl?.autoFocus != false) "AUTO" else txtFocusValue.text}"
-        hudFps.text      = "FPS: ${ctrl?.currentFps ?: 30}"
-        hudTemp.text     = "TEMP: 38\u00b0C"
-        val bat = getBatteryLevel()
-        hudBattery.text = "BAT: $bat%"
-        hudBattery.setTextColor(when {
-            bat > 50 -> 0xFF10b981.toInt()
-            bat > 20 -> 0xFFfbbf24.toInt()
-            else     -> 0xFFef4444.toInt()
-        })
-        val clients = StreamingService.instance?.rtspServer?.connectedClients ?: 0
-        hudClients.text = "CLIENTS: $clients"
-        rtspIndicator.setTextColor(if (clients > 0) 0xFF10b981.toInt() else 0xFFef4444.toInt())
-        hudNetwork.text = "NET: 0.0MB/s"
-    }
-
-    private fun getBatteryLevel(): Int =
+    private fun getBattery(): Int =
         (getSystemService(Context.BATTERY_SERVICE) as BatteryManager)
             .getIntProperty(BatteryManager.BATTERY_PROPERTY_CAPACITY)
 
-    private fun mapProgressToIso(p: Int): Int = 50 + (p * 31.5).toInt()
-
-    private fun mapProgressToExposure(p: Int): String = when (p) {
-        in 0..10  -> "1/8000s"
-        in 11..20 -> "1/4000s"
-        in 21..30 -> "1/2000s"
-        in 31..40 -> "1/1000s"
-        in 41..50 -> "1/500s"
-        in 51..60 -> "1/250s"
-        in 61..70 -> "1/125s"
-        in 71..80 -> "1/60s"
-        in 81..90 -> "1/30s"
-        else      -> "1/15s"
-    }
-
-    private fun animateFAB(fab: View) {
-        ObjectAnimator.ofFloat(fab, "scaleX", 1f, 1.2f, 1f).apply { duration = 200; start() }
-        ObjectAnimator.ofFloat(fab, "scaleY", 1f, 1.2f, 1f).apply { duration = 200; start() }
+    private fun animatePop(v: View) {
+        ObjectAnimator.ofFloat(v, "scaleX", 1f, 1.25f, 1f).apply { duration = 180; start() }
+        ObjectAnimator.ofFloat(v, "scaleY", 1f, 1.25f, 1f).apply { duration = 180; start() }
     }
 
     private fun showToast(msg: String) = Toast.makeText(this, msg, Toast.LENGTH_SHORT).show()
 
-    // ── Status + Permissões ───────────────────────────────────────────────────
-
-    private fun updateStatusUI() {
-        val ip = getLocalIpAddress()
-        statusText.text    = "rtsp://$ip:8554/live  |  http://$ip:8080"
-        rtspIndicator.text = "\u25cf RTSP :8554"
-    }
+    private fun Float.dpToPx() = this * resources.displayMetrics.density
 
     private fun getLocalIpAddress(): String {
         try {
             val ifaces = NetworkInterface.getNetworkInterfaces() ?: return "127.0.0.1"
             while (ifaces.hasMoreElements()) {
                 val iface = ifaces.nextElement()
-                val addrs = iface.inetAddresses
+                val addrs  = iface.inetAddresses
                 while (addrs.hasMoreElements()) {
                     val addr = addrs.nextElement()
-                    if (!addr.isLoopbackAddress && addr is Inet4Address)
-                        return addr.hostAddress ?: "127.0.0.1"
+                    if (!addr.isLoopbackAddress && addr is Inet4Address) return addr.hostAddress ?: "127.0.0.1"
                 }
             }
-        } catch (e: Exception) { Log.e("MainActivity", "Erro IP", e) }
+        } catch (_: Exception) {}
         return "127.0.0.1"
     }
 
-    private fun startStreamingService() {
-        startForegroundService(Intent(this, StreamingService::class.java))
-    }
+    // ── Permissões ─────────────────────────────────────────────────────────────
+
+    private fun startStreamingService() = startForegroundService(Intent(this, StreamingService::class.java))
 
     private fun checkPermissions() =
         ContextCompat.checkSelfPermission(this, Manifest.permission.CAMERA) == PackageManager.PERMISSION_GRANTED &&
         ContextCompat.checkSelfPermission(this, Manifest.permission.RECORD_AUDIO) == PackageManager.PERMISSION_GRANTED
 
     private fun requestPermissions() {
-        val perms = mutableListOf(
-            Manifest.permission.CAMERA,
-            Manifest.permission.RECORD_AUDIO,
-            Manifest.permission.INTERNET,
-            Manifest.permission.ACCESS_NETWORK_STATE,
-            Manifest.permission.ACCESS_WIFI_STATE
-        )
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU)
-            perms.add(Manifest.permission.POST_NOTIFICATIONS)
-        ActivityCompat.requestPermissions(this, perms.toTypedArray(), permissionCode)
+        val p = mutableListOf(Manifest.permission.CAMERA, Manifest.permission.RECORD_AUDIO,
+            Manifest.permission.INTERNET, Manifest.permission.ACCESS_NETWORK_STATE, Manifest.permission.ACCESS_WIFI_STATE)
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) p.add(Manifest.permission.POST_NOTIFICATIONS)
+        ActivityCompat.requestPermissions(this, p.toTypedArray(), permissionCode)
     }
 
     override fun onRequestPermissionsResult(requestCode: Int, permissions: Array<out String>, grantResults: IntArray) {
         super.onRequestPermissionsResult(requestCode, permissions, grantResults)
-        if (requestCode == permissionCode &&
-            grantResults.size >= 2 &&
+        if (requestCode == permissionCode && grantResults.size >= 2 &&
             grantResults[0] == PackageManager.PERMISSION_GRANTED &&
-            grantResults[1] == PackageManager.PERMISSION_GRANTED
-        ) startStreamingService()
-        else statusText.text = "Permissões de câmara/áudio negadas"
+            grantResults[1] == PackageManager.PERMISSION_GRANTED) startStreamingService()
     }
 }

@@ -1,0 +1,47 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  Cada "dial" da barra de parâmetros inferior.
+  Toque: abre roda de ajuste.
+  Toque longo: bloqueia/desbloqueia o parâmetro.
+-->
+<LinearLayout
+    xmlns:android="http://schemas.android.com/apk/res/android"
+    android:layout_width="72dp"
+    android:layout_height="wrap_content"
+    android:orientation="vertical"
+    android:gravity="center"
+    android:paddingHorizontal="4dp">
+
+    <!-- Rótulo do parâmetro -->
+    <TextView
+        android:id="@+id/paramLabel"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:text="ISO"
+        android:textSize="9sp"
+        android:textColor="#64748b"
+        android:textAllCaps="true"
+        android:letterSpacing="0.1" />
+
+    <!-- Valor actual -->
+    <TextView
+        android:id="@+id/paramValue"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:text="AUTO"
+        android:textSize="16sp"
+        android:textStyle="bold"
+        android:textColor="#f8fafc"
+        android:fontFamily="monospace" />
+
+    <!-- Indicador de bloqueado -->
+    <TextView
+        android:id="@+id/paramLock"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:text="A"
+        android:textSize="8sp"
+        android:textColor="#22c55e"
+        android:textStyle="bold" />
+
+</LinearLayout>

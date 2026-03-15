@@ -1,139 +1,328 @@
 <?xml version="1.0" encoding="utf-8"?>
+<!--
+  Layout inspirado em Blackmagic Camera + FiLMiC Pro:
+  - Preview ocupa 100% do ecrã
+  - Barra de estado superior (codec/fps/bitrate/REC)
+  - Barra de parâmetros inferior (ISO | SS | WB | FOCUS | ZOOM)
+  - Coluna de ações à direita (shutter, flash, trocar câmara, foto)
+  - HUD visor cinema no topo esquerdo
+  - Painel de controlo desliza da direita (SettingsPanel)
+-->
 <androidx.coordinatorlayout.widget.CoordinatorLayout
     xmlns:android="http://schemas.android.com/apk/res/android"
     xmlns:app="http://schemas.android.com/apk/res-auto"
     android:layout_width="match_parent"
     android:layout_height="match_parent"
-    android:background="#0f172a">
+    android:background="#000000">
 
-    <!-- AutoFitTextureView exigido pela biblioteca pedroSG94 para preview -->
+    <!-- ░░ PREVIEW ░░ -->
     <com.pedro.library.view.AutoFitTextureView
         android:id="@+id/cameraPreview"
         android:layout_width="match_parent"
         android:layout_height="match_parent" />
 
-    <!-- Overlay superior: título + status RTSP -->
-    <LinearLayout
-        android:id="@+id/topOverlay"
+    <!-- ░░ GUIAS DE ENQUADRAMENTO (grade 3x3) ░░ -->
+    <com.camera2rtsp.GridOverlayView
+        android:id="@+id/gridOverlay"
         android:layout_width="match_parent"
-        android:layout_height="wrap_content"
-        android:orientation="horizontal"
-        android:background="#CC0f172a"
-        android:padding="12dp"
-        android:layout_gravity="top"
-        android:gravity="center_vertical"
-        android:elevation="4dp">
+        android:layout_height="match_parent"
+        android:visibility="gone" />
 
+    <!-- ░░ BARRA SUPERIOR ░░ -->
+    <LinearLayout
+        android:id="@+id/topBar"
+        android:layout_width="match_parent"
+        android:layout_height="44dp"
+        android:layout_gravity="top"
+        android:background="#CC000000"
+        android:gravity="center_vertical"
+        android:orientation="horizontal"
+        android:paddingHorizontal="14dp">
+
+        <!-- Indicador REC -->
+        <TextView
+            android:id="@+id/recIndicator"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:text="● REC"
+            android:textSize="12sp"
+            android:textStyle="bold"
+            android:textColor="#ef4444"
+            android:visibility="gone" />
+
+        <!-- RTSP badge -->
+        <TextView
+            android:id="@+id/rtspBadge"
+            android:layout_width="wrap_content"
+            android:layout_height="26dp"
+            android:paddingHorizontal="8dp"
+            android:gravity="center"
+            android:text="RTSP"
+            android:textSize="10sp"
+            android:textStyle="bold"
+            android:textColor="#000000"
+            android:background="@drawable/bg_badge_red"
+            android:layout_marginEnd="8dp" />
+
+        <!-- URL stream -->
         <TextView
             android:id="@+id/statusText"
             android:layout_width="0dp"
             android:layout_height="wrap_content"
             android:layout_weight="1"
             android:text="rtsp://0.0.0.0:8554/live"
+            android:textSize="10sp"
+            android:textColor="#94a3b8"
+            android:fontFamily="monospace"
+            android:singleLine="true" />
+
+        <!-- Clientes conectados -->
+        <TextView
+            android:id="@+id/clientsBadge"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:text="0 CLI"
+            android:textSize="10sp"
+            android:textColor="#64748b"
+            android:fontFamily="monospace"
+            android:layout_marginStart="8dp" />
+
+        <!-- Bateria -->
+        <TextView
+            android:id="@+id/batteryText"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:text="100%"
+            android:textSize="10sp"
+            android:textColor="#94a3b8"
+            android:fontFamily="monospace"
+            android:layout_marginStart="10dp" />
+
+    </LinearLayout>
+
+    <!-- ░░ HUD VISOR — canto superior esquerdo ░░ -->
+    <LinearLayout
+        android:id="@+id/hudLeft"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:layout_gravity="top|start"
+        android:layout_marginTop="52dp"
+        android:layout_marginStart="12dp"
+        android:orientation="vertical"
+        android:alpha="0.85">
+
+        <TextView
+            android:id="@+id/hudResolution"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:text="1920×1080"
+            android:textSize="11sp"
+            android:textStyle="bold"
+            android:textColor="#f8fafc"
+            android:fontFamily="monospace" />
+
+        <TextView
+            android:id="@+id/hudFps"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:text="30 fps"
             android:textSize="11sp"
             android:textColor="#94a3b8"
             android:fontFamily="monospace" />
 
         <TextView
-            android:id="@+id/rtspIndicator"
+            android:id="@+id/hudBitrate"
             android:layout_width="wrap_content"
             android:layout_height="wrap_content"
-            android:text="● RTSP :8554"
-            android:textSize="12sp"
-            android:textColor="#ef4444"
-            android:background="#0f172a"
-            android:paddingHorizontal="8dp"
-            android:paddingVertical="4dp" />
+            android:text="4.0 Mbps"
+            android:textSize="11sp"
+            android:textColor="#94a3b8"
+            android:fontFamily="monospace" />
 
     </LinearLayout>
 
-    <!-- HUD: canto superior direito -->
-    <include
-        android:id="@+id/hudLayout"
-        layout="@layout/layout_hud"
-        android:layout_width="wrap_content"
-        android:layout_height="wrap_content"
-        android:layout_gravity="top|end"
-        android:layout_marginTop="60dp"
-        android:layout_marginEnd="8dp" />
-
-    <!-- Coluna de FABs lado direito -->
-    <LinearLayout
-        android:id="@+id/fabContainer"
-        android:layout_width="wrap_content"
-        android:layout_height="wrap_content"
-        android:orientation="vertical"
-        android:layout_gravity="center_vertical|end"
-        android:layout_marginEnd="12dp"
-        android:gravity="center_horizontal"
-        android:elevation="6dp">
-
-        <ImageButton
-            android:id="@+id/fabSwitchCamera"
-            android:layout_width="52dp"
-            android:layout_height="52dp"
-            android:layout_marginBottom="12dp"
-            android:background="@drawable/bg_fab"
-            android:src="@android:drawable/ic_menu_camera"
-            android:tint="#f1f5f9"
-            android:contentDescription="Trocar câmara"
-            android:scaleType="centerInside"
-            android:padding="12dp" />
-
-        <ImageButton
-            android:id="@+id/fabFlash"
-            android:layout_width="52dp"
-            android:layout_height="52dp"
-            android:layout_marginBottom="12dp"
-            android:background="@drawable/bg_fab"
-            android:src="@android:drawable/ic_menu_compass"
-            android:tint="#f1f5f9"
-            android:contentDescription="Flash"
-            android:scaleType="centerInside"
-            android:padding="12dp" />
-
-        <ImageButton
-            android:id="@+id/fabTakePhoto"
-            android:layout_width="52dp"
-            android:layout_height="52dp"
-            android:layout_marginBottom="12dp"
-            android:background="@drawable/bg_fab"
-            android:src="@android:drawable/ic_menu_gallery"
-            android:tint="#f1f5f9"
-            android:contentDescription="Captar foto"
-            android:scaleType="centerInside"
-            android:padding="12dp" />
-
-        <ImageButton
-            android:id="@+id/fabToggleHud"
-            android:layout_width="52dp"
-            android:layout_height="52dp"
-            android:layout_marginBottom="12dp"
-            android:background="@drawable/bg_fab"
-            android:src="@android:drawable/ic_menu_info_details"
-            android:tint="#38bdf8"
-            android:contentDescription="Alternar HUD"
-            android:scaleType="centerInside"
-            android:padding="12dp" />
-
-        <com.google.android.material.floatingactionbutton.FloatingActionButton
-            android:id="@+id/fabControls"
-            android:layout_width="wrap_content"
-            android:layout_height="wrap_content"
-            android:src="@android:drawable/ic_menu_manage"
-            app:tint="#f1f5f9"
-            app:backgroundTint="#1e40af"
-            android:contentDescription="Controles" />
-
-    </LinearLayout>
-
-    <!-- Bottom Sheet -->
-    <include
-        android:id="@+id/bottomSheet"
-        layout="@layout/layout_bottom_sheet"
+    <!-- ░░ BARRA DE PARÂMETROS INFERIOR ░░ -->
+    <HorizontalScrollView
+        android:id="@+id/paramsBar"
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
-        app:layout_behavior="com.google.android.material.bottomsheet.BottomSheetBehavior"
-        android:visibility="gone" />
+        android:layout_gravity="bottom"
+        android:layout_marginBottom="64dp"
+        android:background="#CC000000"
+        android:scrollbars="none">
+
+        <LinearLayout
+            android:id="@+id/paramsRow"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:orientation="horizontal"
+            android:paddingVertical="6dp"
+            android:paddingHorizontal="8dp"
+            android:gravity="center_vertical">
+
+            <!-- ISO -->
+            <include layout="@layout/item_param_dial"
+                android:id="@+id/paramIso" />
+
+            <View android:layout_width="1dp" android:layout_height="28dp"
+                android:background="#334155" android:layout_marginHorizontal="4dp"/>
+
+            <!-- Velocidade de obturação -->
+            <include layout="@layout/item_param_dial"
+                android:id="@+id/paramShutter" />
+
+            <View android:layout_width="1dp" android:layout_height="28dp"
+                android:background="#334155" android:layout_marginHorizontal="4dp"/>
+
+            <!-- Balanço de brancos -->
+            <include layout="@layout/item_param_dial"
+                android:id="@+id/paramWb" />
+
+            <View android:layout_width="1dp" android:layout_height="28dp"
+                android:background="#334155" android:layout_marginHorizontal="4dp"/>
+
+            <!-- Foco -->
+            <include layout="@layout/item_param_dial"
+                android:id="@+id/paramFocus" />
+
+            <View android:layout_width="1dp" android:layout_height="28dp"
+                android:background="#334155" android:layout_marginHorizontal="4dp"/>
+
+            <!-- Zoom -->
+            <include layout="@layout/item_param_dial"
+                android:id="@+id/paramZoom" />
+
+        </LinearLayout>
+    </HorizontalScrollView>
+
+    <!-- ░░ BARRA DE AÇÕES INFERIOR ░░ -->
+    <LinearLayout
+        android:id="@+id/bottomActions"
+        android:layout_width="match_parent"
+        android:layout_height="60dp"
+        android:layout_gravity="bottom"
+        android:background="#EE0a0a0a"
+        android:gravity="center_vertical"
+        android:orientation="horizontal"
+        android:paddingHorizontal="16dp">
+
+        <!-- Seletor de lente -->
+        <LinearLayout
+            android:layout_width="0dp"
+            android:layout_height="wrap_content"
+            android:layout_weight="1"
+            android:orientation="horizontal"
+            android:gravity="center_vertical">
+
+            <TextView
+                android:id="@+id/btnLens1x"
+                android:layout_width="36dp"
+                android:layout_height="36dp"
+                android:gravity="center"
+                android:text="1×"
+                android:textSize="13sp"
+                android:textStyle="bold"
+                android:textColor="#fbbf24"
+                android:background="@drawable/bg_lens_selected"
+                android:layout_marginEnd="6dp" />
+
+            <TextView
+                android:id="@+id/btnLens05x"
+                android:layout_width="36dp"
+                android:layout_height="36dp"
+                android:gravity="center"
+                android:text=".5×"
+                android:textSize="13sp"
+                android:textStyle="bold"
+                android:textColor="#94a3b8"
+                android:background="@drawable/bg_lens_idle"
+                android:layout_marginEnd="6dp" />
+
+            <TextView
+                android:id="@+id/btnLens3x"
+                android:layout_width="36dp"
+                android:layout_height="36dp"
+                android:gravity="center"
+                android:text="3×"
+                android:textSize="13sp"
+                android:textStyle="bold"
+                android:textColor="#94a3b8"
+                android:background="@drawable/bg_lens_idle" />
+
+        </LinearLayout>
+
+        <!-- Botão STREAM (shutter) -->
+        <FrameLayout
+            android:layout_width="64dp"
+            android:layout_height="64dp"
+            android:layout_gravity="center_vertical">
+
+            <View
+                android:layout_width="64dp"
+                android:layout_height="64dp"
+                android:background="@drawable/bg_shutter_ring" />
+
+            <View
+                android:id="@+id/btnShutter"
+                android:layout_width="50dp"
+                android:layout_height="50dp"
+                android:layout_gravity="center"
+                android:background="@drawable/bg_shutter_inner" />
+
+        </FrameLayout>
+
+        <!-- Ações direita -->
+        <LinearLayout
+            android:layout_width="0dp"
+            android:layout_height="wrap_content"
+            android:layout_weight="1"
+            android:orientation="horizontal"
+            android:gravity="center_vertical|end">
+
+            <ImageButton
+                android:id="@+id/btnFlashToggle"
+                android:layout_width="36dp"
+                android:layout_height="36dp"
+                android:background="@drawable/bg_action_btn"
+                android:src="@drawable/ic_flash_off"
+                android:scaleType="centerInside"
+                android:padding="8dp"
+                android:layout_marginEnd="8dp"
+                android:contentDescription="Flash" />
+
+            <ImageButton
+                android:id="@+id/btnSwitchCamera"
+                android:layout_width="36dp"
+                android:layout_height="36dp"
+                android:background="@drawable/bg_action_btn"
+                android:src="@drawable/ic_switch_camera"
+                android:scaleType="centerInside"
+                android:padding="8dp"
+                android:layout_marginEnd="8dp"
+                android:contentDescription="Trocar câmara" />
+
+            <ImageButton
+                android:id="@+id/btnSettings"
+                android:layout_width="36dp"
+                android:layout_height="36dp"
+                android:background="@drawable/bg_action_btn"
+                android:src="@android:drawable/ic_menu_manage"
+                android:scaleType="centerInside"
+                android:padding="8dp"
+                android:contentDescription="Definições" />
+
+        </LinearLayout>
+
+    </LinearLayout>
+
+    <!-- ░░ PAINEL LATERAL DE CONFIGURAÇÕES (desliza da direita) ░░ -->
+    <include
+        android:id="@+id/settingsPanel"
+        layout="@layout/layout_settings_panel"
+        android:layout_width="280dp"
+        android:layout_height="match_parent"
+        android:layout_gravity="end"
+        android:translationX="280dp"
+        android:visibility="visible" />
 
 </androidx.coordinatorlayout.widget.CoordinatorLayout>

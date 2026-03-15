@@ -1,0 +1,18 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string-array name="resolutions">
+        <item>1920 × 1080</item>
+        <item>1280 × 720</item>
+        <item>640 × 480</item>
+    </string-array>
+    <string-array name="frame_rates">
+        <item>30 fps</item>
+        <item>60 fps</item>
+        <item>24 fps</item>
+    </string-array>
+    <string-array name="bitrates">
+        <item>4 Mbps</item>
+        <item>8 Mbps</item>
+        <item>2 Mbps</item>
+    </string-array>
+</resources>
