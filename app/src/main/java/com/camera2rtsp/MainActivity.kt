@@ -7,7 +7,6 @@ import android.content.Intent
 import android.content.SharedPreferences
 import android.content.pm.PackageManager
 import android.content.res.Configuration
-import android.graphics.SurfaceTexture
 import android.os.BatteryManager
 import android.os.Build
 import android.os.Bundle
@@ -15,7 +14,6 @@ import android.os.Handler
 import android.os.Looper
 import android.view.GestureDetector
 import android.view.MotionEvent
-import android.view.TextureView
 import android.view.View
 import android.view.animation.DecelerateInterpolator
 import android.view.inputmethod.InputMethodManager
@@ -54,7 +52,6 @@ class MainActivity : AppCompatActivity() {
     private lateinit var paramFocus: View
     private lateinit var paramZoom: View
 
-    // -- Roda de ajuste -------------------------------------------------------
     private var wheelContainer: View? = null
 
     // -- Bottom actions -------------------------------------------------------
@@ -108,19 +105,6 @@ class MainActivity : AppCompatActivity() {
     }
     private val permissionCode = 100
 
-    // -- SurfaceTexture listener ----------------------------------------------
-    private val surfaceListener = object : TextureView.SurfaceTextureListener {
-        override fun onSurfaceTextureAvailable(st: SurfaceTexture, w: Int, h: Int) {
-            tryStartPreview()
-        }
-        override fun onSurfaceTextureSizeChanged(st: SurfaceTexture, w: Int, h: Int) {}
-        override fun onSurfaceTextureDestroyed(st: SurfaceTexture): Boolean {
-            StreamingService.instance?.stopPreview()
-            return true
-        }
-        override fun onSurfaceTextureUpdated(st: SurfaceTexture) {}
-    }
-
     // -- Lifecycle ------------------------------------------------------------
 
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -138,13 +122,7 @@ class MainActivity : AppCompatActivity() {
 
     override fun onResume() {
         super.onResume()
-        if (cameraPreview.isAvailable) tryStartPreview()
         refreshStatusBar()
-    }
-
-    override fun onPause() {
-        super.onPause()
-        StreamingService.instance?.stopPreview()
     }
 
     override fun onDestroy() {
@@ -153,17 +131,6 @@ class MainActivity : AppCompatActivity() {
     }
 
     override fun onConfigurationChanged(newConfig: Configuration) { super.onConfigurationChanged(newConfig) }
-
-    // -- Preview com retry ----------------------------------------------------
-
-    private fun tryStartPreview(retries: Int = 10) {
-        val svc = StreamingService.instance
-        if (svc != null && cameraPreview.isAvailable) {
-            svc.startPreview(cameraPreview, cameraFacing)
-        } else if (retries > 0) {
-            hudHandler.postDelayed({ tryStartPreview(retries - 1) }, 200)
-        }
-    }
 
     // -- Bind views -----------------------------------------------------------
 
@@ -195,24 +162,21 @@ class MainActivity : AppCompatActivity() {
         btnLens05x     = findViewById(R.id.btnLens05x)
         btnLens3x      = findViewById(R.id.btnLens3x)
 
-        btnClosePanel  = settingsPanel.findViewById(R.id.btnClosePanel)
-        editRtmpUrl    = settingsPanel.findViewById(R.id.editRtmpUrl)
-        btnApplyRtmpUrl= settingsPanel.findViewById(R.id.btnApplyRtmpUrl)
-        spinResolution = settingsPanel.findViewById(R.id.spinResolution)
-        spinFrameRate  = settingsPanel.findViewById(R.id.spinFrameRate)
-        spinBitrate    = settingsPanel.findViewById(R.id.spinBitrate)
-        switchOis      = settingsPanel.findViewById(R.id.switchOis)
-        switchGrid     = settingsPanel.findViewById(R.id.switchGrid)
-        switchHud      = settingsPanel.findViewById(R.id.switchHud)
-        switchAudio    = settingsPanel.findViewById(R.id.switchAudio)
-        seekMicGain    = settingsPanel.findViewById(R.id.seekMicGain)
-
-        cameraPreview.surfaceTextureListener = surfaceListener
+        btnClosePanel   = settingsPanel.findViewById(R.id.btnClosePanel)
+        editRtmpUrl     = settingsPanel.findViewById(R.id.editRtmpUrl)
+        btnApplyRtmpUrl = settingsPanel.findViewById(R.id.btnApplyRtmpUrl)
+        spinResolution  = settingsPanel.findViewById(R.id.spinResolution)
+        spinFrameRate   = settingsPanel.findViewById(R.id.spinFrameRate)
+        spinBitrate     = settingsPanel.findViewById(R.id.spinBitrate)
+        switchOis       = settingsPanel.findViewById(R.id.switchOis)
+        switchGrid      = settingsPanel.findViewById(R.id.switchGrid)
+        switchHud       = settingsPanel.findViewById(R.id.switchHud)
+        switchAudio     = settingsPanel.findViewById(R.id.switchAudio)
+        seekMicGain     = settingsPanel.findViewById(R.id.seekMicGain)
 
         // Carrega URL salva
         val savedUrl = prefs.getString(KEY_RTMP_URL, DEFAULT_URL) ?: DEFAULT_URL
         editRtmpUrl.setText(savedUrl)
-        StreamingService.instance?.rtmpUrl = savedUrl
 
         setDialLabel(paramIso,     "ISO",  isoSteps[isoIdx])
         setDialLabel(paramShutter, "SS",   shutterSteps[shutterIdx])
@@ -318,7 +282,7 @@ class MainActivity : AppCompatActivity() {
             cameraFacing = if (cameraFacing == CameraHelper.Facing.BACK) CameraHelper.Facing.FRONT else CameraHelper.Facing.BACK
             StreamingService.instance?.apply {
                 stopPreview()
-                startPreview(cameraPreview, cameraFacing)
+                startPreview(cameraFacing)
             }
             animatePop(btnSwitchCamera)
         }
@@ -350,23 +314,19 @@ class MainActivity : AppCompatActivity() {
         ArrayAdapter.createFromResource(this, R.array.bitrates, android.R.layout.simple_spinner_item)
             .also { it.setDropDownViewResource(android.R.layout.simple_spinner_dropdown_item); spinBitrate.adapter = it }
 
-        // Aplica URL RTMP e salva em SharedPreferences
         btnApplyRtmpUrl.setOnClickListener {
             val url = editRtmpUrl.text.toString().trim()
             if (url.isEmpty() || !url.startsWith("rtmp://")) {
                 showToast("URL invalida. Use rtmp://IP:1935/live/stream")
                 return@setOnClickListener
             }
-            // Salva persistido
             prefs.edit().putString(KEY_RTMP_URL, url).apply()
-            // Aplica no servico e reconecta
             StreamingService.instance?.let { svc ->
                 svc.rtmpUrl = url
                 svc.stopStream()
                 svc.startStream()
                 showToast("Reconectando para $url")
             } ?: showToast("URL salva. Sera usada no proximo inicio.")
-            // Fecha teclado
             val imm = getSystemService(Context.INPUT_METHOD_SERVICE) as InputMethodManager
             imm.hideSoftInputFromWindow(editRtmpUrl.windowToken, 0)
             statusText.text = url
@@ -410,7 +370,6 @@ class MainActivity : AppCompatActivity() {
 
     private fun openPanel() {
         isPanelOpen = true
-        // Atualiza o campo com a URL atual antes de abrir
         val url = prefs.getString(KEY_RTMP_URL, DEFAULT_URL) ?: DEFAULT_URL
         editRtmpUrl.setText(url)
         ObjectAnimator.ofFloat(settingsPanel, "translationX", 0f).apply {
@@ -420,7 +379,7 @@ class MainActivity : AppCompatActivity() {
 
     private fun closePanel() {
         isPanelOpen = false
-        val w = settingsPanel.width.toFloat().takeIf { it > 0f } ?: 280f.dpToPx()
+        val w = settingsPanel.width.toFloat().takeIf { it > 0f } ?: (280f * resources.displayMetrics.density)
         ObjectAnimator.ofFloat(settingsPanel, "translationX", w).apply {
             duration = 280; interpolator = DecelerateInterpolator(); start()
         }
@@ -453,17 +412,18 @@ class MainActivity : AppCompatActivity() {
     // -- HUD ticker -----------------------------------------------------------
 
     private fun tickHud() {
-        val ctrl    = StreamingService.instance?.cameraController
+        val ctrl      = StreamingService.instance?.cameraController
         val streaming = StreamingService.instance?.rtmpStreamer?.isStreaming ?: false
         hudFps.text       = "${ctrl?.currentFps ?: 30} fps"
         hudBitrate.text   = "${ctrl?.currentBitrate ?: 4000} kbps"
         rtspBadge.text    = if (streaming) "LIVE" else "OFF"
         rtspBadge.setBackgroundResource(if (streaming) R.drawable.bg_badge_red else R.drawable.bg_badge_green)
         batteryText.text  = "${getBattery()}%"
+        val bat = getBattery()
         batteryText.setTextColor(when {
-            getBattery() > 50 -> 0xFF22c55e.toInt()
-            getBattery() > 20 -> 0xFFfbbf24.toInt()
-            else              -> 0xFFef4444.toInt()
+            bat > 50 -> 0xFF22c55e.toInt()
+            bat > 20 -> 0xFFfbbf24.toInt()
+            else     -> 0xFFef4444.toInt()
         })
     }
 
@@ -488,8 +448,6 @@ class MainActivity : AppCompatActivity() {
     }
 
     private fun showToast(msg: String) = Toast.makeText(this, msg, Toast.LENGTH_SHORT).show()
-
-    private fun Float.dpToPx() = this * resources.displayMetrics.density
 
     private fun getLocalIpAddress(): String {
         try {

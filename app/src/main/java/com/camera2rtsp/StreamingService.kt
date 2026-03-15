@@ -12,7 +12,6 @@ import android.util.Log
 import androidx.core.app.NotificationCompat
 import com.pedro.common.ConnectChecker
 import com.pedro.encoder.input.video.CameraHelper
-import com.pedro.library.view.AutoFitTextureView
 import java.net.Inet4Address
 import java.net.NetworkInterface
 
@@ -31,12 +30,11 @@ class StreamingService : Service(), ConnectChecker {
 
     private var wakeLock: PowerManager.WakeLock? = null
 
-    // URL do MediaMTX no PC -- altere o IP conforme a sua rede
     var rtmpUrl = "rtmp://192.168.1.100:1935/live/stream"
 
     companion object {
-        const val ACTION_STOP          = "com.camera2rtsp.STOP"
-        const val EXTRA_RTMP_URL       = "rtmp_url"
+        const val ACTION_STOP    = "com.camera2rtsp.STOP"
+        const val EXTRA_RTMP_URL = "rtmp_url"
         var instance: StreamingService? = null
             private set
     }
@@ -47,13 +45,15 @@ class StreamingService : Service(), ConnectChecker {
         createNotificationChannel()
         cameraController = Camera2Controller()
         rtmpStreamer      = RtmpStreamer(cameraController, this)
+        // Inicializa com Context (modo background) -- nao precisa de View
+        rtmpStreamer.init(applicationContext)
     }
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
         if (intent?.action == ACTION_STOP) { stopSelf(); return START_NOT_STICKY }
         intent?.getStringExtra(EXTRA_RTMP_URL)?.let { rtmpUrl = it }
 
-        startForeground(notifId, buildNotification(getLocalIpAddress(), "Aguardando preview..."))
+        startForeground(notifId, buildNotification("Iniciando..."))
 
         val pm = getSystemService(POWER_SERVICE) as PowerManager
         wakeLock = pm.newWakeLock(PowerManager.PARTIAL_WAKE_LOCK, "camera2rtsp:streaming")
@@ -67,29 +67,24 @@ class StreamingService : Service(), ConnectChecker {
             Log.e(tag, "Erro ao iniciar httpServer", e)
         }
 
+        // Inicia preview e stream imediatamente (modo background)
+        startPreview()
+        if (rtmpUrl.isNotEmpty()) startStream()
+
         return START_STICKY
     }
 
-    /**
-     * Chamado pela Activity quando a TextureView esta disponivel.
-     * Inicializa o RtmpCamera2 (precisa da view), inicia preview e stream.
-     */
-    fun startPreview(
-        view: AutoFitTextureView,
-        facing: CameraHelper.Facing = CameraHelper.Facing.BACK
-    ) {
-        rtmpStreamer.init(view)
+    fun startPreview(facing: CameraHelper.Facing = CameraHelper.Facing.BACK) {
         rtmpStreamer.startPreview(facing)
-        // Inicia stream automaticamente se URL configurada
-        if (rtmpUrl.isNotEmpty() && !rtmpStreamer.isStreaming) {
-            rtmpStreamer.startStream(rtmpUrl)
-        }
     }
 
     fun stopPreview() = rtmpStreamer.stopPreview()
 
-    fun startStream()  = rtmpStreamer.startStream(rtmpUrl)
-    fun stopStream()   = rtmpStreamer.stopStream()
+    fun startStream() {
+        rtmpStreamer.startStream(applicationContext, rtmpUrl)
+    }
+
+    fun stopStream() = rtmpStreamer.stopStream()
 
     override fun onDestroy() {
         super.onDestroy()
@@ -108,19 +103,19 @@ class StreamingService : Service(), ConnectChecker {
     // -- ConnectChecker -------------------------------------------------------
     override fun onConnectionStarted(url: String) {
         Log.i(tag, "RTMP conectando: $url")
-        updateNotification(getLocalIpAddress(), "Conectando RTMP...")
+        updateNotification("Conectando RTMP...")
     }
     override fun onConnectionSuccess() {
         Log.i(tag, "RTMP conectado")
-        updateNotification(getLocalIpAddress(), "Streaming ativo")
+        updateNotification("Streaming ativo")
     }
     override fun onConnectionFailed(reason: String) {
         Log.e(tag, "RTMP falhou: $reason")
-        updateNotification(getLocalIpAddress(), "Erro: $reason")
+        updateNotification("Erro: $reason")
     }
     override fun onDisconnect() {
         Log.i(tag, "RTMP desconectado")
-        updateNotification(getLocalIpAddress(), "Desconectado")
+        updateNotification("Desconectado")
     }
     override fun onAuthError()   { Log.e(tag, "RTMP auth error") }
     override fun onAuthSuccess() { Log.i(tag, "RTMP auth ok") }
@@ -134,7 +129,7 @@ class StreamingService : Service(), ConnectChecker {
         getSystemService(NotificationManager::class.java).createNotificationChannel(channel)
     }
 
-    private fun buildNotification(ip: String, status: String): Notification {
+    private fun buildNotification(status: String): Notification {
         val openApp = PendingIntent.getActivity(
             this, 0, Intent(this, MainActivity::class.java),
             PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT
@@ -156,9 +151,9 @@ class StreamingService : Service(), ConnectChecker {
             .build()
     }
 
-    fun updateNotification(ip: String, status: String) {
+    fun updateNotification(status: String) {
         getSystemService(NotificationManager::class.java)
-            .notify(notifId, buildNotification(ip, status))
+            .notify(notifId, buildNotification(status))
     }
 
     fun getLocalIpAddress(): String {
