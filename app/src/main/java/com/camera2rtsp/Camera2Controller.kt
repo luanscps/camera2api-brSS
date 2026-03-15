@@ -36,13 +36,16 @@ class Camera2Controller {
     private fun post(block: () -> Unit) =
         worker.post { runCatching(block).onFailure { Log.e(tag, "Erro na worker", it) } }
 
+    /** Converte qualquer Number (Int, Long, Double, Float) para Double com segurança */
+    private fun Any.toSafeDouble(): Double? = (this as? Number)?.toDouble()
+
     fun updateSettings(params: Map<String, Any>) {
         val srv = server
         if (srv == null) { Log.w(tag, "server nao inicializado"); return }
 
         // ── EV ───────────────────────────────────────────────────────────────
         params["exposure"]?.let {
-            val ev = (it as Double).toInt().coerceIn(srv.minExposure, srv.maxExposure)
+            val ev = it.toSafeDouble()?.toInt()?.coerceIn(srv.minExposure, srv.maxExposure) ?: return@let
             exposureLevel = ev
             srv.setExposure(ev)
             Log.d(tag, "Exposure EV=$ev")
@@ -50,7 +53,7 @@ class Camera2Controller {
 
         // ── ISO ── (Camera2Base não expõe setISO direto; mapeamos para EV)
         params["iso"]?.let {
-            val iso = (it as Double).toInt()
+            val iso = it.toSafeDouble()?.toInt() ?: return@let
             isoValue = iso
             // Mapeia ISO linearmente para o range de EV disponível
             val minEv = srv.minExposure
@@ -66,7 +69,6 @@ class Camera2Controller {
         params["manualSensor"]?.let {
             manualSensor = it as Boolean
             if (!manualSensor) {
-                // Volta para auto-exposure via EV=0
                 srv.setExposure(0)
                 exposureLevel = 0
                 Log.d(tag, "manualSensor OFF → EV reset")
@@ -77,7 +79,7 @@ class Camera2Controller {
 
         // ── Foco manual ───────────────────────────────────────────────────────
         params["focus"]?.let {
-            val norm = (it as Double).toFloat().coerceIn(0f, 1f)
+            val norm = it.toSafeDouble()?.toFloat()?.coerceIn(0f, 1f) ?: return@let
             if (norm == 0f) {
                 autoFocus     = true
                 focusDistance = 0f
@@ -85,7 +87,6 @@ class Camera2Controller {
                 Log.d(tag, "Foco -> AUTO")
             } else {
                 autoFocus = false
-                // Mapeia 0..1 para 0..10 diopters (range prático do Note10+)
                 val dist = norm * 10f
                 focusDistance = dist
                 srv.disableAutoFocus()
@@ -123,9 +124,8 @@ class Camera2Controller {
 
         // ── Zoom ──────────────────────────────────────────────────────────────
         params["zoom"]?.let {
-            val z = (it as Double).toFloat().coerceIn(0f, 1f)
+            val z = it.toSafeDouble()?.toFloat()?.coerceIn(0f, 1f) ?: return@let
             zoomLevel = z
-            // setZoom espera valor >= 1.0 (1× = sem zoom)
             val zoomRange = srv.zoomRange
             val minZ = zoomRange?.lower ?: 1f
             val maxZ = zoomRange?.upper ?: 8f
@@ -153,7 +153,7 @@ class Camera2Controller {
 
         // ── Bitrate on-the-fly ────────────────────────────────────────────────
         params["bitrate"]?.let {
-            val br = (it as Double).toInt()
+            val br = it.toSafeDouble()?.toInt() ?: return@let
             currentBitrate = br
             srv.setVideoBitrateOnFly(br * 1024)
             Log.d(tag, "Bitrate -> ${br}kbps")
@@ -161,7 +161,7 @@ class Camera2Controller {
 
         // ── FPS on-the-fly (requer restart do encoder) ────────────────────────
         params["fps"]?.let { value ->
-            val fps = (value as Double).toInt().coerceIn(15, 30)
+            val fps = value.toSafeDouble()?.toInt()?.coerceIn(15, 30) ?: return@let
             currentFps = fps
             post {
                 val wasStreaming = srv.isStreaming
