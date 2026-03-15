@@ -17,65 +17,61 @@ class RtspServer(
     private val tag = "RtspServer"
     val port = 8554
 
-    private lateinit var camera: RtspServerCamera2
+    private var camera: RtspServerCamera2? = null
 
     var connectedClients: Int = 0
         private set
 
-    fun init() {
-        camera = RtspServerCamera2(context, this, port)
-        camera.streamClient.setClientListener(this)
+    /**
+     * Inicializa o RtspServerCamera2 com a TextureView.
+     * A view DEVE ser passada aqui — a biblioteca renderiza
+     * o preview atraves da surface interna da view.
+     */
+    fun init(view: AutoFitTextureView) {
+        camera = RtspServerCamera2(view, this, port)
+        camera!!.streamClient.setClientListener(this)
         ctrl.server = camera
     }
 
-    /** Prepara o encoder e inicia o servidor RTSP (sem preview na tela). */
+    /** Prepara o encoder e inicia o servidor RTSP. */
     fun start() {
-        if (!::camera.isInitialized) init()
-        val vOk = camera.prepareVideo(
+        val cam = camera ?: return
+        val vOk = cam.prepareVideo(
             ctrl.currentWidth, ctrl.currentHeight,
             ctrl.currentFps, ctrl.currentBitrate * 1024, 0
         )
-        val aOk = camera.prepareAudio(128 * 1024, 44100, true)
+        val aOk = cam.prepareAudio(128 * 1024, 44100, true)
         if (vOk && aOk) {
-            camera.startStream()
+            cam.startStream()
             Log.i(tag, "Stream RTSP iniciado na porta $port")
         } else {
             Log.e(tag, "Falha ao preparar encoder: vOk=$vOk aOk=$aOk")
         }
     }
 
-    /**
-     * Inicia o preview local na TextureView fornecida.
-     * A view É obrigatória — sem ela a biblioteca não renderiza nada no ecra.
-     */
-    fun startPreview(
-        view: AutoFitTextureView,
-        facing: CameraHelper.Facing = CameraHelper.Facing.BACK
-    ) {
-        if (!::camera.isInitialized) return
+    /** Inicia o preview local (a view ja foi passada no construtor). */
+    fun startPreview(facing: CameraHelper.Facing = CameraHelper.Facing.BACK) {
+        val cam = camera ?: return
         try {
-            if (!camera.isOnPreview) camera.startPreview(facing, view)
-            else Log.d(tag, "preview já ativo, ignorando")
+            if (!cam.isOnPreview) cam.startPreview(facing)
         } catch (e: Exception) {
             Log.e(tag, "Erro ao iniciar preview", e)
         }
     }
 
     fun stopPreview() {
-        if (!::camera.isInitialized) return
-        try { if (camera.isOnPreview) camera.stopPreview() }
+        try { if (camera?.isOnPreview == true) camera?.stopPreview() }
         catch (e: Exception) { Log.e(tag, "Erro ao parar preview", e) }
     }
 
     fun stop() {
-        if (!::camera.isInitialized) return
         try {
-            if (camera.isStreaming) camera.stopStream()
-            if (camera.isOnPreview)  camera.stopPreview()
+            if (camera?.isStreaming == true) camera?.stopStream()
+            if (camera?.isOnPreview  == true) camera?.stopPreview()
         } catch (e: Exception) { Log.e(tag, "Erro ao parar", e) }
     }
 
-    // ── ConnectChecker ─────────────────────────────────────────────
+    // -- ConnectChecker -------------------------------------------------------
     override fun onConnectionStarted(url: String)      { Log.d(tag, "onConnectionStarted: $url") }
     override fun onConnectionSuccess()                  { Log.i(tag, "onConnectionSuccess") }
     override fun onConnectionFailed(reason: String)     { Log.e(tag, "onConnectionFailed: $reason") }
@@ -83,7 +79,7 @@ class RtspServer(
     override fun onAuthError()                          { Log.e(tag, "onAuthError") }
     override fun onAuthSuccess()                        { Log.i(tag, "onAuthSuccess") }
 
-    // ── ClientListener ───────────────────────────────────────────
+    // -- ClientListener -------------------------------------------------------
     override fun onClientConnected(client: ServerClient) {
         connectedClients++
         Log.i(tag, "Cliente conectado: ${client.getAddress()} total=$connectedClients")

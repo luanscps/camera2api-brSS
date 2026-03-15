@@ -17,9 +17,9 @@ import java.net.NetworkInterface
 
 class StreamingService : Service() {
 
-    private val tag        = "StreamingService"
-    private val notifId    = 1
-    private val channelId  = "camera2rtsp_channel"
+    private val tag       = "StreamingService"
+    private val notifId   = 1
+    private val channelId = "camera2rtsp_channel"
 
     lateinit var cameraController: Camera2Controller
         private set
@@ -29,7 +29,6 @@ class StreamingService : Service() {
         private set
 
     private var wakeLock: PowerManager.WakeLock? = null
-    private var previewFacing = CameraHelper.Facing.BACK
 
     companion object {
         const val ACTION_STOP = "com.camera2rtsp.STOP"
@@ -48,36 +47,44 @@ class StreamingService : Service() {
         if (intent?.action == ACTION_STOP) { stopSelf(); return START_NOT_STICKY }
 
         val ip = getLocalIpAddress()
-        startForeground(notifId, buildNotification(ip, "Iniciando..."))
+        startForeground(notifId, buildNotification(ip, "Aguardando preview..."))
 
         val pm = getSystemService(POWER_SERVICE) as PowerManager
         wakeLock = pm.newWakeLock(PowerManager.PARTIAL_WAKE_LOCK, "camera2rtsp:streaming")
             .apply { acquire(12 * 60 * 60 * 1000L) }
 
-        try {
-            rtspServer = RtspServer(applicationContext, cameraController)
-            rtspServer.init()
-            rtspServer.start()
+        // RtspServer e HttpServer sao iniciados em startPreview(),
+        // quando a TextureView ja esta disponivel.
+        rtspServer = RtspServer(applicationContext, cameraController)
 
+        try {
             httpServer = WebControlServer(8080, cameraController, applicationContext)
             httpServer.start()
-
-            updateNotification(ip, "● Stream ativo")
-            Log.i(tag, "Serviço ativo — rtsp://$ip:8554/live | http://$ip:8080")
         } catch (e: Exception) {
-            Log.e(tag, "Erro ao iniciar", e)
+            Log.e(tag, "Erro ao iniciar httpServer", e)
         }
 
         return START_STICKY
     }
 
-    /** Chamado pela Activity quando a TextureView está pronta. */
+    /**
+     * Chamado pela Activity quando a TextureView esta disponivel.
+     * Inicializa o RtspServerCamera2 (que precisa da view) e inicia
+     * o encoder + stream + preview.
+     */
     fun startPreview(
         view: AutoFitTextureView,
         facing: CameraHelper.Facing = CameraHelper.Facing.BACK
     ) {
-        previewFacing = facing
-        if (::rtspServer.isInitialized) rtspServer.startPreview(view, facing)
+        if (!::rtspServer.isInitialized) return
+        // Re-init se a view mudou ou ainda nao foi inicializado
+        if (cameraController.server == null) {
+            rtspServer.init(view)
+            rtspServer.start()
+            updateNotification(getLocalIpAddress(), "\u25cf Stream ativo")
+            Log.i(tag, "Servico ativo apos preview init")
+        }
+        rtspServer.startPreview(facing)
     }
 
     fun stopPreview() {
@@ -90,10 +97,10 @@ class StreamingService : Service() {
         try {
             if (::rtspServer.isInitialized)       rtspServer.stop()
             if (::cameraController.isInitialized) cameraController.release()
-            if (::httpServer.isInitialized)       httpServer.stop()
+            if (::httpServer.isInitialized)        httpServer.stop()
         } catch (e: Exception) { Log.e(tag, "Erro ao parar", e) }
         wakeLock?.release()
-        Log.i(tag, "Serviço encerrado")
+        Log.i(tag, "Servico encerrado")
     }
 
     override fun onBind(intent: Intent?): IBinder? = null
