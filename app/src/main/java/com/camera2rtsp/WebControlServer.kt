@@ -1,6 +1,7 @@
 package com.camera2rtsp
 
 import android.content.Context
+import android.hardware.camera2.CameraMetadata
 import com.google.gson.FieldNamingPolicy
 import com.google.gson.GsonBuilder
 import com.google.gson.reflect.TypeToken
@@ -8,7 +9,7 @@ import fi.iki.elonen.NanoHTTPD
 
 class WebControlServer(
     port: Int,
-    private val cameraController: Camera2Controller,
+    private val ctrl: Camera2Controller,
     private val context: Context
 ) : NanoHTTPD(port) {
 
@@ -28,83 +29,73 @@ class WebControlServer(
         }
     }
 
+    // -- /api/capabilities — lista todas as cameras com capabilities reais ----
+
     private fun serveCapabilities(): Response {
-        val capabilities = cameraController.discoverAllCameras(context)
-        val json = gson.toJson(capabilities)
-        val resp = newFixedLengthResponse(Response.Status.OK, "application/json", json)
+        val caps = ctrl.discoverAllCameras(context)
+        val resp = newFixedLengthResponse(Response.Status.OK, "application/json", gson.toJson(caps))
         resp.addHeader("Access-Control-Allow-Origin", "*")
         return resp
     }
 
-    private fun edgeModeStr(v: Int) = when (v) {
-        android.hardware.camera2.CameraMetadata.EDGE_MODE_OFF          -> "off"
-        android.hardware.camera2.CameraMetadata.EDGE_MODE_FAST         -> "fast"
-        android.hardware.camera2.CameraMetadata.EDGE_MODE_HIGH_QUALITY -> "high_quality"
-        else -> "high_quality"
-    }
-    private fun nrModeStr(v: Int) = when (v) {
-        android.hardware.camera2.CameraMetadata.NOISE_REDUCTION_MODE_OFF          -> "off"
-        android.hardware.camera2.CameraMetadata.NOISE_REDUCTION_MODE_MINIMAL      -> "minimal"
-        android.hardware.camera2.CameraMetadata.NOISE_REDUCTION_MODE_FAST         -> "fast"
-        android.hardware.camera2.CameraMetadata.NOISE_REDUCTION_MODE_HIGH_QUALITY -> "high_quality"
-        else -> "high_quality"
-    }
-    private fun hotPixelModeStr(v: Int) = when (v) {
-        android.hardware.camera2.CameraMetadata.HOT_PIXEL_MODE_OFF          -> "off"
-        android.hardware.camera2.CameraMetadata.HOT_PIXEL_MODE_FAST         -> "fast"
-        android.hardware.camera2.CameraMetadata.HOT_PIXEL_MODE_HIGH_QUALITY -> "high_quality"
-        else -> "high_quality"
-    }
+    // -- /api/status — estado atual + ranges REAIS da camera ativa ------------
 
     private fun serveStatus(): Response {
-        val c = cameraController
-        val cam = c.rtmpCamera
-        val streaming = cam?.isStreaming == true
-        val focusMode = if (c.autoFocus) "continuous-video" else "off"
-        val focusDist = String.format("%.2f", c.focusDistance)
+        val c         = ctrl
+        val streaming = c.rtmpCamera?.isStreaming == true
 
+        // Carrega capabilities da camera ativa para popular os ranges
+        val activeCaps = CameraCapabilitiesReader.read(context, c.currentCameraId)
+
+        // --- valores correntes ---
         val curvals = mapOf(
             "video_size"           to "${c.currentWidth}x${c.currentHeight}",
             "ffc"                  to if (c.currentCameraId == "1") "on" else "off",
             "camera_id"            to c.currentCameraId,
-            "zoom"                 to "${(c.zoomLevel * 100).toInt() + 100}",
-            "focusmode"            to focusMode,
-            "focus_distance"       to focusDist,
-            "focal_length"         to "4.30",
-            "aperture"             to "1.5 (fixo)",
+            "zoom"                 to String.format("%.2f", c.zoomLevel),
+            "focusmode"            to if (c.autoFocus) "continuous-video" else "manual",
+            "focus_distance"       to String.format("%.2f", c.focusDistance),
+            "focal_length"         to (activeCaps?.focalLengths?.firstOrNull()?.toString() ?: "?"),
+            "aperture"             to (activeCaps?.apertures?.firstOrNull()?.let { String.format("f/%.1f", it) } ?: "?"),
             "whitebalance"         to c.whiteBalanceMode,
             "torch"                to if (c.lanternEnabled) "on" else "off",
-            "iso"                  to c.isoValue.toString(),
-            "exposure_ns"          to c.exposureNs.toString(),
-            "frame_duration"       to c.frameDurationNs.toString(),
-            "manual_sensor"        to if (c.manualSensor) "on" else "off",
+            "iso"                  to if (c.isoValue <= 0) "AUTO" else c.isoValue.toString(),
+            "shutter_speed"        to if (c.shutterNs <= 0L) "AUTO" else shutterNsToFraction(c.shutterNs),
             "bitrate_kbps"         to c.currentBitrate.toString(),
             "fps"                  to c.currentFps.toString(),
             "ois"                  to if (c.oisEnabled) "on" else "off",
             "eis"                  to if (c.eisEnabled) "on" else "off",
+            "has_ois"              to (activeCaps?.hasOis == true),
+            "has_flash"            to (activeCaps?.hasFlash == true),
+            "hw_level"             to (activeCaps?.hardwareLevel ?: "UNKNOWN"),
+            "manual_sensor"        to (activeCaps?.supportsManualSensor == true),
             "ae_lock"              to if (c.aeLocked) "on" else "off",
             "awb_lock"             to if (c.awbLocked) "on" else "off",
             "flash_mode"           to c.flashMode,
             "edge_mode"            to edgeModeStr(c.edgeMode),
             "noise_reduction_mode" to nrModeStr(c.noiseReductionMode),
-            "tonemap_mode"         to "high_quality",
             "hot_pixel_mode"       to hotPixelModeStr(c.hotPixelMode)
         )
 
+        // --- ranges disponiveis (lidos do hardware real) ---
+        val zoomMax  = activeCaps?.zoomRange?.getOrNull(1) ?: 8f
+        val isoMin   = activeCaps?.isoRange?.getOrNull(0) ?: 50
+        val isoMax   = activeCaps?.isoRange?.getOrNull(1) ?: 3200
+        val awbModes = activeCaps?.supportedAwbModes ?: listOf("auto","daylight","cloudy","incandescent","fluorescent")
+        val afModes  = activeCaps?.supportedAfModes  ?: listOf("off","auto","continuous-video","continuous-picture")
+
         val avail = mapOf(
-            "focusmode"      to listOf("off", "auto", "continuous-video", "continuous-picture"),
-            "whitebalance"   to listOf("auto", "incandescent", "fluorescent", "daylight", "cloudy"),
-            "video_size"     to listOf("3840x2160", "1920x1080", "1280x720", "960x540"),
+            "focusmode"      to afModes,
+            "whitebalance"   to awbModes,
+            "video_size"     to (activeCaps?.availableResolutions ?: listOf("1920x1080","1280x720","640x480")),
             "torch"          to listOf("on", "off"),
-            "manual_sensor"  to listOf("on", "off"),
-            "focus_distance" to (0..100).map { String.format("%.2f", it * 0.1) },
-            "iso"            to listOf("50","100","200","400","800","1600","3200"),
-            "zoom"           to (100..800 step 7).map { it.toString() },
+            "iso"            to buildIsoSteps(isoMin, isoMax),
+            "zoom"           to buildZoomSteps(zoomMax),
+            "shutter_speed"  to listOf("AUTO","1/8000","1/4000","1/2000","1/1000","1/500","1/250","1/125","1/60","1/30","1/15","1/8","1/4","1/2","1"),
             "camera_id"      to listOf("0", "1", "2", "3"),
             "flash_mode"     to listOf("off", "torch", "single"),
             "edge_mode"      to listOf("off", "fast", "high_quality"),
             "noise_reduction_mode" to listOf("off", "minimal", "fast", "high_quality"),
-            "tonemap_mode"   to listOf("high_quality"),
             "hot_pixel_mode" to listOf("off", "fast", "high_quality")
         )
 
@@ -122,6 +113,8 @@ class WebControlServer(
         return resp
     }
 
+    // -- /api/control POST ----------------------------------------------------
+
     private fun handleControl(session: IHTTPSession): Response {
         val map = mutableMapOf<String, String>()
         return try {
@@ -132,7 +125,7 @@ class WebControlServer(
             val params = com.google.gson.Gson().fromJson<Map<String, Any>>(
                 json, object : TypeToken<Map<String, Any>>() {}.type
             )
-            // Controle especial: mudar URL RTMP em tempo real
+            // Troca de URL RTMP em tempo real
             (params["rtmpUrl"] as? String)?.let {
                 StreamingService.instance?.let { svc ->
                     svc.rtmpUrl = it
@@ -140,7 +133,7 @@ class WebControlServer(
                     svc.startStream()
                 }
             }
-            cameraController.updateSettings(params)
+            ctrl.updateSettings(params)
             val resp = newFixedLengthResponse(Response.Status.OK, "application/json", """{"status":"ok"}""")
             resp.addHeader("Access-Control-Allow-Origin", "*")
             resp
@@ -152,12 +145,61 @@ class WebControlServer(
         }
     }
 
-    private fun serveControlPanel(): Response {
-        return newFixedLengthResponse(Response.Status.OK, "text/html", buildHtml())
+    // -- HTML -----------------------------------------------------------------
+
+    private fun serveControlPanel() =
+        newFixedLengthResponse(Response.Status.OK, "text/html", WebControlHtml.build())
+
+    // -- Helpers --------------------------------------------------------------
+
+    /** Converte nanosegundos para string de fracao legivel (ex: "1/1000") */
+    private fun shutterNsToFraction(ns: Long): String {
+        if (ns <= 0L) return "AUTO"
+        val sec = ns / 1_000_000_000.0
+        if (sec >= 1.0) return String.format("%.1fs", sec)
+        val den = (1.0 / sec).toInt()
+        return "1/$den"
     }
 
-    private fun buildHtml(): String {
-        // HTML identico ao anterior mas com titulo e subtitulo atualizados para RTMP
-        return WebControlHtml.build()
+    /** Gera passos de ISO baseados nos limites reais do hardware */
+    private fun buildIsoSteps(min: Int, max: Int): List<String> {
+        val steps = mutableListOf("AUTO")
+        var v = 50
+        while (v <= max) {
+            if (v >= min) steps.add(v.toString())
+            v *= 2
+        }
+        return steps
+    }
+
+    /** Gera passos de zoom de 1x ate o maximo real da camera */
+    private fun buildZoomSteps(maxZoom: Float): List<String> {
+        val steps = mutableListOf("1x")
+        var v = 1.5f
+        while (v <= maxZoom + 0.1f) {
+            steps.add(if (v == v.toLong().toFloat()) "${v.toInt()}x" else "${String.format("%.1f", v)}x")
+            v += if (v < 4f) 0.5f else 1f
+        }
+        return steps
+    }
+
+    private fun edgeModeStr(v: Int) = when (v) {
+        CameraMetadata.EDGE_MODE_OFF          -> "off"
+        CameraMetadata.EDGE_MODE_FAST         -> "fast"
+        CameraMetadata.EDGE_MODE_HIGH_QUALITY -> "high_quality"
+        else -> "high_quality"
+    }
+    private fun nrModeStr(v: Int) = when (v) {
+        CameraMetadata.NOISE_REDUCTION_MODE_OFF          -> "off"
+        CameraMetadata.NOISE_REDUCTION_MODE_MINIMAL      -> "minimal"
+        CameraMetadata.NOISE_REDUCTION_MODE_FAST         -> "fast"
+        CameraMetadata.NOISE_REDUCTION_MODE_HIGH_QUALITY -> "high_quality"
+        else -> "high_quality"
+    }
+    private fun hotPixelModeStr(v: Int) = when (v) {
+        CameraMetadata.HOT_PIXEL_MODE_OFF          -> "off"
+        CameraMetadata.HOT_PIXEL_MODE_FAST         -> "fast"
+        CameraMetadata.HOT_PIXEL_MODE_HIGH_QUALITY -> "high_quality"
+        else -> "high_quality"
     }
 }

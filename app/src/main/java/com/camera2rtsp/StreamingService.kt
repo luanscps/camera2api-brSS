@@ -35,7 +35,6 @@ class StreamingService : Service(), ConnectChecker {
 
     var rtmpUrl = "rtmp://192.168.1.100:1935/live/stream"
 
-    // -- Binder para a Activity se conectar ao Service -----------------------
     inner class LocalBinder : Binder() {
         fun getService(): StreamingService = this@StreamingService
     }
@@ -49,15 +48,17 @@ class StreamingService : Service(), ConnectChecker {
             private set
     }
 
-    // -- Lifecycle ------------------------------------------------------------
-
     override fun onCreate() {
         super.onCreate()
         instance = this
         createNotificationChannel()
-        cameraController = Camera2Controller()
-        rtmpStreamer      = RtmpStreamer(cameraController, this)
-        // Inicia em modo background ate a Activity conectar a view
+        cameraController = Camera2Controller().also {
+            // Injeta contexto para Camera2 API funcionar nos controles
+            it.appContext = applicationContext
+            // Carrega capabilities da camera padrao (id=0)
+            it.loadCapabilities("0")
+        }
+        rtmpStreamer = RtmpStreamer(cameraController, this)
         rtmpStreamer.initBackground(applicationContext)
     }
 
@@ -94,38 +95,27 @@ class StreamingService : Service(), ConnectChecker {
         Log.i(tag, "Servico encerrado")
     }
 
-    // -- API chamada pela Activity --------------------------------------------
-
-    /**
-     * Chamado pela MainActivity quando a TextureView esta pronta.
-     * Reconecta o RtmpCamera2 com a view para exibir o preview.
-     */
     fun attachView(view: OpenGlView) {
-        Log.i(tag, "attachView: conectando TextureView ao encoder")
+        Log.i(tag, "attachView")
         rtmpStreamer.initWithView(view, applicationContext)
         rtmpStreamer.startPreview(currentFacing)
+        // Atualiza capabilities com a camera que esta sendo usada
+        cameraController.loadCapabilities(cameraController.currentCameraId)
         updateNotification("Preview ativo")
     }
 
-    /**
-     * Chamado quando a Activity e destruida/pausada.
-     * Volta ao modo background para nao segurar a Surface.
-     */
     fun detachView() {
-        Log.i(tag, "detachView: voltando ao modo background")
+        Log.i(tag, "detachView")
         val wasStreaming = rtmpStreamer.isStreaming
         rtmpStreamer.stop()
         rtmpStreamer.initBackground(applicationContext)
         if (wasStreaming) rtmpStreamer.startStream(applicationContext, rtmpUrl)
     }
 
-    /**
-     * Troca a camera pelo ID e facing.
-     * Para o preview, recria e reinicia — a view ja esta conectada.
-     */
     fun switchCamera(cameraId: String, facing: CameraHelper.Facing) {
         currentFacing = facing
         cameraController.currentCameraId = cameraId
+        cameraController.loadCapabilities(cameraId)
         rtmpStreamer.switchCameraById(cameraId, facing)
         Log.i(tag, "switchCamera: id=$cameraId facing=$facing")
     }
@@ -135,35 +125,17 @@ class StreamingService : Service(), ConnectChecker {
         rtmpStreamer.startPreview(facing)
     }
 
-    fun stopPreview() = rtmpStreamer.stopPreview()
+    fun stopPreview()  = rtmpStreamer.stopPreview()
+    fun startStream()  { rtmpStreamer.startStream(applicationContext, rtmpUrl) }
+    fun stopStream()   = rtmpStreamer.stopStream()
 
-    fun startStream() {
-        rtmpStreamer.startStream(applicationContext, rtmpUrl)
-    }
+    override fun onConnectionStarted(url: String)    { Log.i(tag, "RTMP conectando: $url");    updateNotification("Conectando RTMP...") }
+    override fun onConnectionSuccess()               { Log.i(tag, "RTMP conectado");            updateNotification("Streaming ativo") }
+    override fun onConnectionFailed(reason: String)  { Log.e(tag, "RTMP falhou: $reason");      updateNotification("Erro: $reason") }
+    override fun onDisconnect()                      { Log.i(tag, "RTMP desconectado");         updateNotification("Desconectado") }
+    override fun onAuthError()                       { Log.e(tag, "RTMP auth error") }
+    override fun onAuthSuccess()                     { Log.i(tag, "RTMP auth ok") }
 
-    fun stopStream() = rtmpStreamer.stopStream()
-
-    // -- ConnectChecker -------------------------------------------------------
-    override fun onConnectionStarted(url: String) {
-        Log.i(tag, "RTMP conectando: $url")
-        updateNotification("Conectando RTMP...")
-    }
-    override fun onConnectionSuccess() {
-        Log.i(tag, "RTMP conectado")
-        updateNotification("Streaming ativo")
-    }
-    override fun onConnectionFailed(reason: String) {
-        Log.e(tag, "RTMP falhou: $reason")
-        updateNotification("Erro: $reason")
-    }
-    override fun onDisconnect() {
-        Log.i(tag, "RTMP desconectado")
-        updateNotification("Desconectado")
-    }
-    override fun onAuthError()   { Log.e(tag, "RTMP auth error") }
-    override fun onAuthSuccess() { Log.i(tag, "RTMP auth ok") }
-
-    // -- Notificacao ----------------------------------------------------------
     private fun createNotificationChannel() {
         val channel = NotificationChannel(
             channelId, "Camera2 RTMP Streaming",
