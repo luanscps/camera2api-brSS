@@ -9,13 +9,12 @@ import com.pedro.library.rtmp.RtmpCamera2
 /**
  * Wrapper do RtmpCamera2 (RootEncoder library:2.4.5).
  *
- * RtmpCamera2 aceita:
+ * RtmpCamera2 aceita apenas:
  *   - OpenGlView  -> preview com OpenGL
  *   - Context     -> modo background (sem preview na tela)
  *
- * Usamos Context (background) porque a TextureView de preview
- * ja e gerenciada pelo RtspServer que usa RtspServerCamera2.
- * As duas instancias de camera nao podem compartilhar a mesma View.
+ * Usamos Context (background) porque o preview visual
+ * ja e gerenciado pelo RtspServerCamera2 via TextureView.
  */
 class RtmpStreamer(
     private val ctrl: Camera2Controller,
@@ -60,7 +59,7 @@ class RtmpStreamer(
         val aOk = cam.prepareAudio(128 * 1024, 44100, true)
         if (vOk && aOk) {
             cam.startStream(url)
-            Log.i(tag, "RTMP stream iniciado: $url")
+            Log.i(tag, "RTMP iniciado: $url")
         } else {
             Log.e(tag, "Falha ao preparar encoder: vOk=$vOk aOk=$aOk")
         }

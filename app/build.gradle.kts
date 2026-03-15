@@ -53,6 +53,6 @@ dependencies {
     implementation("com.github.pedroSG94.RootEncoder:library:2.4.5")
 
     // RootEncoder - modulo servidor RTSP embutido
-    // Fornece RtspServerCamera2, ClientListener, ServerClient
+    // Fornece: RtspServerCamera2, ClientListener, ServerClient
     implementation("com.github.pedroSG94.RootEncoder:rtsp-server:2.4.5")
 }

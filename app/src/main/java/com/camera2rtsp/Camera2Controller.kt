@@ -11,7 +11,7 @@ class Camera2Controller {
 
     val tag = "Camera2Controller"
 
-    // Referencia ao encoder RTMP ativo
+    // Referencia ao encoder RTMP ativo (atualizada pelo RtmpStreamer)
     var rtmpCamera: RtmpCamera2? = null
 
     // -- Configuracoes de stream --
@@ -34,44 +34,41 @@ class Camera2Controller {
     fun updateSettings(params: Map<String, Any>) {
         applyLocally(params)
         val cam = rtmpCamera ?: run {
-            Log.w(tag, "rtmpCamera nulo - configuracao guardada localmente")
+            Log.w(tag, "rtmpCamera nulo - config guardada localmente")
             return
         }
         applyCameraParams(cam, params)
     }
 
     private fun applyLocally(params: Map<String, Any>) {
-        (params["width"]   as? Number)?.let { currentWidth   = it.toInt() }
-        (params["height"]  as? Number)?.let { currentHeight  = it.toInt() }
-        (params["fps"]     as? Number)?.let { currentFps     = it.toInt() }
-        (params["bitrate"] as? Number)?.let { currentBitrate = it.toInt() }
-        (params["camera"]  as? String)?.let { currentCameraId = it }
-        (params["zoom"]    as? Number)?.let { zoomLevel      = it.toFloat().coerceAtLeast(1f) }
-        (params["iso"]     as? Number)?.let { isoValue       = it.toInt() }
-        (params["ois"]     as? Boolean)?.let { oisEnabled    = it }
-        (params["eis"]     as? Boolean)?.let { eisEnabled    = it }
-        (params["lantern"] as? Boolean)?.let { lanternEnabled = it }
-        (params["whiteBalance"] as? String)?.let { whiteBalanceMode = it }
+        (params["width"]        as? Number)?.let  { currentWidth       = it.toInt() }
+        (params["height"]       as? Number)?.let  { currentHeight      = it.toInt() }
+        (params["fps"]          as? Number)?.let  { currentFps         = it.toInt() }
+        (params["bitrate"]      as? Number)?.let  { currentBitrate     = it.toInt() }
+        (params["camera"]       as? String)?.let  { currentCameraId    = it }
+        (params["zoom"]         as? Number)?.let  { zoomLevel          = it.toFloat().coerceAtLeast(1f) }
+        (params["iso"]          as? Number)?.let  { isoValue           = it.toInt() }
+        (params["ois"]          as? Boolean)?.let { oisEnabled         = it }
+        (params["eis"]          as? Boolean)?.let { eisEnabled         = it }
+        (params["lantern"]      as? Boolean)?.let { lanternEnabled     = it }
+        (params["whiteBalance"] as? String)?.let  { whiteBalanceMode   = it }
     }
 
     private fun applyCameraParams(cam: RtmpCamera2, params: Map<String, Any>) {
         try {
-            // Zoom
+            // Zoom (nivel real >= 1.0)
             (params["zoom"] as? Number)?.let {
                 val z = it.toFloat().coerceAtLeast(1f)
-                cam.setZoom(z)
-                zoomLevel = z
+                cam.setZoom(z); zoomLevel = z
             }
 
             // Lanterna
             (params["lantern"] as? Boolean)?.let { on ->
-                try {
-                    if (on) cam.enableLantern() else cam.disableLantern()
-                    lanternEnabled = on
-                } catch (e: Exception) { Log.w(tag, "Lanterna nao suportada: ${e.message}") }
+                try { if (on) cam.enableLantern() else cam.disableLantern(); lanternEnabled = on }
+                catch (e: Exception) { Log.w(tag, "Lanterna nao suportada: ${e.message}") }
             }
 
-            // OIS - API real: enableOpticalVideoStabilization / disableOpticalVideoStabilization
+            // OIS - enableOpticalVideoStabilization / disableOpticalVideoStabilization
             (params["ois"] as? Boolean)?.let { on ->
                 if (on) cam.enableOpticalVideoStabilization()
                 else    cam.disableOpticalVideoStabilization()
@@ -85,44 +82,39 @@ class Camera2Controller {
                 eisEnabled = on
             }
 
-            // Foco - API real: setFocusDistance(float)
+            // Foco manual: setFocusDistance(float); 0 = auto
             (params["focus"] as? Number)?.let {
                 val d = it.toFloat()
-                if (d <= 0f) {
-                    cam.enableAutoFocus(); autoFocus = true; focusDistance = 0f
-                } else {
-                    cam.disableAutoFocus(); cam.setFocusDistance(d)
-                    autoFocus = false; focusDistance = d
-                }
+                if (d <= 0f) { cam.enableAutoFocus(); autoFocus = true; focusDistance = 0f }
+                else { cam.disableAutoFocus(); cam.setFocusDistance(d); autoFocus = false; focusDistance = d }
             }
 
-            // Balanco de branco - API real: enableAutoWhiteBalance(int mode)
+            // Balanco de branco: enableAutoWhiteBalance(int mode)
             (params["whiteBalance"] as? String)?.let { wb ->
                 val mode = when (wb) {
-                    "daylight"               -> CameraMetadata.CONTROL_AWB_MODE_DAYLIGHT
-                    "cloudy"                 -> CameraMetadata.CONTROL_AWB_MODE_CLOUDY_DAYLIGHT
-                    "incandescent","tungsten"-> CameraMetadata.CONTROL_AWB_MODE_INCANDESCENT
-                    "fluorescent"            -> CameraMetadata.CONTROL_AWB_MODE_FLUORESCENT
-                    else                     -> CameraMetadata.CONTROL_AWB_MODE_AUTO
+                    "daylight"                -> CameraMetadata.CONTROL_AWB_MODE_DAYLIGHT
+                    "cloudy"                  -> CameraMetadata.CONTROL_AWB_MODE_CLOUDY_DAYLIGHT
+                    "incandescent","tungsten" -> CameraMetadata.CONTROL_AWB_MODE_INCANDESCENT
+                    "fluorescent"             -> CameraMetadata.CONTROL_AWB_MODE_FLUORESCENT
+                    else                      -> CameraMetadata.CONTROL_AWB_MODE_AUTO
                 }
-                cam.enableAutoWhiteBalance(mode)
-                whiteBalanceMode = wb
+                cam.enableAutoWhiteBalance(mode); whiteBalanceMode = wb
             }
 
-            // Troca de camera - API real: switchCamera(String)
+            // Troca de camera: switchCamera(String cameraId)
             (params["camera"] as? String)?.let { id ->
                 try { cam.switchCamera(id); currentCameraId = id }
                 catch (e: Exception) { Log.w(tag, "switchCamera falhou: ${e.message}") }
             }
 
-            // Bitrate em tempo real
+            // Bitrate em tempo real (kbps -> bps)
             (params["bitrate"] as? Number)?.let {
                 val kbps = it.toInt()
                 if (cam.isStreaming) cam.setVideoBitrateOnFly(kbps * 1024)
                 currentBitrate = kbps
             }
 
-            // Exposicao (EV compensation)
+            // Exposicao EV
             (params["exposure"] as? Number)?.let { cam.setExposure(it.toInt()) }
 
         } catch (e: Exception) {
@@ -136,9 +128,9 @@ class Camera2Controller {
         val mgr = context.getSystemService(Context.CAMERA_SERVICE) as CameraManager
         return mgr.cameraIdList.mapNotNull { id ->
             try {
-                val chars = mgr.getCameraCharacteristics(id)
-                val facing = chars.get(CameraCharacteristics.LENS_FACING)
-                val name = when (facing) {
+                val chars   = mgr.getCameraCharacteristics(id)
+                val facing  = chars.get(CameraCharacteristics.LENS_FACING)
+                val name    = when (facing) {
                     CameraCharacteristics.LENS_FACING_BACK  -> "Traseira $id"
                     CameraCharacteristics.LENS_FACING_FRONT -> "Frontal"
                     else -> "Camera $id"
@@ -153,12 +145,12 @@ class Camera2Controller {
                     ?.filter { it.width >= 640 }
                     ?.map { "${it.width}x${it.height}" } ?: emptyList()
                 mapOf(
-                    "camera_id"  to id,
-                    "name"       to name,
-                    "has_flash"  to hasFlash,
-                    "has_ois"    to hasOis,
-                    "zoom_range" to listOf(1f, maxZoom),
-                    "ev_range"   to listOf(evRange?.lower ?: -8, evRange?.upper ?: 8),
+                    "camera_id"   to id,
+                    "name"        to name,
+                    "has_flash"   to hasFlash,
+                    "has_ois"     to hasOis,
+                    "zoom_range"  to listOf(1f, maxZoom),
+                    "ev_range"    to listOf(evRange?.lower ?: -8, evRange?.upper ?: 8),
                     "resolutions" to resolutions
                 )
             } catch (e: Exception) { Log.w(tag, "Erro camera $id: ${e.message}"); null }
