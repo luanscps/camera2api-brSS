@@ -1,7 +1,6 @@
 package com.camera2rtsp
 
 import android.content.Context
-import android.graphics.Rect
 import android.hardware.camera2.CameraCharacteristics
 import android.hardware.camera2.CameraManager
 import android.hardware.camera2.CameraMetadata
@@ -12,57 +11,55 @@ import android.util.Log
 import com.pedro.encoder.input.video.Camera2ApiManager
 import com.pedro.library.base.Camera2Base
 import com.pedro.library.rtmp.RtmpCamera2
-import kotlin.math.roundToInt
 
 class Camera2Controller {
 
-    val tag = "Camera2Ctrl"
+    private val tag = "Camera2Ctrl"
 
+    // Unica diferenca em relacao a v3: RtmpCamera2 em vez de RtspServerCamera2
     var rtmpCamera: RtmpCamera2? = null
     var appContext: Context? = null
 
-    var currentWidth    = 1920
-    var currentHeight   = 1080
-    var currentFps      = 30
-    var currentBitrate  = 4000
-    var currentCameraId = "0"
-
-    var zoomLevel        = 1f
-    var autoFocus        = true
-    var focusDistance    = 0f
-    var whiteBalanceMode = "auto"
-    var lanternEnabled   = false
-    var isoValue         = 0
-    var shutterNs        = 0L
-    var oisEnabled       = false
-    var eisEnabled       = false
+    var currentCameraId  = "0"
+    var exposureLevel    = 0
     var exposureNs       = 33_333_333L
     var frameDurationNs  = 33_333_333L
+    var isoValue         = 100
     var manualSensor     = false
+    var whiteBalanceMode = "auto"
+    var autoFocus        = true
+    var focusDistance    = 0f
+    var zoomLevel        = 0f
+    var lanternEnabled   = false
+    var oisEnabled       = false
+    var eisEnabled       = false
     var aeLocked         = false
     var awbLocked        = false
     var flashMode        = "off"
+    var currentWidth     = 1920
+    var currentHeight    = 1080
+    var currentBitrate   = 4000
+    var currentFps       = 30
+
     var edgeMode           = CameraMetadata.EDGE_MODE_HIGH_QUALITY
     var noiseReductionMode = CameraMetadata.NOISE_REDUCTION_MODE_HIGH_QUALITY
     var hotPixelMode       = CameraMetadata.HOT_PIXEL_MODE_HIGH_QUALITY
-    var exposureLevel      = 0
 
     private val workerThread = HandlerThread("CameraWorker").also { it.start() }
     private val worker = Handler(workerThread.looper)
     private fun post(block: () -> Unit) =
-        worker.post { runCatching(block).onFailure { Log.e(tag, "worker err", it) } }
+        worker.post { runCatching(block).onFailure { Log.e(tag, "worker error", it) } }
 
-    // =========================================================================
-    // REFLECTION
-    // =========================================================================
+    // -------------------------------------------------------------------------
+    // Reflection helpers — identicos a v3, apenas ref muda para rtmpCamera
+    // -------------------------------------------------------------------------
 
     private fun getCam2Manager(): Camera2ApiManager? = try {
         val f = Camera2Base::class.java.getDeclaredField("cameraManager")
         f.isAccessible = true
         f.get(rtmpCamera) as? Camera2ApiManager
     } catch (e: Exception) {
-        Log.e(tag, "getCam2Manager falhou: ${e.message}")
-        null
+        Log.e(tag, "getCam2Manager falhou", e); null
     }
 
     private fun applyOnBuilder(block: (CaptureRequest.Builder) -> Unit): Boolean {
@@ -79,91 +76,13 @@ class Camera2Controller {
             am.isAccessible = true
             am.invoke(cam, builder) as? Boolean ?: false
         } catch (e: Exception) {
-            Log.e(tag, "applyOnBuilder falhou: ${e.message}")
-            false
+            Log.e(tag, "applyOnBuilder falhou", e); false
         }
     }
 
-    // =========================================================================
-    // FIX 1 — ZOOM via SCALER_CROP_REGION manual
-    // cam.setZoom() nao re-submete a repeating request de fora da lib.
-    // Calculamos o cropRect diretamente e escrevemos via applyOnBuilder.
-    // =========================================================================
-
-    private fun applyZoom(zoom: Float) {
-        val context = appContext ?: return
-        val mgr = context.getSystemService(Context.CAMERA_SERVICE) as CameraManager
-        val chars = try { mgr.getCameraCharacteristics(currentCameraId) } catch (e: Exception) {
-            Log.e(tag, "applyZoom: getCameraCharacteristics falhou ${e.message}"); return
-        }
-        val sensor = chars.get(CameraCharacteristics.SENSOR_INFO_ACTIVE_ARRAY_SIZE) ?: return
-        val maxZoom = chars.get(CameraCharacteristics.SCALER_AVAILABLE_MAX_DIGITAL_ZOOM) ?: 1f
-        val safeZoom = zoom.coerceIn(1f, maxZoom)
-        val cropW = (sensor.width()  / safeZoom).roundToInt()
-        val cropH = (sensor.height() / safeZoom).roundToInt()
-        val left  = (sensor.width()  - cropW) / 2
-        val top   = (sensor.height() - cropH) / 2
-        val cropRect = Rect(left, top, left + cropW, top + cropH)
-        val ok = applyOnBuilder { b ->
-            b.set(CaptureRequest.SCALER_CROP_REGION, cropRect)
-        }
-        zoomLevel = safeZoom
-        Log.d(tag, "zoom -> $safeZoom cropRect=$cropRect ok=$ok")
-    }
-
-    // =========================================================================
-    // FIX 2 — FOCO manual via AF_MODE_OFF + LENS_FOCUS_DISTANCE
-    // cam.setFocusDistance() da lib nao seta AF_MODE_OFF primeiro,
-    // entao o driver ignora LENS_FOCUS_DISTANCE.
-    // =========================================================================
-
-    private fun applyManualFocus(distance: Float) {
-        val ok = applyOnBuilder { b ->
-            b.set(CaptureRequest.CONTROL_AF_MODE, CameraMetadata.CONTROL_AF_MODE_OFF)
-            b.set(CaptureRequest.LENS_FOCUS_DISTANCE, distance)
-        }
-        autoFocus = false
-        focusDistance = distance
-        Log.d(tag, "focus manual -> $distance ok=$ok")
-    }
-
-    private fun applyAutoFocus() {
-        val ok = applyOnBuilder { b ->
-            b.set(CaptureRequest.CONTROL_AF_MODE, CameraMetadata.CONTROL_AF_MODE_CONTINUOUS_VIDEO)
-        }
-        autoFocus = true
-        focusDistance = 0f
-        Log.d(tag, "focus auto (continuous-video) ok=$ok")
-    }
-
-    // =========================================================================
-    // FIX 3 — MANUAL SENSOR sem CONTROL_MODE_OFF
-    // CONTROL_MODE_OFF desliga AE + AF + AWB juntos e causa tela cinza.
-    // Correto: CONTROL_MODE_AUTO + CONTROL_AE_MODE_OFF (so desliga o AE).
-    // SENSOR_FRAME_DURATION NAO e setado aqui para nao conflitar com encoder.
-    // =========================================================================
-
-    private fun applyManualSensor() {
-        val safeIso = if (isoValue <= 0) 100 else isoValue
-        val safeExp = if (exposureNs <= 0L) 33_333_333L else exposureNs
-        val ok = applyOnBuilder { b ->
-            b.set(CaptureRequest.CONTROL_MODE,         CameraMetadata.CONTROL_MODE_AUTO)   // NAO usar MODE_OFF
-            b.set(CaptureRequest.CONTROL_AE_MODE,      CameraMetadata.CONTROL_AE_MODE_OFF) // apenas AE off
-            b.set(CaptureRequest.SENSOR_SENSITIVITY,   safeIso)
-            b.set(CaptureRequest.SENSOR_EXPOSURE_TIME, safeExp)
-            // SENSOR_FRAME_DURATION omitido — deixa o encoder controlar
-        }
-        Log.d(tag, "manualSensor ok=$ok ISO=$safeIso exp=${safeExp}ns")
-        applyPostProcessing()
-    }
-
-    private fun applyAutoSensor() {
-        val ok = applyOnBuilder { b ->
-            b.set(CaptureRequest.CONTROL_MODE,    CameraMetadata.CONTROL_MODE_AUTO)
-            b.set(CaptureRequest.CONTROL_AE_MODE, CameraMetadata.CONTROL_AE_MODE_ON)
-        }
-        Log.d(tag, "autoSensor ok=$ok")
-    }
+    // -------------------------------------------------------------------------
+    // Post-processing
+    // -------------------------------------------------------------------------
 
     private fun applyPostProcessing() {
         val ok = applyOnBuilder { b ->
@@ -175,235 +94,197 @@ class Camera2Controller {
         Log.d(tag, "postProcessing ok=$ok")
     }
 
-    private fun applyWhiteBalance(mode: Int) {
+    // -------------------------------------------------------------------------
+    // Sensor manual / auto — logica identica a v3
+    // -------------------------------------------------------------------------
+
+    private fun applyManualSensor() {
+        val safeDuration = maxOf(frameDurationNs, exposureNs)
         val ok = applyOnBuilder { b ->
-            b.set(CaptureRequest.CONTROL_AWB_MODE, mode)
+            b.set(CaptureRequest.CONTROL_MODE,          CameraMetadata.CONTROL_MODE_OFF)
+            b.set(CaptureRequest.CONTROL_AE_MODE,       CameraMetadata.CONTROL_AE_MODE_OFF)
+            b.set(CaptureRequest.SENSOR_SENSITIVITY,    isoValue)
+            b.set(CaptureRequest.SENSOR_EXPOSURE_TIME,  exposureNs)
+            b.set(CaptureRequest.SENSOR_FRAME_DURATION, safeDuration)
         }
-        Log.d(tag, "WB ok=$ok mode=$mode")
+        Log.d(tag, "manualSensor ok=$ok ISO=$isoValue exp=${exposureNs}ns dur=${safeDuration}ns")
+        applyPostProcessing()
     }
 
-    // =========================================================================
-    // Entry point
-    // =========================================================================
+    private fun applyAutoSensor() {
+        val ok = applyOnBuilder { b ->
+            b.set(CaptureRequest.CONTROL_MODE,    CameraMetadata.CONTROL_MODE_AUTO)
+            b.set(CaptureRequest.CONTROL_AE_MODE, CameraMetadata.CONTROL_AE_MODE_ON)
+        }
+        Log.d(tag, "autoSensor ok=$ok")
+    }
+
+    // -------------------------------------------------------------------------
+    // updateSettings — logica identica a v3, srv -> rtmpCamera
+    // -------------------------------------------------------------------------
 
     fun updateSettings(params: Map<String, Any>) {
-        val cam = rtmpCamera ?: run {
-            Log.w(tag, "rtmpCamera nulo - guardando estado localmente")
-            applyLocally(params)
-            return
-        }
-        applyLocally(params)
-        applyCameraParams(cam, params)
-    }
+        val cam = rtmpCamera ?: run { Log.w(tag, "rtmpCamera nulo"); return }
 
-    private fun applyLocally(params: Map<String, Any>) {
-        (params["width"]         as? Number)?.let { currentWidth        = it.toInt() }
-        (params["height"]        as? Number)?.let { currentHeight       = it.toInt() }
-        (params["fps"]           as? Number)?.let { currentFps          = it.toInt() }
-        (params["bitrate"]       as? Number)?.let { currentBitrate      = it.toInt() }
-        (params["camera"]        as? String)?.let { currentCameraId     = it }
-        params["zoom"]?.let          { zoomLevel        = parseZoom(it) }
-        params["iso"]?.let           { isoValue         = parseIso(it) }
-        params["shutterSpeed"]?.let  { shutterNs        = parseShutter(it) }
-        (params["ois"]          as? Boolean)?.let { oisEnabled       = it }
-        (params["eis"]          as? Boolean)?.let { eisEnabled       = it }
-        (params["lantern"]      as? Boolean)?.let { lanternEnabled   = it }
-        (params["whiteBalance"] as? String)?.let  { whiteBalanceMode = it }
-        (params["manualSensor"] as? Boolean)?.let { manualSensor     = it }
-        (params["aeLock"]       as? Boolean)?.let { aeLocked         = it }
-        (params["awbLock"]      as? Boolean)?.let { awbLocked        = it }
-        (params["flashMode"]    as? String)?.let  { flashMode        = it }
-    }
-
-    private fun applyCameraParams(cam: RtmpCamera2, params: Map<String, Any>) {
-
-        // ---- MODO SENSOR MANUAL / AUTO --------------------------------------
-        (params["manualSensor"] as? Boolean)?.let { manual ->
-            manualSensor = manual
-            if (manual) applyManualSensor()
-            else {
-                applyAutoSensor()
-                cam.setExposure(0)
-                exposureLevel = 0
-            }
-            Log.d(tag, "manualSensor -> $manual")
+        params["manualSensor"]?.let {
+            manualSensor = it as Boolean
+            if (manualSensor) applyManualSensor()
+            else { applyAutoSensor(); cam.setExposure(0); exposureLevel = 0 }
+            Log.d(tag, "manualSensor -> $manualSensor")
         }
 
-        // ---- ISO ------------------------------------------------------------
         params["iso"]?.let {
-            val iso = parseIso(it)
-            isoValue = if (iso <= 0) 100 else iso
-            if (manualSensor) {
-                applyManualSensor()
-            } else {
-                val minEv = cam.minExposure
-                val maxEv = cam.maxExposure
+            isoValue = when (it) {
+                is Double -> it.toInt()
+                is Int    -> it
+                is Number -> it.toInt()
+                else      -> it.toString().toIntOrNull() ?: 100
+            }
+            if (manualSensor) applyManualSensor()
+            else {
+                val minEv = cam.minExposure; val maxEv = cam.maxExposure
                 val ev = (((isoValue - 50f) / (3200f - 50f)) * (maxEv - minEv) + minEv)
                     .toInt().coerceIn(minEv, maxEv)
-                exposureLevel = ev
-                cam.setExposure(ev)
+                exposureLevel = ev; cam.setExposure(ev)
             }
-            Log.d(tag, "iso -> $isoValue ev${exposureLevel} manual=$manualSensor")
+            Log.d(tag, "iso -> $isoValue manual=$manualSensor")
         }
 
-        // ---- SHUTTER SPEED --------------------------------------------------
-        params["shutterSpeed"]?.let {
-            val ns = parseShutter(it)
-            if (ns > 0L) {
-                exposureNs = ns
-                if (manualSensor) applyManualSensor()
-            }
-            Log.d(tag, "shutterSpeed -> ${if (ns <= 0L) "AUTO" else "${ns}ns"}")
-        }
-
-        // ---- FRAME DURATION -------------------------------------------------
-        (params["frameDuration"] as? Number)?.let {
-            frameDurationNs = it.toLong()
+        params["shutterSpeed"]?.let { raw ->
+            exposureNs = parseTimeParam(raw, 33_333_333L)
             if (manualSensor) applyManualSensor()
+            Log.d(tag, "shutterSpeed -> ${exposureNs}ns")
         }
 
-        // ---- EV DIRETO ------------------------------------------------------
-        (params["exposure"] as? Number)?.let {
+        params["frameDuration"]?.let { raw ->
+            frameDurationNs = parseTimeParam(raw, 33_333_333L)
+            if (manualSensor) applyManualSensor()
+            Log.d(tag, "frameDuration -> ${frameDurationNs}ns")
+        }
+
+        params["exposure"]?.let {
             if (!manualSensor) {
-                val ev = it.toInt().coerceIn(cam.minExposure, cam.maxExposure)
-                exposureLevel = ev
-                cam.setExposure(ev)
-                Log.d(tag, "exposure EV -> $ev")
+                val ev = when (it) {
+                    is Double -> it.toInt()
+                    is Int    -> it
+                    is Number -> it.toInt()
+                    else      -> it.toString().toIntOrNull() ?: 0
+                }.coerceIn(cam.minExposure, cam.maxExposure)
+                exposureLevel = ev; cam.setExposure(ev)
+                Log.d(tag, "EV -> $ev")
             }
         }
 
-        // ---- ZOOM -----------------------------------------------------------
-        // FIX: usa applyZoom() com SCALER_CROP_REGION calculado manualmente
-        params["zoom"]?.let {
-            val z = parseZoom(it)
-            applyZoom(z)
-        }
-
-        // ---- FOCO -----------------------------------------------------------
-        // FIX: usa applyManualFocus() com AF_MODE_OFF explicito
         params["focus"]?.let {
-            val focusStr = it.toString().trim()
-            if (focusStr.equals("AUTO", ignoreCase = true) ||
-                focusStr == "0" || focusStr == "0.0") {
-                applyAutoFocus()
+            val norm = when (it) {
+                is Double -> it.toFloat()
+                is Number -> it.toFloat()
+                else      -> it.toString().toFloatOrNull() ?: 0f
+            }.coerceIn(0f, 1f)
+            if (norm == 0f) {
+                autoFocus = true; focusDistance = 0f; cam.enableAutoFocus()
             } else {
-                val d = focusStr.toFloatOrNull() ?: 0f
-                if (d <= 0f) applyAutoFocus()
-                else applyManualFocus(d)
+                autoFocus = false; focusDistance = norm * 10f
+                cam.disableAutoFocus(); cam.setFocusDistance(focusDistance)
             }
+            Log.d(tag, "focus norm=$norm dist=$focusDistance")
         }
 
-        // ---- FOCUSMODE ------------------------------------------------------
-        (params["focusmode"] as? String)?.let {
-            when (it) {
-                "continuous-video", "continuous-picture", "auto" -> applyAutoFocus()
-                "off" -> {
-                    val d = if (focusDistance > 0f) focusDistance else 0f
-                    applyManualFocus(d)
+        params["focusmode"]?.let {
+            when (it as String) {
+                "continuous-video", "continuous-picture", "auto" -> {
+                    autoFocus = true; focusDistance = 0f; cam.enableAutoFocus()
                 }
+                "off" -> cam.disableAutoFocus()
             }
             Log.d(tag, "focusMode -> $it")
         }
 
-        // ---- WHITE BALANCE --------------------------------------------------
-        (params["whiteBalance"] as? String)?.let { wb ->
-            val mode = wbStringToMode(wb)
-            applyWhiteBalance(mode)
-            try { cam.enableAutoWhiteBalance(mode) } catch (_: Exception) {}
-            whiteBalanceMode = wb
-            Log.d(tag, "WB -> $wb mode=$mode")
-        }
+        params["afTrigger"]?.let { cam.enableAutoFocus(); Log.d(tag, "afTrigger") }
 
-        // ---- LANTERNA -------------------------------------------------------
-        (params["lantern"] as? Boolean)?.let { on ->
-            try {
-                if (on) cam.enableLantern() else cam.disableLantern()
-                lanternEnabled = on
-                Log.d(tag, "lantern -> $on")
-            } catch (ex: Exception) { Log.w(tag, "lantern: ${ex.message}") }
-        }
-
-        // ---- OIS ------------------------------------------------------------
-        (params["ois"] as? Boolean)?.let { on ->
-            try {
-                if (on) cam.enableOpticalVideoStabilization()
-                else    cam.disableOpticalVideoStabilization()
-                oisEnabled = on
-                val oisMode = if (on)
-                    CameraMetadata.LENS_OPTICAL_STABILIZATION_MODE_ON
-                else
-                    CameraMetadata.LENS_OPTICAL_STABILIZATION_MODE_OFF
-                applyOnBuilder { b ->
-                    b.set(CaptureRequest.LENS_OPTICAL_STABILIZATION_MODE, oisMode)
-                }
-                Log.d(tag, "OIS -> $on")
-            } catch (ex: Exception) { Log.w(tag, "OIS: ${ex.message}") }
-        }
-
-        // ---- EIS ------------------------------------------------------------
-        (params["eis"] as? Boolean)?.let { on ->
-            try {
-                if (on) cam.enableVideoStabilization()
-                else    cam.disableVideoStabilization()
-                eisEnabled = on
-                val eisMode = if (on)
-                    CameraMetadata.CONTROL_VIDEO_STABILIZATION_MODE_ON
-                else
-                    CameraMetadata.CONTROL_VIDEO_STABILIZATION_MODE_OFF
-                applyOnBuilder { b ->
-                    b.set(CaptureRequest.CONTROL_VIDEO_STABILIZATION_MODE, eisMode)
-                }
-                Log.d(tag, "EIS -> $on")
-            } catch (ex: Exception) { Log.w(tag, "EIS: ${ex.message}") }
-        }
-
-        // ---- AE LOCK --------------------------------------------------------
-        (params["aeLock"] as? Boolean)?.let { lock ->
-            aeLocked = lock
-            try {
-                if (lock) cam.disableAutoExposure() else cam.enableAutoExposure()
-            } catch (_: Exception) {
-                applyOnBuilder { b -> b.set(CaptureRequest.CONTROL_AE_LOCK, lock) }
+        params["whiteBalance"]?.let {
+            whiteBalanceMode = it as String
+            val mode = when (whiteBalanceMode) {
+                "daylight"                 -> CameraMetadata.CONTROL_AWB_MODE_DAYLIGHT
+                "cloudy"                   -> CameraMetadata.CONTROL_AWB_MODE_CLOUDY_DAYLIGHT
+                "tungsten", "incandescent" -> CameraMetadata.CONTROL_AWB_MODE_INCANDESCENT
+                "fluorescent"              -> CameraMetadata.CONTROL_AWB_MODE_FLUORESCENT
+                else                       -> CameraMetadata.CONTROL_AWB_MODE_AUTO
             }
-            Log.d(tag, "aeLock -> $lock")
+            cam.enableAutoWhiteBalance(mode)
+            Log.d(tag, "WB -> $whiteBalanceMode")
         }
 
-        // ---- AWB LOCK -------------------------------------------------------
-        (params["awbLock"] as? Boolean)?.let { lock ->
-            awbLocked = lock
-            try {
-                if (lock) cam.disableAutoWhiteBalance()
-                else cam.enableAutoWhiteBalance(CameraMetadata.CONTROL_AWB_MODE_AUTO)
-            } catch (_: Exception) {
-                applyOnBuilder { b -> b.set(CaptureRequest.CONTROL_AWB_LOCK, lock) }
+        params["zoom"]?.let {
+            val z = when (it) {
+                is Double -> it.toFloat()
+                is Number -> it.toFloat()
+                else      -> it.toString().toFloatOrNull() ?: 0f
+            }.coerceIn(0f, 1f)
+            zoomLevel = z
+            val zr = cam.zoomRange
+            cam.setZoom(zr.lower + z * (zr.upper - zr.lower))
+            Log.d(tag, "zoom -> $z (real=${zr.lower + z * (zr.upper - zr.lower)})")
+        }
+
+        params["lantern"]?.let {
+            lanternEnabled = it as Boolean
+            if (lanternEnabled) cam.enableLantern() else cam.disableLantern()
+            Log.d(tag, "lantern -> $lanternEnabled")
+        }
+
+        params["ois"]?.let {
+            oisEnabled = it as Boolean
+            if (oisEnabled) cam.enableOpticalVideoStabilization()
+            else cam.disableOpticalVideoStabilization()
+            Log.d(tag, "ois -> $oisEnabled")
+        }
+
+        params["eis"]?.let {
+            eisEnabled = it as Boolean
+            if (eisEnabled) cam.enableVideoStabilization()
+            else cam.disableVideoStabilization()
+            Log.d(tag, "eis -> $eisEnabled")
+        }
+
+        params["aeLock"]?.let {
+            aeLocked = it as Boolean
+            if (aeLocked) cam.disableAutoExposure() else cam.enableAutoExposure()
+            Log.d(tag, "aeLock -> $aeLocked")
+        }
+
+        params["awbLock"]?.let {
+            awbLocked = it as Boolean
+            if (awbLocked) cam.disableAutoWhiteBalance()
+            else cam.enableAutoWhiteBalance(CameraMetadata.CONTROL_AWB_MODE_AUTO)
+            Log.d(tag, "awbLock -> $awbLocked")
+        }
+
+        params["flashMode"]?.let {
+            flashMode = it as String
+            when (flashMode) {
+                "torch" -> { cam.enableLantern(); lanternEnabled = true }
+                else    -> { cam.disableLantern(); lanternEnabled = false }
             }
-            Log.d(tag, "awbLock -> $lock")
+            Log.d(tag, "flashMode -> $flashMode")
         }
 
-        // ---- FLASH MODE -----------------------------------------------------
-        (params["flashMode"] as? String)?.let { fm ->
-            flashMode = fm
-            when (fm) {
-                "torch"  -> try { cam.enableLantern(); lanternEnabled = true } catch (_: Exception) {}
-                "single" -> applyOnBuilder { b ->
-                    b.set(CaptureRequest.FLASH_MODE, CameraMetadata.FLASH_MODE_SINGLE)
-                }
-                else -> try { cam.disableLantern(); lanternEnabled = false } catch (_: Exception) {}
+        params["bitrate"]?.let {
+            currentBitrate = when (it) {
+                is Double -> it.toInt()
+                is Number -> it.toInt()
+                else      -> it.toString().toIntOrNull() ?: 4000
             }
-            Log.d(tag, "flashMode -> $fm")
+            if (cam.isStreaming) cam.setVideoBitrateOnFly(currentBitrate * 1024)
+            Log.d(tag, "bitrate -> ${currentBitrate}kbps")
         }
 
-        // ---- BITRATE --------------------------------------------------------
-        (params["bitrate"] as? Number)?.let {
-            val kbps = it.toInt()
-            if (cam.isStreaming) cam.setVideoBitrateOnFly(kbps * 1024)
-            currentBitrate = kbps
-            Log.d(tag, "bitrate -> ${kbps}kbps")
-        }
-
-        // ---- FPS ------------------------------------------------------------
-        (params["fps"] as? Number)?.let { value ->
-            val fps = value.toInt().coerceIn(15, 60)
+        params["fps"]?.let { value ->
+            val fps = when (value) {
+                is Double -> value.toInt()
+                is Number -> value.toInt()
+                else      -> value.toString().toIntOrNull() ?: 30
+            }.coerceIn(15, 60)
             currentFps = fps
             if (!manualSensor) frameDurationNs = 1_000_000_000L / fps
             post {
@@ -417,14 +298,23 @@ class Camera2Controller {
             }
         }
 
-        // ---- RESOLUCAO ------------------------------------------------------
-        (params["resolution"] as? String)?.let { value ->
-            val (w, h, br) = when (value) {
-                "4k", "3840x2160"   -> Triple(3840, 2160, 20000)
+        params["camera"]?.let { value ->
+            currentCameraId = value as String
+            post {
+                cam.switchCamera(currentCameraId)
+                if (manualSensor) applyManualSensor()
+                else if (!autoFocus && focusDistance > 0f) cam.setFocusDistance(focusDistance)
+                Log.d(tag, "camera -> $currentCameraId")
+            }
+        }
+
+        params["resolution"]?.let { value ->
+            val (w, h, br) = when (value as String) {
+                "4k", "3840x2160"    -> Triple(3840, 2160, 20000)
                 "1080p", "1920x1080" -> Triple(1920, 1080, 8000)
-                "720p", "1280x720"  -> Triple(1280, 720,  4000)
+                "720p", "1280x720"   -> Triple(1280, 720, 4000)
                 else -> {
-                    val parts = value.split("x")
+                    val parts = (value).split("x")
                     Triple(
                         parts.getOrNull(0)?.toIntOrNull() ?: 1920,
                         parts.getOrNull(1)?.toIntOrNull() ?: 1080,
@@ -444,125 +334,63 @@ class Camera2Controller {
             }
         }
 
-        // ---- TROCA DE CAMERA ------------------------------------------------
-        (params["camera"] as? String)?.let { id ->
-            post {
-                try {
-                    cam.switchCamera(id)
-                    currentCameraId = id
-                    if (manualSensor) applyManualSensor()
-                    else if (!autoFocus && focusDistance > 0f) applyManualFocus(focusDistance)
-                    Log.d(tag, "switchCamera -> $id")
-                } catch (ex: Exception) { Log.w(tag, "switchCamera: ${ex.message}") }
-            }
-        }
-
-        // ---- EDGE MODE ------------------------------------------------------
-        (params["edgeMode"] as? String)?.let {
-            edgeMode = when (it) {
+        params["edgeMode"]?.let {
+            edgeMode = when (it as String) {
                 "off"  -> CameraMetadata.EDGE_MODE_OFF
                 "fast" -> CameraMetadata.EDGE_MODE_FAST
                 else   -> CameraMetadata.EDGE_MODE_HIGH_QUALITY
             }
-            applyPostProcessing()
-            Log.d(tag, "edgeMode -> $it")
+            applyPostProcessing(); Log.d(tag, "edgeMode -> $it")
         }
 
-        // ---- NOISE REDUCTION ------------------------------------------------
-        (params["noiseReduction"] as? String)?.let {
-            noiseReductionMode = when (it) {
+        params["noiseReduction"]?.let {
+            noiseReductionMode = when (it as String) {
                 "off"     -> CameraMetadata.NOISE_REDUCTION_MODE_OFF
                 "fast"    -> CameraMetadata.NOISE_REDUCTION_MODE_FAST
                 "minimal" -> CameraMetadata.NOISE_REDUCTION_MODE_MINIMAL
                 else      -> CameraMetadata.NOISE_REDUCTION_MODE_HIGH_QUALITY
             }
-            applyPostProcessing()
-            Log.d(tag, "noiseReduction -> $it")
+            applyPostProcessing(); Log.d(tag, "noiseReduction -> $it")
         }
 
-        // ---- HOT PIXEL ------------------------------------------------------
-        (params["hotPixel"] as? String)?.let {
-            hotPixelMode = when (it) {
+        params["hotPixel"]?.let {
+            hotPixelMode = when (it as String) {
                 "off"  -> CameraMetadata.HOT_PIXEL_MODE_OFF
                 "fast" -> CameraMetadata.HOT_PIXEL_MODE_FAST
                 else   -> CameraMetadata.HOT_PIXEL_MODE_HIGH_QUALITY
             }
-            applyPostProcessing()
-            Log.d(tag, "hotPixel -> $it")
+            applyPostProcessing(); Log.d(tag, "hotPixel -> $it")
         }
     }
 
-    // =========================================================================
-    // Parsers
-    // =========================================================================
-
-    private fun parseZoom(v: Any): Float {
-        if (v is Number) return v.toFloat().coerceAtLeast(1f)
-        val s = v.toString().trim()
-        if (s.endsWith("x", ignoreCase = true))
-            return s.dropLast(1).toFloatOrNull()?.coerceAtLeast(1f) ?: 1f
-        val n = s.toFloatOrNull() ?: return 1f
-        return if (n >= 100f) (n / 100f).coerceAtLeast(1f) else n.coerceAtLeast(1f)
-    }
-
-    private fun parseIso(v: Any): Int {
-        if (v is Number) return v.toInt()
-        val s = v.toString().trim()
-        if (s.equals("AUTO", ignoreCase = true)) return 0
-        return s.toIntOrNull() ?: 0
-    }
-
-    private fun parseShutter(v: Any): Long {
-        if (v is Number) return v.toLong()
-        val s = v.toString().trim()
-        if (s.equals("AUTO", ignoreCase = true)) return 0L
-        if (s.contains("/")) {
-            val parts = s.split("/")
-            val num = parts.getOrNull(0)?.toDoubleOrNull() ?: return 0L
-            val den = parts.getOrNull(1)?.toDoubleOrNull() ?: return 0L
-            if (den == 0.0) return 0L
-            return ((num / den) * 1_000_000_000.0).toLong()
+    private fun parseTimeParam(raw: Any, default: Long): Long = when (raw) {
+        is String -> {
+            val p = raw.split("/")
+            if (p.size == 2) {
+                val n = p[0].trim().toDoubleOrNull() ?: 1.0
+                val d = p[1].trim().toDoubleOrNull() ?: 30.0
+                ((n / d) * 1_000_000_000.0).toLong()
+            } else raw.toLongOrNull() ?: default
         }
-        return s.toLongOrNull() ?: 0L
+        is Double -> raw.toLong()
+        is Long   -> raw
+        is Number -> raw.toLong()
+        else      -> default
     }
-
-    private fun wbStringToMode(wb: String): Int = when (wb.uppercase().trim()) {
-        "AUTO"                               -> CameraMetadata.CONTROL_AWB_MODE_AUTO
-        "2700K", "INCANDESCENT",
-        "TUNGSTEN", "WARM"                   -> CameraMetadata.CONTROL_AWB_MODE_INCANDESCENT
-        "3200K", "FLUORESCENT"               -> CameraMetadata.CONTROL_AWB_MODE_FLUORESCENT
-        "4200K", "WARM_FLUORESCENT",
-        "COOL_WHITE", "COOL-WHITE",
-        "WARM-FLUORESCENT"                   -> CameraMetadata.CONTROL_AWB_MODE_WARM_FLUORESCENT
-        "5600K", "DAYLIGHT",
-        "SUN", "SUNNY"                       -> CameraMetadata.CONTROL_AWB_MODE_DAYLIGHT
-        "6500K", "CLOUDY",
-        "CLOUDY_DAYLIGHT", "CLOUDY-DAYLIGHT" -> CameraMetadata.CONTROL_AWB_MODE_CLOUDY_DAYLIGHT
-        "7500K", "SHADE"                     -> CameraMetadata.CONTROL_AWB_MODE_SHADE
-        "TWILIGHT"                           -> CameraMetadata.CONTROL_AWB_MODE_TWILIGHT
-        else                                 -> CameraMetadata.CONTROL_AWB_MODE_AUTO
-    }
-
-    // =========================================================================
-    // Lifecycle
-    // =========================================================================
 
     fun release() {
         workerThread.quitSafely()
         rtmpCamera = null
     }
 
-    // =========================================================================
+    // -------------------------------------------------------------------------
     // Discovery de cameras
-    // =========================================================================
+    // -------------------------------------------------------------------------
 
     fun discoverAllCameras(context: Context): List<CameraCapabilities> {
         val mgr = context.getSystemService(Context.CAMERA_SERVICE) as CameraManager
-        return mgr.cameraIdList.mapNotNull { readCameraCapabilities(mgr, it) }
-    }
-
-    private fun readCameraCapabilities(mgr: CameraManager, id: String): CameraCapabilities? {
-        return try {
+        val cameras = mutableListOf<CameraCapabilities>()
+        for (id in mgr.cameraIdList) {
             val ch = mgr.getCameraCharacteristics(id)
             val hwLevel = when (ch.get(CameraCharacteristics.INFO_SUPPORTED_HARDWARE_LEVEL)) {
                 CameraCharacteristics.INFO_SUPPORTED_HARDWARE_LEVEL_LEGACY  -> "LEGACY"
@@ -573,20 +401,21 @@ class Camera2Controller {
             }
             val caps = ch.get(CameraCharacteristics.REQUEST_AVAILABLE_CAPABILITIES) ?: intArrayOf()
             fun hasCap(v: Int) = caps.contains(v)
-            val supManual  = hasCap(CameraCharacteristics.REQUEST_AVAILABLE_CAPABILITIES_MANUAL_SENSOR)
-            val supPost    = hasCap(CameraCharacteristics.REQUEST_AVAILABLE_CAPABILITIES_MANUAL_POST_PROCESSING)
-            val supRaw     = hasCap(CameraCharacteristics.REQUEST_AVAILABLE_CAPABILITIES_RAW)
-            val supBurst   = hasCap(CameraCharacteristics.REQUEST_AVAILABLE_CAPABILITIES_BURST_CAPTURE)
-            val supDepth   = hasCap(CameraCharacteristics.REQUEST_AVAILABLE_CAPABILITIES_DEPTH_OUTPUT)
-            val supMulti   = hasCap(CameraCharacteristics.REQUEST_AVAILABLE_CAPABILITIES_LOGICAL_MULTI_CAMERA)
-            val isoRange   = ch.get(CameraCharacteristics.SENSOR_INFO_SENSITIVITY_RANGE)?.let { listOf(it.lower, it.upper) }
-            val expRange   = ch.get(CameraCharacteristics.SENSOR_INFO_EXPOSURE_TIME_RANGE)?.let { listOf(it.lower, it.upper) }
-            val evRange    = ch.get(CameraCharacteristics.CONTROL_AE_COMPENSATION_RANGE)?.let { listOf(it.lower, it.upper) }
-            val focRange   = ch.get(CameraCharacteristics.LENS_INFO_MINIMUM_FOCUS_DISTANCE)?.let { listOf(0f, it) }
-            val zomRange   = ch.get(CameraCharacteristics.SCALER_AVAILABLE_MAX_DIGITAL_ZOOM)?.let { listOf(1.0f, it) }
-            val fpsRanges  = (ch.get(CameraCharacteristics.CONTROL_AE_AVAILABLE_TARGET_FPS_RANGES) ?: arrayOf())
+            val supManual = hasCap(CameraCharacteristics.REQUEST_AVAILABLE_CAPABILITIES_MANUAL_SENSOR)
+            val supPost   = hasCap(CameraCharacteristics.REQUEST_AVAILABLE_CAPABILITIES_MANUAL_POST_PROCESSING)
+            val supRaw    = hasCap(CameraCharacteristics.REQUEST_AVAILABLE_CAPABILITIES_RAW)
+            val supBurst  = hasCap(CameraCharacteristics.REQUEST_AVAILABLE_CAPABILITIES_BURST_CAPTURE)
+            val supDepth  = hasCap(CameraCharacteristics.REQUEST_AVAILABLE_CAPABILITIES_DEPTH_OUTPUT)
+            val supMulti  = if (android.os.Build.VERSION.SDK_INT >= 28)
+                hasCap(CameraCharacteristics.REQUEST_AVAILABLE_CAPABILITIES_LOGICAL_MULTI_CAMERA) else false
+            val isoRange  = ch.get(CameraCharacteristics.SENSOR_INFO_SENSITIVITY_RANGE)?.let { listOf(it.lower, it.upper) }
+            val expRange  = ch.get(CameraCharacteristics.SENSOR_INFO_EXPOSURE_TIME_RANGE)?.let { listOf(it.lower, it.upper) }
+            val evRange   = ch.get(CameraCharacteristics.CONTROL_AE_COMPENSATION_RANGE)?.let { listOf(it.lower, it.upper) }
+            val focRange  = ch.get(CameraCharacteristics.LENS_INFO_MINIMUM_FOCUS_DISTANCE)?.let { listOf(0f, it) }
+            val zomRange  = ch.get(CameraCharacteristics.SCALER_AVAILABLE_MAX_DIGITAL_ZOOM)?.let { listOf(1.0f, it) }
+            val fpsRanges = (ch.get(CameraCharacteristics.CONTROL_AE_AVAILABLE_TARGET_FPS_RANGES) ?: arrayOf())
                 .map { listOf(it.lower, it.upper) }
-            val streamCfg  = ch.get(CameraCharacteristics.SCALER_STREAM_CONFIGURATION_MAP)
+            val streamCfg = ch.get(CameraCharacteristics.SCALER_STREAM_CONFIGURATION_MAP)
             val resolutions = streamCfg?.getOutputSizes(android.graphics.ImageFormat.YUV_420_888)
                 ?.map { "${it.width}x${it.height}" }?.distinct()
                 ?.sortedByDescending { it.split("x").getOrNull(0)?.toIntOrNull() ?: 0 } ?: emptyList()
@@ -646,7 +475,7 @@ class Camera2Controller {
                 facing == "FRONT"              -> "Frontal $id"
                 else                           -> "Cam $id"
             }
-            CameraCapabilities(
+            cameras.add(CameraCapabilities(
                 cameraId = id, hardwareLevel = hwLevel, facing = facing, name = name,
                 isDepth = isDepth, supportsManualSensor = supManual,
                 supportsManualPostProcessing = supPost, supportsRaw = supRaw,
@@ -658,10 +487,8 @@ class Camera2Controller {
                 supportedAfModes = afModes, supportedAeModes = aeModes,
                 supportedAwbModes = awbModes, hasFlash = hasFlash, hasOis = hasOis,
                 focalLengths = focalLengths, apertures = apertures
-            )
-        } catch (e: Exception) {
-            Log.w(tag, "readCameraCapabilities id=$id: ${e.message}")
-            null
+            ))
         }
+        return cameras
     }
 }
