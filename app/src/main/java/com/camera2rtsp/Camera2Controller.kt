@@ -1,6 +1,7 @@
 package com.camera2rtsp
 
 import android.content.Context
+import android.graphics.Rect
 import android.hardware.camera2.CameraCharacteristics
 import android.hardware.camera2.CameraManager
 import android.hardware.camera2.CameraMetadata
@@ -11,31 +12,28 @@ import android.util.Log
 import com.pedro.encoder.input.video.Camera2ApiManager
 import com.pedro.library.base.Camera2Base
 import com.pedro.library.rtmp.RtmpCamera2
-import kotlin.math.ln
+import kotlin.math.roundToInt
 
 class Camera2Controller {
 
     val tag = "Camera2Ctrl"
 
-    // Referencia ao encoder RTMP ativo (setada pelo RtmpStreamer)
     var rtmpCamera: RtmpCamera2? = null
     var appContext: Context? = null
 
-    // Config de stream
     var currentWidth    = 1920
     var currentHeight   = 1080
     var currentFps      = 30
     var currentBitrate  = 4000
     var currentCameraId = "0"
 
-    // Estado dos controles
     var zoomLevel        = 1f
     var autoFocus        = true
     var focusDistance    = 0f
     var whiteBalanceMode = "auto"
     var lanternEnabled   = false
-    var isoValue         = 0        // 0 = AUTO
-    var shutterNs        = 0L       // 0 = AUTO
+    var isoValue         = 0
+    var shutterNs        = 0L
     var oisEnabled       = false
     var eisEnabled       = false
     var exposureNs       = 33_333_333L
@@ -49,16 +47,13 @@ class Camera2Controller {
     var hotPixelMode       = CameraMetadata.HOT_PIXEL_MODE_HIGH_QUALITY
     var exposureLevel      = 0
 
-    // Worker thread para operacoes de camera que nao podem ser no main thread
     private val workerThread = HandlerThread("CameraWorker").also { it.start() }
     private val worker = Handler(workerThread.looper)
     private fun post(block: () -> Unit) =
         worker.post { runCatching(block).onFailure { Log.e(tag, "worker err", it) } }
 
     // =========================================================================
-    // REFLECTION — acesso direto ao CaptureRequest.Builder do RtmpCamera2
-    // Mesma tecnica usada na v3 com RtspServerCamera2, funciona pois ambos
-    // herdam de Camera2Base e usam Camera2ApiManager internamente.
+    // REFLECTION
     // =========================================================================
 
     private fun getCam2Manager(): Camera2ApiManager? = try {
@@ -70,21 +65,14 @@ class Camera2Controller {
         null
     }
 
-    /**
-     * Aplica um bloco de configuracoes diretamente no CaptureRequest.Builder
-     * ativo do Camera2ApiManager e re-submete a repeating request.
-     * Retorna true se aplicado com sucesso.
-     */
     private fun applyOnBuilder(block: (CaptureRequest.Builder) -> Unit): Boolean {
         val cam = getCam2Manager() ?: return false
         return try {
-            // builderInputSurface e o builder da repeating request de preview/stream
             val bf = Camera2ApiManager::class.java.getDeclaredField("builderInputSurface")
             bf.isAccessible = true
             val builder = bf.get(cam) as? CaptureRequest.Builder
                 ?: run { Log.w(tag, "builderInputSurface nulo"); return false }
             block(builder)
-            // applyRequest re-submete a repeating request com os novos parametros
             val am = Camera2ApiManager::class.java.getDeclaredMethod(
                 "applyRequest", CaptureRequest.Builder::class.java
             )
@@ -97,25 +85,78 @@ class Camera2Controller {
     }
 
     // =========================================================================
-    // Blocos de aplicacao de sensor
+    // FIX 1 — ZOOM via SCALER_CROP_REGION manual
+    // cam.setZoom() nao re-submete a repeating request de fora da lib.
+    // Calculamos o cropRect diretamente e escrevemos via applyOnBuilder.
     // =========================================================================
 
-    /** Modo manual: seta ISO + tempo de exposicao diretamente no sensor */
-    private fun applyManualSensor() {
-        val safeDuration = maxOf(frameDurationNs, exposureNs)
-        val ok = applyOnBuilder { b ->
-            b.set(CaptureRequest.CONTROL_MODE,          CameraMetadata.CONTROL_MODE_OFF)
-            b.set(CaptureRequest.CONTROL_AE_MODE,       CameraMetadata.CONTROL_AE_MODE_OFF)
-            b.set(CaptureRequest.SENSOR_SENSITIVITY,    isoValue)
-            b.set(CaptureRequest.SENSOR_EXPOSURE_TIME,  exposureNs)
-            b.set(CaptureRequest.SENSOR_FRAME_DURATION, safeDuration)
+    private fun applyZoom(zoom: Float) {
+        val context = appContext ?: return
+        val mgr = context.getSystemService(Context.CAMERA_SERVICE) as CameraManager
+        val chars = try { mgr.getCameraCharacteristics(currentCameraId) } catch (e: Exception) {
+            Log.e(tag, "applyZoom: getCameraCharacteristics falhou ${e.message}"); return
         }
-        val fps = if (safeDuration > 0) (1_000_000_000.0 / safeDuration).toInt() else 0
-        Log.d(tag, "manualSensor ok=$ok ISO=$isoValue exp=${exposureNs}ns dur=${safeDuration}ns fpsMax=$fps")
+        val sensor = chars.get(CameraCharacteristics.SENSOR_INFO_ACTIVE_ARRAY_SIZE) ?: return
+        val maxZoom = chars.get(CameraCharacteristics.SCALER_AVAILABLE_MAX_DIGITAL_ZOOM) ?: 1f
+        val safeZoom = zoom.coerceIn(1f, maxZoom)
+        val cropW = (sensor.width()  / safeZoom).roundToInt()
+        val cropH = (sensor.height() / safeZoom).roundToInt()
+        val left  = (sensor.width()  - cropW) / 2
+        val top   = (sensor.height() - cropH) / 2
+        val cropRect = Rect(left, top, left + cropW, top + cropH)
+        val ok = applyOnBuilder { b ->
+            b.set(CaptureRequest.SCALER_CROP_REGION, cropRect)
+        }
+        zoomLevel = safeZoom
+        Log.d(tag, "zoom -> $safeZoom cropRect=$cropRect ok=$ok")
+    }
+
+    // =========================================================================
+    // FIX 2 — FOCO manual via AF_MODE_OFF + LENS_FOCUS_DISTANCE
+    // cam.setFocusDistance() da lib nao seta AF_MODE_OFF primeiro,
+    // entao o driver ignora LENS_FOCUS_DISTANCE.
+    // =========================================================================
+
+    private fun applyManualFocus(distance: Float) {
+        val ok = applyOnBuilder { b ->
+            b.set(CaptureRequest.CONTROL_AF_MODE, CameraMetadata.CONTROL_AF_MODE_OFF)
+            b.set(CaptureRequest.LENS_FOCUS_DISTANCE, distance)
+        }
+        autoFocus = false
+        focusDistance = distance
+        Log.d(tag, "focus manual -> $distance ok=$ok")
+    }
+
+    private fun applyAutoFocus() {
+        val ok = applyOnBuilder { b ->
+            b.set(CaptureRequest.CONTROL_AF_MODE, CameraMetadata.CONTROL_AF_MODE_CONTINUOUS_VIDEO)
+        }
+        autoFocus = true
+        focusDistance = 0f
+        Log.d(tag, "focus auto (continuous-video) ok=$ok")
+    }
+
+    // =========================================================================
+    // FIX 3 — MANUAL SENSOR sem CONTROL_MODE_OFF
+    // CONTROL_MODE_OFF desliga AE + AF + AWB juntos e causa tela cinza.
+    // Correto: CONTROL_MODE_AUTO + CONTROL_AE_MODE_OFF (so desliga o AE).
+    // SENSOR_FRAME_DURATION NAO e setado aqui para nao conflitar com encoder.
+    // =========================================================================
+
+    private fun applyManualSensor() {
+        val safeIso = if (isoValue <= 0) 100 else isoValue
+        val safeExp = if (exposureNs <= 0L) 33_333_333L else exposureNs
+        val ok = applyOnBuilder { b ->
+            b.set(CaptureRequest.CONTROL_MODE,         CameraMetadata.CONTROL_MODE_AUTO)   // NAO usar MODE_OFF
+            b.set(CaptureRequest.CONTROL_AE_MODE,      CameraMetadata.CONTROL_AE_MODE_OFF) // apenas AE off
+            b.set(CaptureRequest.SENSOR_SENSITIVITY,   safeIso)
+            b.set(CaptureRequest.SENSOR_EXPOSURE_TIME, safeExp)
+            // SENSOR_FRAME_DURATION omitido — deixa o encoder controlar
+        }
+        Log.d(tag, "manualSensor ok=$ok ISO=$safeIso exp=${safeExp}ns")
         applyPostProcessing()
     }
 
-    /** Volta ao AE automatico */
     private fun applyAutoSensor() {
         val ok = applyOnBuilder { b ->
             b.set(CaptureRequest.CONTROL_MODE,    CameraMetadata.CONTROL_MODE_AUTO)
@@ -124,7 +165,6 @@ class Camera2Controller {
         Log.d(tag, "autoSensor ok=$ok")
     }
 
-    /** Aplica Edge / NR / HotPixel / Tonemap (independente do modo sensor) */
     private fun applyPostProcessing() {
         val ok = applyOnBuilder { b ->
             b.set(CaptureRequest.EDGE_MODE,            edgeMode)
@@ -132,19 +172,18 @@ class Camera2Controller {
             b.set(CaptureRequest.HOT_PIXEL_MODE,       hotPixelMode)
             b.set(CaptureRequest.TONEMAP_MODE,         CameraMetadata.TONEMAP_MODE_HIGH_QUALITY)
         }
-        Log.d(tag, "postProcessing ok=$ok edge=$edgeMode nr=$noiseReductionMode hot=$hotPixelMode")
+        Log.d(tag, "postProcessing ok=$ok")
     }
 
-    /** Aplica White Balance via CaptureRequest diretamente */
     private fun applyWhiteBalance(mode: Int) {
         val ok = applyOnBuilder { b ->
             b.set(CaptureRequest.CONTROL_AWB_MODE, mode)
         }
-        Log.d(tag, "WB applyOnBuilder ok=$ok mode=$mode")
+        Log.d(tag, "WB ok=$ok mode=$mode")
     }
 
     // =========================================================================
-    // Entry point principal
+    // Entry point
     // =========================================================================
 
     fun updateSettings(params: Map<String, Any>) {
@@ -157,7 +196,6 @@ class Camera2Controller {
         applyCameraParams(cam, params)
     }
 
-    // Guarda estado local (usado para restaurar apos troca de camera)
     private fun applyLocally(params: Map<String, Any>) {
         (params["width"]         as? Number)?.let { currentWidth        = it.toInt() }
         (params["height"]        as? Number)?.let { currentHeight       = it.toInt() }
@@ -177,11 +215,9 @@ class Camera2Controller {
         (params["flashMode"]    as? String)?.let  { flashMode        = it }
     }
 
-    // Aplica cada parametro no hardware da camera
     private fun applyCameraParams(cam: RtmpCamera2, params: Map<String, Any>) {
 
         // ---- MODO SENSOR MANUAL / AUTO --------------------------------------
-        // Deve ser processado ANTES de ISO e shutterSpeed
         (params["manualSensor"] as? Boolean)?.let { manual ->
             manualSensor = manual
             if (manual) applyManualSensor()
@@ -194,15 +230,12 @@ class Camera2Controller {
         }
 
         // ---- ISO ------------------------------------------------------------
-        // Se manualSensor=true: seta SENSOR_SENSITIVITY direto via reflection
-        // Se manualSensor=false: usa EV compensation como proxy
         params["iso"]?.let {
             val iso = parseIso(it)
             isoValue = if (iso <= 0) 100 else iso
             if (manualSensor) {
                 applyManualSensor()
             } else {
-                // Mapeia ISO para EV no range real da camera
                 val minEv = cam.minExposure
                 val maxEv = cam.maxExposure
                 val ev = (((isoValue - 50f) / (3200f - 50f)) * (maxEv - minEv) + minEv)
@@ -210,7 +243,7 @@ class Camera2Controller {
                 exposureLevel = ev
                 cam.setExposure(ev)
             }
-            Log.d(tag, "ISO -> $isoValue manual=$manualSensor")
+            Log.d(tag, "iso -> $isoValue ev${exposureLevel} manual=$manualSensor")
         }
 
         // ---- SHUTTER SPEED --------------------------------------------------
@@ -229,7 +262,7 @@ class Camera2Controller {
             if (manualSensor) applyManualSensor()
         }
 
-        // ---- EV DIRETO (apenas no modo auto) --------------------------------
+        // ---- EV DIRETO ------------------------------------------------------
         (params["exposure"] as? Number)?.let {
             if (!manualSensor) {
                 val ev = it.toInt().coerceIn(cam.minExposure, cam.maxExposure)
@@ -240,60 +273,42 @@ class Camera2Controller {
         }
 
         // ---- ZOOM -----------------------------------------------------------
-        // zoomRange da camera (Camera2 API: lower=1f, upper=maxDigitalZoom)
+        // FIX: usa applyZoom() com SCALER_CROP_REGION calculado manualmente
         params["zoom"]?.let {
             val z = parseZoom(it)
-            val zr = cam.zoomRange
-            val realZoom = z.coerceIn(zr.lower, zr.upper)
-            cam.setZoom(realZoom)
-            zoomLevel = realZoom
-            Log.d(tag, "zoom -> $realZoom (range ${zr.lower}..${zr.upper})")
+            applyZoom(z)
         }
 
         // ---- FOCO -----------------------------------------------------------
+        // FIX: usa applyManualFocus() com AF_MODE_OFF explicito
         params["focus"]?.let {
             val focusStr = it.toString().trim()
             if (focusStr.equals("AUTO", ignoreCase = true) ||
                 focusStr == "0" || focusStr == "0.0") {
-                cam.enableAutoFocus()
-                autoFocus = true
-                focusDistance = 0f
-                Log.d(tag, "focus -> AUTO")
+                applyAutoFocus()
             } else {
                 val d = focusStr.toFloatOrNull() ?: 0f
-                if (d <= 0f) {
-                    cam.enableAutoFocus()
-                    autoFocus = true
-                    focusDistance = 0f
-                } else {
-                    cam.disableAutoFocus()
-                    cam.setFocusDistance(d)
-                    autoFocus = false
-                    focusDistance = d
-                    Log.d(tag, "focus -> $d")
-                }
+                if (d <= 0f) applyAutoFocus()
+                else applyManualFocus(d)
             }
         }
 
-        // ---- FOCUSMODE (para compatibilidade com WebGui) --------------------
+        // ---- FOCUSMODE ------------------------------------------------------
         (params["focusmode"] as? String)?.let {
             when (it) {
-                "continuous-video", "continuous-picture", "auto" -> {
-                    cam.enableAutoFocus()
-                    autoFocus = true
-                    focusDistance = 0f
+                "continuous-video", "continuous-picture", "auto" -> applyAutoFocus()
+                "off" -> {
+                    val d = if (focusDistance > 0f) focusDistance else 0f
+                    applyManualFocus(d)
                 }
-                "off" -> cam.disableAutoFocus()
             }
             Log.d(tag, "focusMode -> $it")
         }
 
         // ---- WHITE BALANCE --------------------------------------------------
-        // Usa applyOnBuilder para setar CONTROL_AWB_MODE diretamente
         (params["whiteBalance"] as? String)?.let { wb ->
             val mode = wbStringToMode(wb)
             applyWhiteBalance(mode)
-            // Fallback: tambem chama o metodo publico da lib
             try { cam.enableAutoWhiteBalance(mode) } catch (_: Exception) {}
             whiteBalanceMode = wb
             Log.d(tag, "WB -> $wb mode=$mode")
@@ -314,7 +329,6 @@ class Camera2Controller {
                 if (on) cam.enableOpticalVideoStabilization()
                 else    cam.disableOpticalVideoStabilization()
                 oisEnabled = on
-                // Aplica tambem via CaptureRequest para garantir
                 val oisMode = if (on)
                     CameraMetadata.LENS_OPTICAL_STABILIZATION_MODE_ON
                 else
@@ -332,7 +346,6 @@ class Camera2Controller {
                 if (on) cam.enableVideoStabilization()
                 else    cam.disableVideoStabilization()
                 eisEnabled = on
-                // Aplica tambem via CaptureRequest para garantir
                 val eisMode = if (on)
                     CameraMetadata.CONTROL_VIDEO_STABILIZATION_MODE_ON
                 else
@@ -350,9 +363,7 @@ class Camera2Controller {
             try {
                 if (lock) cam.disableAutoExposure() else cam.enableAutoExposure()
             } catch (_: Exception) {
-                applyOnBuilder { b ->
-                    b.set(CaptureRequest.CONTROL_AE_LOCK, lock)
-                }
+                applyOnBuilder { b -> b.set(CaptureRequest.CONTROL_AE_LOCK, lock) }
             }
             Log.d(tag, "aeLock -> $lock")
         }
@@ -364,9 +375,7 @@ class Camera2Controller {
                 if (lock) cam.disableAutoWhiteBalance()
                 else cam.enableAutoWhiteBalance(CameraMetadata.CONTROL_AWB_MODE_AUTO)
             } catch (_: Exception) {
-                applyOnBuilder { b ->
-                    b.set(CaptureRequest.CONTROL_AWB_LOCK, lock)
-                }
+                applyOnBuilder { b -> b.set(CaptureRequest.CONTROL_AWB_LOCK, lock) }
             }
             Log.d(tag, "awbLock -> $lock")
         }
@@ -375,7 +384,7 @@ class Camera2Controller {
         (params["flashMode"] as? String)?.let { fm ->
             flashMode = fm
             when (fm) {
-                "torch" -> try { cam.enableLantern(); lanternEnabled = true } catch (_: Exception) {}
+                "torch"  -> try { cam.enableLantern(); lanternEnabled = true } catch (_: Exception) {}
                 "single" -> applyOnBuilder { b ->
                     b.set(CaptureRequest.FLASH_MODE, CameraMetadata.FLASH_MODE_SINGLE)
                 }
@@ -392,7 +401,7 @@ class Camera2Controller {
             Log.d(tag, "bitrate -> ${kbps}kbps")
         }
 
-        // ---- FPS (requer reiniciar encoder) ---------------------------------
+        // ---- FPS ------------------------------------------------------------
         (params["fps"] as? Number)?.let { value ->
             val fps = value.toInt().coerceIn(15, 60)
             currentFps = fps
@@ -401,9 +410,7 @@ class Camera2Controller {
                 val wasStreaming = cam.isStreaming
                 val url = StreamingService.instance?.rtmpUrl ?: ""
                 if (wasStreaming) cam.stopStream()
-                val vOk = cam.prepareVideo(
-                    currentWidth, currentHeight, fps, currentBitrate * 1024, 0
-                )
+                val vOk = cam.prepareVideo(currentWidth, currentHeight, fps, currentBitrate * 1024, 0)
                 val aOk = cam.prepareAudio(128 * 1024, 44100, true)
                 if (wasStreaming && vOk && aOk) cam.startStream(url)
                 Log.d(tag, "fps -> $fps vOk=$vOk")
@@ -413,14 +420,16 @@ class Camera2Controller {
         // ---- RESOLUCAO ------------------------------------------------------
         (params["resolution"] as? String)?.let { value ->
             val (w, h, br) = when (value) {
-                "4k", "3840x2160" -> Triple(3840, 2160, 20000)
+                "4k", "3840x2160"   -> Triple(3840, 2160, 20000)
                 "1080p", "1920x1080" -> Triple(1920, 1080, 8000)
-                "720p", "1280x720" -> Triple(1280, 720, 4000)
+                "720p", "1280x720"  -> Triple(1280, 720,  4000)
                 else -> {
                     val parts = value.split("x")
-                    val pw = parts.getOrNull(0)?.toIntOrNull() ?: 1920
-                    val ph = parts.getOrNull(1)?.toIntOrNull() ?: 1080
-                    Triple(pw, ph, currentBitrate)
+                    Triple(
+                        parts.getOrNull(0)?.toIntOrNull() ?: 1920,
+                        parts.getOrNull(1)?.toIntOrNull() ?: 1080,
+                        currentBitrate
+                    )
                 }
             }
             currentWidth = w; currentHeight = h; currentBitrate = br
@@ -441,9 +450,8 @@ class Camera2Controller {
                 try {
                     cam.switchCamera(id)
                     currentCameraId = id
-                    // Restaura estado apos troca
                     if (manualSensor) applyManualSensor()
-                    else if (!autoFocus && focusDistance > 0f) cam.setFocusDistance(focusDistance)
+                    else if (!autoFocus && focusDistance > 0f) applyManualFocus(focusDistance)
                     Log.d(tag, "switchCamera -> $id")
                 } catch (ex: Exception) { Log.w(tag, "switchCamera: ${ex.message}") }
             }
@@ -488,7 +496,6 @@ class Camera2Controller {
     // Parsers
     // =========================================================================
 
-    /** Aceita: Number, "1.5x", "1.5X", "150" (percent-style WebGui 100-800) */
     private fun parseZoom(v: Any): Float {
         if (v is Number) return v.toFloat().coerceAtLeast(1f)
         val s = v.toString().trim()
@@ -498,7 +505,6 @@ class Camera2Controller {
         return if (n >= 100f) (n / 100f).coerceAtLeast(1f) else n.coerceAtLeast(1f)
     }
 
-    /** Aceita: Number, "100", "AUTO" -> 0 */
     private fun parseIso(v: Any): Int {
         if (v is Number) return v.toInt()
         val s = v.toString().trim()
@@ -506,7 +512,6 @@ class Camera2Controller {
         return s.toIntOrNull() ?: 0
     }
 
-    /** Aceita: Long (ns), "1/1000", "1/500", "AUTO" -> 0 */
     private fun parseShutter(v: Any): Long {
         if (v is Number) return v.toLong()
         val s = v.toString().trim()
@@ -521,10 +526,6 @@ class Camera2Controller {
         return s.toLongOrNull() ?: 0L
     }
 
-    /**
-     * Mapeia string de WB para CONTROL_AWB_MODE_*
-     * Aceita nomes do dial Kelvin ("2700K"…"7500K") e nomes descritivos.
-     */
     private fun wbStringToMode(wb: String): Int = when (wb.uppercase().trim()) {
         "AUTO"                               -> CameraMetadata.CONTROL_AWB_MODE_AUTO
         "2700K", "INCANDESCENT",
@@ -552,17 +553,12 @@ class Camera2Controller {
     }
 
     // =========================================================================
-    // Discovery de cameras (para WebGui /api/capabilities)
+    // Discovery de cameras
     // =========================================================================
 
     fun discoverAllCameras(context: Context): List<CameraCapabilities> {
         val mgr = context.getSystemService(Context.CAMERA_SERVICE) as CameraManager
-        val cameras = mutableListOf<CameraCapabilities>()
-        for (id in mgr.cameraIdList) {
-            val entry = readCameraCapabilities(mgr, id) ?: continue
-            cameras.add(entry)
-        }
-        return cameras
+        return mgr.cameraIdList.mapNotNull { readCameraCapabilities(mgr, it) }
     }
 
     private fun readCameraCapabilities(mgr: CameraManager, id: String): CameraCapabilities? {
