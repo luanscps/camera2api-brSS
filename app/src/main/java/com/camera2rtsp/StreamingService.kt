@@ -53,10 +53,8 @@ class StreamingService : Service(), ConnectChecker {
         instance = this
         createNotificationChannel()
         cameraController = Camera2Controller().also {
-            // Injeta contexto para Camera2 API funcionar nos controles
             it.appContext = applicationContext
-            // Carrega capabilities da camera padrao (id=0)
-            it.loadCapabilities("0")
+            it.currentCameraId = "0"
         }
         rtmpStreamer = RtmpStreamer(cameraController, this)
         rtmpStreamer.initBackground(applicationContext)
@@ -99,8 +97,6 @@ class StreamingService : Service(), ConnectChecker {
         Log.i(tag, "attachView")
         rtmpStreamer.initWithView(view, applicationContext)
         rtmpStreamer.startPreview(currentFacing)
-        // Atualiza capabilities com a camera que esta sendo usada
-        cameraController.loadCapabilities(cameraController.currentCameraId)
         updateNotification("Preview ativo")
     }
 
@@ -115,7 +111,6 @@ class StreamingService : Service(), ConnectChecker {
     fun switchCamera(cameraId: String, facing: CameraHelper.Facing) {
         currentFacing = facing
         cameraController.currentCameraId = cameraId
-        cameraController.loadCapabilities(cameraId)
         rtmpStreamer.switchCameraById(cameraId, facing)
         Log.i(tag, "switchCamera: id=$cameraId facing=$facing")
     }
@@ -129,10 +124,10 @@ class StreamingService : Service(), ConnectChecker {
     fun startStream()  { rtmpStreamer.startStream(applicationContext, rtmpUrl) }
     fun stopStream()   = rtmpStreamer.stopStream()
 
-    override fun onConnectionStarted(url: String)    { Log.i(tag, "RTMP conectando: $url");    updateNotification("Conectando RTMP...") }
-    override fun onConnectionSuccess()               { Log.i(tag, "RTMP conectado");            updateNotification("Streaming ativo") }
-    override fun onConnectionFailed(reason: String)  { Log.e(tag, "RTMP falhou: $reason");      updateNotification("Erro: $reason") }
-    override fun onDisconnect()                      { Log.i(tag, "RTMP desconectado");         updateNotification("Desconectado") }
+    override fun onConnectionStarted(url: String)    { Log.i(tag, "RTMP conectando: $url");   updateNotification("Conectando RTMP...") }
+    override fun onConnectionSuccess()               { Log.i(tag, "RTMP conectado");           updateNotification("Streaming ativo") }
+    override fun onConnectionFailed(reason: String)  { Log.e(tag, "RTMP falhou: $reason");     updateNotification("Erro: $reason") }
+    override fun onDisconnect()                      { Log.i(tag, "RTMP desconectado");        updateNotification("Desconectado") }
     override fun onAuthError()                       { Log.e(tag, "RTMP auth error") }
     override fun onAuthSuccess()                     { Log.i(tag, "RTMP auth ok") }
 
@@ -173,14 +168,14 @@ class StreamingService : Service(), ConnectChecker {
 
     fun getLocalIpAddress(): String {
         try {
-            val ifaces = NetworkInterface.getNetworkInterfaces() ?: return "127.0.0.1"
-            while (ifaces.hasMoreElements()) {
-                val iface = ifaces.nextElement()
-                val addrs  = iface.inetAddresses
-                while (addrs.hasMoreElements()) {
-                    val addr = addrs.nextElement()
-                    if (!addr.isLoopbackAddress && addr is Inet4Address)
-                        return addr.hostAddress ?: "127.0.0.1"
+            val interfaces = NetworkInterface.getNetworkInterfaces() ?: return "127.0.0.1"
+            while (interfaces.hasMoreElements()) {
+                val networkInterface = interfaces.nextElement()
+                val addresses = networkInterface.inetAddresses
+                while (addresses.hasMoreElements()) {
+                    val address = addresses.nextElement()
+                    if (!address.isLoopbackAddress && address is Inet4Address)
+                        return address.hostAddress ?: "127.0.0.1"
                 }
             }
         } catch (_: Exception) {}
