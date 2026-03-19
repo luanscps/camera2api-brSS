@@ -24,10 +24,7 @@ object WebControlHtml {
         sb.append("--text:#1e293b;")
         sb.append("--muted:#64748b;")
         sb.append("--right-w:340px;")
-        // Win98 cores
         sb.append("--w98-bg:#c0c0c0;")
-        sb.append("--w98-title:#000080;")
-        sb.append("--w98-title-txt:#fff;")
         sb.append("--w98-border-light:#ffffff;")
         sb.append("--w98-border-dark:#808080;")
         sb.append("--w98-border-darker:#404040;")
@@ -40,54 +37,113 @@ object WebControlHtml {
 
         // ── Layout geral ──────────────────────────────────────────────
         sb.append(".layout{display:flex;height:100vh;overflow:hidden;}")
-        sb.append(".left-area{flex:1;overflow:auto;padding:16px;")
-        sb.append("background:linear-gradient(135deg,#e2e8f0 0%,#dde5f0 100%);}")
-        sb.append(".right-panel{width:var(--right-w);flex-shrink:0;")
-        sb.append("background:var(--panel-bg);border-left:2px solid var(--card-border);")
-        sb.append("display:flex;flex-direction:column;overflow:hidden;}")
+        sb.append(".left-area{flex:1;overflow:auto;padding:20px;display:flex;align-items:flex-start;")
+        sb.append("justify-content:center;background:linear-gradient(135deg,#e2e8f0 0%,#dde5f0 100%);}")
+        sb.append(".right-panel{width:var(--right-w);flex-shrink:0;background:var(--panel-bg);")
+        sb.append("border-left:2px solid var(--card-border);display:flex;flex-direction:column;overflow:hidden;}")
 
-        // ── Win98 Menu ────────────────────────────────────────────────
-        sb.append(".win98-bar{background:var(--w98-bg);")
-        sb.append("border-bottom:2px solid var(--w98-border-darker);")
-        sb.append("border-right:2px solid var(--w98-border-darker);")
+        // ── Preview box (janela Win98) ────────────────────────────────
+        sb.append(".preview-win{width:420px;max-width:100%;")
         sb.append("border-top:2px solid var(--w98-border-light);")
         sb.append("border-left:2px solid var(--w98-border-light);")
-        sb.append("display:flex;flex-direction:column;}")
-
-        // Barra de título Win98
-        sb.append(".win98-titlebar{background:linear-gradient(to right,#000080,#1084d0);")
+        sb.append("border-bottom:2px solid var(--w98-border-darker);")
+        sb.append("border-right:2px solid var(--w98-border-darker);")
+        sb.append("background:var(--w98-bg);}")
+        sb.append(".preview-titlebar{background:linear-gradient(to right,#000080,#1084d0);")
         sb.append("padding:3px 6px;display:flex;align-items:center;justify-content:space-between;")
         sb.append("user-select:none;}")
-        sb.append(".win98-title-txt{color:#fff;font-size:11px;font-weight:700;")
+        sb.append(".preview-title-txt{color:#fff;font-size:11px;font-weight:700;")
         sb.append("font-family:'Courier New',monospace;display:flex;align-items:center;gap:5px;}")
-        sb.append(".win98-icon{font-size:12px;}")
-        sb.append(".win98-btns{display:flex;gap:2px;}")
-        sb.append(".win98-btn{width:16px;height:14px;background:var(--w98-bg);")
+        sb.append(".preview-btns{display:flex;gap:2px;}")
+        sb.append(".preview-wbtn{width:16px;height:14px;background:var(--w98-bg);")
         sb.append("border-top:1px solid var(--w98-border-light);")
         sb.append("border-left:1px solid var(--w98-border-light);")
         sb.append("border-bottom:1px solid var(--w98-border-dark);")
         sb.append("border-right:1px solid var(--w98-border-dark);")
         sb.append("font-size:9px;font-weight:700;cursor:pointer;")
         sb.append("display:flex;align-items:center;justify-content:center;")
-        sb.append("font-family:monospace;color:#000;line-height:1;}")
-        sb.append(".win98-btn:active{border-top:1px solid var(--w98-border-dark);")
+        sb.append("font-family:monospace;color:#000;}")
+
+        // Tela de vídeo
+        sb.append(".preview-screen{position:relative;background:#000;")
+        sb.append("border-top:2px solid var(--w98-border-darker);")
+        sb.append("border-left:2px solid var(--w98-border-darker);")
+        sb.append("border-bottom:2px solid var(--w98-border-light);")
+        sb.append("border-right:2px solid var(--w98-border-light);")
+        sb.append("margin:4px;overflow:hidden;aspect-ratio:16/9;}")
+        sb.append("#preview-img{width:100%;height:100%;object-fit:cover;display:block;}")
+        sb.append(".preview-offline{position:absolute;inset:0;display:flex;flex-direction:column;")
+        sb.append("align-items:center;justify-content:center;gap:8px;background:#111;color:#555;}")
+        sb.append(".preview-offline span{font-size:28px;}")
+        sb.append(".preview-offline p{font-size:11px;font-family:monospace;}")
+        // OSD overlay
+        sb.append(".preview-osd{position:absolute;top:6px;left:6px;display:flex;flex-direction:column;gap:3px;pointer-events:none;}")
+        sb.append(".osd-badge{background:rgba(0,0,0,.62);color:#fff;font-size:9px;font-weight:700;")
+        sb.append("padding:2px 6px;border-radius:3px;font-family:monospace;white-space:nowrap;}")
+        sb.append(".osd-badge.live{background:rgba(220,38,38,.85);animation:blink 1.2s infinite;}")
+        sb.append("@keyframes blink{0%,100%{opacity:1}50%{opacity:.5}}")
+        // borda pulsante quando ao vivo
+        sb.append(".preview-screen.streaming{box-shadow:0 0 0 2px #dc2626,0 0 12px rgba(220,38,38,.4);}")
+
+        // Toolbar de câmeras
+        sb.append(".cam-toolbar{padding:5px 6px;display:flex;align-items:center;gap:6px;flex-wrap:wrap;")
+        sb.append("border-top:1px solid var(--w98-border-dark);}")
+        sb.append(".cam-toolbar-lbl{font-size:10px;font-weight:700;color:#444;font-family:monospace;white-space:nowrap;}")
+        sb.append(".cam-btn{background:var(--w98-bg);")
+        sb.append("border-top:1px solid var(--w98-border-light);")
+        sb.append("border-left:1px solid var(--w98-border-light);")
+        sb.append("border-bottom:1px solid var(--w98-border-dark);")
+        sb.append("border-right:1px solid var(--w98-border-dark);")
+        sb.append("padding:3px 9px;font-size:10px;cursor:pointer;font-family:inherit;color:#000;}")
+        sb.append(".cam-btn:active{border-top:1px solid var(--w98-border-dark);")
+        sb.append("border-left:1px solid var(--w98-border-dark);")
+        sb.append("border-bottom:1px solid var(--w98-border-light);")
+        sb.append("border-right:1px solid var(--w98-border-light);}")
+        sb.append(".cam-btn.sel{background:#000080;color:#fff;")
+        sb.append("border-top:1px solid var(--w98-border-dark);")
         sb.append("border-left:1px solid var(--w98-border-dark);")
         sb.append("border-bottom:1px solid var(--w98-border-light);")
         sb.append("border-right:1px solid var(--w98-border-light);}")
 
-        // Menubar Win98
+        // Preview statusbar
+        sb.append(".preview-statusbar{background:var(--w98-bg);")
+        sb.append("border-top:2px solid var(--w98-border-darker);")
+        sb.append("padding:2px 6px;display:flex;gap:4px;}")
+        sb.append(".p98-cell{background:var(--w98-bg);")
+        sb.append("border-top:1px solid var(--w98-border-dark);")
+        sb.append("border-left:1px solid var(--w98-border-dark);")
+        sb.append("border-bottom:1px solid var(--w98-border-light);")
+        sb.append("border-right:1px solid var(--w98-border-light);")
+        sb.append("padding:1px 7px;font-size:10px;font-family:'Courier New',monospace;color:#000;white-space:nowrap;}")
+
+        // ── Win98 Menu (direita) ─────────────────────────────────────
+        sb.append(".win98-bar{background:var(--w98-bg);")
+        sb.append("border-bottom:2px solid var(--w98-border-darker);")
+        sb.append("border-right:2px solid var(--w98-border-darker);")
+        sb.append("border-top:2px solid var(--w98-border-light);")
+        sb.append("border-left:2px solid var(--w98-border-light);")
+        sb.append("display:flex;flex-direction:column;}")
+        sb.append(".win98-titlebar{background:linear-gradient(to right,#000080,#1084d0);")
+        sb.append("padding:3px 6px;display:flex;align-items:center;justify-content:space-between;user-select:none;}")
+        sb.append(".win98-title-txt{color:#fff;font-size:11px;font-weight:700;")
+        sb.append("font-family:'Courier New',monospace;display:flex;align-items:center;gap:5px;}")
+        sb.append(".win98-btns{display:flex;gap:2px;}")
+        sb.append(".win98-btn{width:16px;height:14px;background:var(--w98-bg);")
+        sb.append("border-top:1px solid var(--w98-border-light);border-left:1px solid var(--w98-border-light);")
+        sb.append("border-bottom:1px solid var(--w98-border-dark);border-right:1px solid var(--w98-border-dark);")
+        sb.append("font-size:9px;font-weight:700;cursor:pointer;display:flex;align-items:center;")
+        sb.append("justify-content:center;font-family:monospace;color:#000;line-height:1;}")
+        sb.append(".win98-btn:active{border-top:1px solid var(--w98-border-dark);border-left:1px solid var(--w98-border-dark);")
+        sb.append("border-bottom:1px solid var(--w98-border-light);border-right:1px solid var(--w98-border-light);}")
         sb.append(".win98-menubar{display:flex;padding:2px 4px;background:var(--w98-bg);}")
         sb.append(".win98-menu-item{position:relative;}")
-        sb.append(".win98-menu-btn{background:transparent;border:none;")
-        sb.append("padding:2px 8px;cursor:pointer;font-size:11px;font-family:inherit;color:#000;")
-        sb.append("text-decoration:underline;}")
+        sb.append(".win98-menu-btn{background:transparent;border:none;padding:2px 8px;cursor:pointer;")
+        sb.append("font-size:11px;font-family:inherit;color:#000;text-decoration:underline;}")
         sb.append(".win98-menu-btn:hover,.win98-menu-btn.active{background:#000080;color:#fff;}")
         sb.append(".win98-dropdown{display:none;position:absolute;top:100%;left:0;z-index:999;")
         sb.append("background:var(--w98-bg);min-width:160px;")
-        sb.append("border-top:1px solid var(--w98-border-light);")
-        sb.append("border-left:1px solid var(--w98-border-light);")
-        sb.append("border-bottom:2px solid var(--w98-border-darker);")
-        sb.append("border-right:2px solid var(--w98-border-darker);}")
+        sb.append("border-top:1px solid var(--w98-border-light);border-left:1px solid var(--w98-border-light);")
+        sb.append("border-bottom:2px solid var(--w98-border-darker);border-right:2px solid var(--w98-border-darker);}")
         sb.append(".win98-menu-item.open .win98-dropdown{display:block;}")
         sb.append(".win98-dd-item{display:block;width:100%;background:none;border:none;")
         sb.append("padding:4px 16px 4px 24px;text-align:left;cursor:pointer;")
@@ -95,46 +151,34 @@ object WebControlHtml {
         sb.append(".win98-dd-item:hover{background:#000080;color:#fff;}")
         sb.append(".win98-dd-sep{height:1px;background:var(--w98-border-dark);")
         sb.append("border-top:1px solid var(--w98-border-light);margin:2px 4px;}")
-
-        // Status bar Win98
-        sb.append(".win98-statusbar{background:var(--w98-bg);")
-        sb.append("border-top:2px solid var(--w98-border-darker);")
+        sb.append(".win98-statusbar{background:var(--w98-bg);border-top:2px solid var(--w98-border-darker);")
         sb.append("padding:2px 6px;display:flex;gap:4px;flex-wrap:wrap;}")
         sb.append(".w98-cell{background:var(--w98-bg);")
-        sb.append("border-top:1px solid var(--w98-border-dark);")
-        sb.append("border-left:1px solid var(--w98-border-dark);")
-        sb.append("border-bottom:1px solid var(--w98-border-light);")
-        sb.append("border-right:1px solid var(--w98-border-light);")
-        sb.append("padding:1px 7px;font-size:10px;font-family:'Courier New',monospace;")
-        sb.append("white-space:nowrap;color:#000;}")
+        sb.append("border-top:1px solid var(--w98-border-dark);border-left:1px solid var(--w98-border-dark);")
+        sb.append("border-bottom:1px solid var(--w98-border-light);border-right:1px solid var(--w98-border-light);")
+        sb.append("padding:1px 7px;font-size:10px;font-family:'Courier New',monospace;white-space:nowrap;color:#000;}")
         sb.append(".dot-w98{display:inline-block;width:7px;height:7px;border-radius:50%;")
         sb.append("background:#dc2626;margin-right:4px;vertical-align:middle;}")
         sb.append(".dot-w98.live{background:#059669;}")
 
-        // ── Área de conteúdo no painel direito ────────────────────────
+        // ── Área de conteúdo direita ────────────────────────────────────
         sb.append(".content-area{flex:1;overflow-y:auto;padding:8px;}")
         sb.append(".section{display:none;}.section.active{display:block;}")
 
-        // ── Cards menores/claros ──────────────────────────────────────
+        // ── Cards ───────────────────────────────────────────────────────
         sb.append(".card{background:var(--card-bg);border:1px solid var(--card-border);")
-        sb.append("border-radius:8px;padding:10px;margin-bottom:8px;")
-        sb.append("box-shadow:0 1px 3px rgba(0,0,0,.08);}")
+        sb.append("border-radius:8px;padding:10px;margin-bottom:8px;box-shadow:0 1px 3px rgba(0,0,0,.08);}")
         sb.append(".card-title{font-size:11px;font-weight:700;color:var(--muted);")
         sb.append("text-transform:uppercase;letter-spacing:.06em;margin-bottom:8px;")
         sb.append("display:flex;align-items:center;gap:5px;}")
         sb.append(".card-val{margin-left:auto;background:#dbeafe;color:var(--accent);")
         sb.append("font-size:11px;font-weight:700;padding:1px 7px;border-radius:5px;")
         sb.append("border:1px solid #bfdbfe;text-transform:none;}")
-
-        // Stat grid
         sb.append(".stat-grid{display:grid;grid-template-columns:1fr 1fr;gap:6px;margin-bottom:8px;}")
-        sb.append(".stat-cell{background:#e2eaf4;border:1px solid #c8d8ea;")
-        sb.append("border-radius:6px;padding:7px 9px;}")
+        sb.append(".stat-cell{background:#e2eaf4;border:1px solid #c8d8ea;border-radius:6px;padding:7px 9px;}")
         sb.append(".stat-lbl{font-size:9px;font-weight:700;text-transform:uppercase;")
         sb.append("letter-spacing:.06em;color:var(--muted);margin-bottom:2px;}")
         sb.append(".stat-val{font-size:13px;font-weight:700;color:var(--text);}")
-
-        // Botões
         sb.append(".btn{background:#f8fafc;color:var(--text);border:1px solid var(--card-border);")
         sb.append("padding:6px 10px;border-radius:6px;cursor:pointer;font-weight:600;font-size:11px;")
         sb.append("transition:all .12s;touch-action:manipulation;min-height:32px;}")
@@ -145,16 +189,12 @@ object WebControlHtml {
         sb.append(".btn.off2{background:#fee2e2;border-color:var(--red);color:var(--red);}")
         sb.append(".btn-full{width:100%;margin-bottom:4px;}")
         sb.append(".btn-row{display:flex;flex-wrap:wrap;gap:5px;}")
-
-        // Slider
         sb.append("input[type=range]{width:100%;height:4px;background:#cbd5e1;")
         sb.append("border-radius:4px;outline:none;-webkit-appearance:none;margin:10px 0 2px;cursor:pointer;}")
         sb.append("input[type=range]::-webkit-slider-thumb{-webkit-appearance:none;width:20px;height:20px;")
         sb.append("background:var(--accent);border-radius:50%;border:2px solid #fff;")
         sb.append("box-shadow:0 1px 4px rgba(37,99,235,.4);cursor:grab;}")
         sb.append(".s-labels{display:flex;justify-content:space-between;font-size:9px;color:var(--muted);}")
-
-        // Toggle
         sb.append(".trow{display:flex;align-items:center;justify-content:space-between;")
         sb.append("padding:8px 0;border-bottom:1px solid var(--card-border);}")
         sb.append(".trow:last-child{border-bottom:none;}")
@@ -167,26 +207,17 @@ object WebControlHtml {
         sb.append("background:#fff;border-radius:50%;transition:.3s;box-shadow:0 1px 3px rgba(0,0,0,.3);}")
         sb.append("input:checked+.sw{background:#34d399;border-color:var(--green);}")
         sb.append("input:checked+.sw:before{transform:translateX(18px);}")
-
-        // Input texto
         sb.append(".txt-input{width:100%;background:#fff;color:var(--text);")
         sb.append("border:1px solid var(--card-border);border-radius:6px;padding:7px 10px;")
         sb.append("font-size:11px;font-family:monospace;outline:none;margin-top:6px;}")
         sb.append(".txt-input:focus{border-color:var(--accent);box-shadow:0 0 0 2px #bfdbfe;}")
-
-        // Sub-label
         sb.append(".sub-label{font-size:9px;font-weight:700;text-transform:uppercase;")
         sb.append("letter-spacing:.07em;color:var(--muted);margin:8px 0 5px;}")
-
-        // Toast
         sb.append("#toast{position:fixed;bottom:16px;right:16px;padding:7px 16px;border-radius:6px;")
-        sb.append("font-size:11px;font-weight:700;pointer-events:none;")
-        sb.append("transition:opacity .2s;opacity:0;z-index:9999;white-space:nowrap;}")
+        sb.append("font-size:11px;font-weight:700;pointer-events:none;transition:opacity .2s;opacity:0;z-index:9999;white-space:nowrap;}")
         sb.append("#toast.show{opacity:1;}")
         sb.append("#toast.ok{background:#d1fae5;color:#065f46;border:1px solid #6ee7b7;}")
         sb.append("#toast.err{background:#fee2e2;color:#991b1b;border:1px solid #fca5a5;}")
-
-        // Seção título
         sb.append(".sec-head{padding:6px 0 8px;margin-bottom:4px;border-bottom:1px solid var(--card-border);}")
         sb.append(".sec-head h2{font-size:13px;font-weight:800;color:var(--text);}")
         sb.append(".sec-head p{font-size:10px;color:var(--muted);}")
@@ -198,41 +229,79 @@ object WebControlHtml {
         // ════════════════════════════════════════
         sb.append("<div class=\"layout\">")
 
-        // ── Área esquerda (livre) ─────────────────────────────────────
+        // ── Área ESQUERDA: Preview ───────────────────────────────────
         sb.append("<div class=\"left-area\">")
+
+        // Janela de preview estilo Win98
+        sb.append("<div class=\"preview-win\">")
+
+        // titlebar preview
+        sb.append("<div class=\"preview-titlebar\">")
+        sb.append("<div class=\"preview-title-txt\">&#127909; Camera Preview</div>")
+        sb.append("<div class=\"preview-btns\">")
+        sb.append("<div class=\"preview-wbtn\">_</div>")
+        sb.append("<div class=\"preview-wbtn\">&#9633;</div>")
+        sb.append("<div class=\"preview-wbtn\" onclick=\"togglePreview()\">&#215;</div>")
+        sb.append("</div></div>")
+
+        // tela de vídeo
+        sb.append("<div class=\"preview-screen\" id=\"preview-screen\">")
+        // imagem MJPEG
+        sb.append("<img id=\"preview-img\" src=\"/api/preview\" alt=\"\" style=\"display:none\" onerror=\"previewError()\">")
+        // overlay offline
+        sb.append("<div class=\"preview-offline\" id=\"preview-offline\">")
+        sb.append("<span>&#128247;</span>")
+        sb.append("<p>Preview indispon&#237;vel</p>")
+        sb.append("<p style=\"font-size:9px;color:#444\">Inicie o stream para ativar</p>")
+        sb.append("</div>")
+        // OSD badges
+        sb.append("<div class=\"preview-osd\" id=\"preview-osd\" style=\"display:none\">")
+        sb.append("<div class=\"osd-badge live\" id=\"osd-live\">&#11044; AO VIVO</div>")
+        sb.append("<div class=\"osd-badge\" id=\"osd-res\">-</div>")
+        sb.append("<div class=\"osd-badge\" id=\"osd-fps\">- fps</div>")
+        sb.append("</div>")
+        sb.append("</div>") // preview-screen
+
+        // toolbar de seleção de câmera
+        sb.append("<div class=\"cam-toolbar\">")
+        sb.append("<span class=\"cam-toolbar-lbl\">C&#226;mera:</span>")
+        sb.append("<div id=\"cam-selector\"></div>")
         sb.append("</div>")
 
-        // ── Painel direito ────────────────────────────────────────────
+        // statusbar do preview
+        sb.append("<div class=\"preview-statusbar\">")
+        sb.append("<div class=\"p98-cell\">Cam: <span id=\"prev-cam\">-</span></div>")
+        sb.append("<div class=\"p98-cell\"><span id=\"prev-res\">-</span></div>")
+        sb.append("<div class=\"p98-cell\">ISO: <span id=\"prev-iso\">-</span></div>")
+        sb.append("<div class=\"p98-cell\">&#9889; <span id=\"prev-lat\">--</span></div>")
+        sb.append("</div>")
+
+        sb.append("</div>") // preview-win
+        sb.append("</div>") // left-area
+
+        // ── Painel DIREITO ────────────────────────────────────────────
         sb.append("<div class=\"right-panel\">")
-
-        // Janela Win98
         sb.append("<div class=\"win98-bar\">")
-
-        // Title bar
         sb.append("<div class=\"win98-titlebar\">")
-        sb.append("<div class=\"win98-title-txt\"><span class=\"win98-icon\">&#128247;</span>Camera2 Control v5</div>")
+        sb.append("<div class=\"win98-title-txt\"><span>&#128247;</span>Camera2 Control v5</div>")
         sb.append("<div class=\"win98-btns\">")
         sb.append("<div class=\"win98-btn\">_</div>")
         sb.append("<div class=\"win98-btn\">&#9633;</div>")
         sb.append("<div class=\"win98-btn\">&#215;</div>")
         sb.append("</div></div>")
 
-        // Menubar Win98
         sb.append("<div class=\"win98-menubar\">")
-
         sb.append("<div class=\"win98-menu-item\" id=\"menu-stream-item\">")
         sb.append("<button class=\"win98-menu-btn\" onclick=\"toggleMenu('stream-item')\">Stream</button>")
         sb.append("<div class=\"win98-dropdown\">")
         sb.append("<button class=\"win98-dd-item\" onclick=\"openSection('stream');closeMenus()\">&#128225; RTMP</button>")
         sb.append("<button class=\"win98-dd-item\" onclick=\"openSection('camera');closeMenus()\">&#128247; C&#226;mera</button>")
         sb.append("</div></div>")
-
         sb.append("<div class=\"win98-menu-item\" id=\"menu-optica-item\">")
         sb.append("<button class=\"win98-menu-btn\" onclick=\"toggleMenu('optica-item')\">&#211;ptica</button>")
         sb.append("<div class=\"win98-dropdown\">")
         sb.append("<button class=\"win98-dd-item\" onclick=\"openSection('focus');closeMenus()\">&#127919; Zoom &amp; Foco</button>")
         sb.append("</div></div>")
-
         sb.append("<div class=\"win98-menu-item\" id=\"menu-sensor-item\">")
         sb.append("<button class=\"win98-menu-btn\" onclick=\"toggleMenu('sensor-item')\">Sensor</button>")
         sb.append("<div class=\"win98-dropdown\">")
@@ -240,37 +309,31 @@ object WebControlHtml {
         sb.append("<div class=\"win98-dd-sep\"></div>")
         sb.append("<button class=\"win98-dd-item\" onclick=\"openSection('image');closeMenus()\">&#127755; Cor &amp; WB</button>")
         sb.append("</div></div>")
-
         sb.append("<div class=\"win98-menu-item\" id=\"menu-sistema-item\">")
         sb.append("<button class=\"win98-menu-btn\" onclick=\"toggleMenu('sistema-item')\">Sistema</button>")
         sb.append("<div class=\"win98-dropdown\">")
         sb.append("<button class=\"win98-dd-item\" onclick=\"openSection('system');closeMenus()\">&#9881; Status</button>")
         sb.append("</div></div>")
-
         sb.append("</div>") // win98-menubar
 
-        // Status bar Win98
         sb.append("<div class=\"win98-statusbar\">")
         sb.append("<div class=\"w98-cell\"><span class=\"dot-w98\" id=\"dot-stream\"></span><span id=\"lbl-stream\">Off</span></div>")
-        sb.append("<div class=\"w98-cell\">Cam: <span id=\"lbl-cam\">-</span></div>")
+        sb.append("<div class=\"w98-cell\">Cam:<span id=\"lbl-cam\">-</span></div>")
         sb.append("<div class=\"w98-cell\"><span id=\"lbl-res\">-</span></div>")
         sb.append("<div class=\"w98-cell\">&#9889;<span id=\"lbl-lat\">--</span></div>")
         sb.append("</div>")
-
         sb.append("</div>") // win98-bar
 
-        // ── Área de seções (conteúdo) ─────────────────────────────────
+        // ── Seções (conteúdo) ─────────────────────────────────────────
         sb.append("<div class=\"content-area\">")
 
-        // ──── SEÇÃO: STREAM ────────────────────────────────────────────
+        // STREAM
         sb.append("<div class=\"section active\" id=\"sec-stream\">")
         sb.append("<div class=\"sec-head\"><h2>&#128225; Stream RTMP</h2><p>URL, bitrate e resolu&#231;&#227;o</p></div>")
-
         sb.append("<div class=\"stat-grid\">")
         sb.append("<div class=\"stat-cell\"><div class=\"stat-lbl\">Bitrate</div><div class=\"stat-val\"><span id=\"lbl-br\">-</span>k</div></div>")
         sb.append("<div class=\"stat-cell\"><div class=\"stat-lbl\">RTMP</div><div class=\"stat-val\" id=\"lbl-rtmp-short\" style=\"font-size:9px;word-break:break-all\">-</div></div>")
         sb.append("</div>")
-
         sb.append("<div class=\"card\">")
         sb.append("<div class=\"card-title\">&#128279; Destino RTMP</div>")
         sb.append("<input class=\"txt-input\" id=\"rtmp-url\" type=\"text\" placeholder=\"rtmp://IP:1935/live/stream\">")
@@ -279,18 +342,16 @@ object WebControlHtml {
         sb.append("<button class=\"btn on\" onclick=\"sendControl({streamAction:'start'},this,'Iniciado')\">&#9654; Start</button>")
         sb.append("<button class=\"btn off2\" onclick=\"sendControl({streamAction:'stop'},this,'Parado')\">&#9209; Stop</button>")
         sb.append("</div></div>")
-
         sb.append("<div class=\"card\">")
         sb.append("<div class=\"card-title\">&#128251; Resolu&#231;&#227;o</div>")
         sb.append("<div class=\"btn-row\" id=\"btngroup-resolution\"></div>")
         sb.append("<div class=\"sub-label\">FPS</div>")
         sb.append("<div class=\"btn-row\" id=\"btngroup-fps\"></div>")
         sb.append("</div>")
-
         sb.append("<div class=\"card\">")
         sb.append("<div class=\"card-title\">&#128246; Bitrate <span class=\"card-val\" id=\"br-value\">4000k</span></div>")
         sb.append("<input type=\"range\" id=\"bitrate\" min=\"500\" max=\"25000\" value=\"4000\" step=\"500\" oninput=\"updateBitrate(this.value)\">")
-        sb.append("<div class=\"s-labels\"><span>500k</span><span>12M</span><span>25M</span></div>")
+        sb.append("<div class=\"s-labels\"><span>500k</span><span>25M</span></div>")
         sb.append("<div class=\"btn-row\" style=\"margin-top:6px\">")
         sb.append("<button class=\"btn\" onclick=\"setBitrate(2000)\">2M</button>")
         sb.append("<button class=\"btn\" onclick=\"setBitrate(4000)\">4M</button>")
@@ -300,7 +361,7 @@ object WebControlHtml {
         sb.append("</div></div>")
         sb.append("</div>") // sec-stream
 
-        // ──── SEÇÃO: CÂMERA ────────────────────────────────────────────
+        // CÂMERA
         sb.append("<div class=\"section\" id=\"sec-camera\">")
         sb.append("<div class=\"sec-head\"><h2>&#128247; C&#226;mera</h2><p>Sensor e lente ativa</p></div>")
         sb.append("<div class=\"card\">")
@@ -308,10 +369,9 @@ object WebControlHtml {
         sb.append("<div class=\"btn-row\" id=\"btngroup-camera\"><span style=\"color:var(--muted);font-size:11px\">Carregando...</span></div>")
         sb.append("</div></div>")
 
-        // ──── SEÇÃO: ZOOM & FOCO ──────────────────────────────────────
+        // FOCO
         sb.append("<div class=\"section\" id=\"sec-focus\">")
         sb.append("<div class=\"sec-head\"><h2>&#127919; Zoom &amp; Foco</h2><p>&#211;ptica e AF</p></div>")
-
         sb.append("<div class=\"card\">")
         sb.append("<div class=\"card-title\">&#128269; Zoom <span class=\"card-val\" id=\"zoom-val\">1x</span></div>")
         sb.append("<input type=\"range\" id=\"zoom\" min=\"0\" max=\"1\" value=\"0\" step=\"0.01\" oninput=\"updateZoom(this.value)\">")
@@ -323,7 +383,6 @@ object WebControlHtml {
         sb.append("<button class=\"btn\" onclick=\"setZoom(0.5)\">4x</button>")
         sb.append("<button class=\"btn\" onclick=\"setZoom(1.0)\">Max</button>")
         sb.append("</div></div>")
-
         sb.append("<div class=\"card\">")
         sb.append("<div class=\"card-title\">&#127919; Foco <span class=\"card-val\" id=\"focus-val\">Auto</span></div>")
         sb.append("<input type=\"range\" id=\"focus\" min=\"0\" max=\"10\" value=\"0\" step=\"0.1\" oninput=\"updateFocus(this.value)\">")
@@ -333,21 +392,16 @@ object WebControlHtml {
         sb.append("<button class=\"btn btn-full\" style=\"margin-top:7px\" onclick=\"triggerAF()\">&#127919; Disparar AF</button>")
         sb.append("</div></div>")
 
-        // ──── SEÇÃO: ISO & EV ─────────────────────────────────────────
+        // ISO & EV
         sb.append("<div class=\"section\" id=\"sec-exposure\">")
         sb.append("<div class=\"sec-head\"><h2>&#9728; ISO &amp; EV</h2><p>Exposi&#231;&#227;o manual</p></div>")
-
         sb.append("<div class=\"card\">")
         sb.append("<div class=\"card-title\">Modo</div>")
-        sb.append("<div class=\"trow\">")
-        sb.append("<span class=\"tlabel\">&#129504; Sensor Manual</span>")
-        sb.append("<label class=\"switch\"><input type=\"checkbox\" id=\"toggle-manual\" onchange=\"toggleManual(this)\"><span class=\"sw\"></span></label>")
+        sb.append("<div class=\"trow\"><span class=\"tlabel\">&#129504; Sensor Manual</span>")
+        sb.append("<label class=\"switch\"><input type=\"checkbox\" id=\"toggle-manual\" onchange=\"toggleManual(this)\"><span class=\"sw\"></span></label></div>")
+        sb.append("<div class=\"trow\"><span class=\"tlabel\">&#128274; Travar AE</span>")
+        sb.append("<label class=\"switch\"><input type=\"checkbox\" id=\"toggle-ae-lock\" onchange=\"toggleAELock(this)\"><span class=\"sw\"></span></label></div>")
         sb.append("</div>")
-        sb.append("<div class=\"trow\">")
-        sb.append("<span class=\"tlabel\">&#128274; Travar AE</span>")
-        sb.append("<label class=\"switch\"><input type=\"checkbox\" id=\"toggle-ae-lock\" onchange=\"toggleAELock(this)\"><span class=\"sw\"></span></label>")
-        sb.append("</div></div>")
-
         sb.append("<div class=\"card\">")
         sb.append("<div class=\"card-title\">&#128248; ISO <span class=\"card-val\" id=\"iso-val\">50</span></div>")
         sb.append("<input type=\"range\" id=\"iso\" min=\"0\" max=\"6\" value=\"0\" step=\"1\" oninput=\"updateISO(this.value)\">")
@@ -361,7 +415,6 @@ object WebControlHtml {
         sb.append("<button class=\"btn\" onclick=\"setISO(5)\">1600</button>")
         sb.append("<button class=\"btn\" onclick=\"setISO(6)\">3200</button>")
         sb.append("</div></div>")
-
         sb.append("<div class=\"card\">")
         sb.append("<div class=\"card-title\">&#9728; EV <span class=\"card-val\" id=\"ev-val\">&#177;0</span></div>")
         sb.append("<input type=\"range\" id=\"ev\" min=\"-8\" max=\"8\" value=\"0\" step=\"1\" oninput=\"updateEV(this.value)\">")
@@ -374,18 +427,15 @@ object WebControlHtml {
         sb.append("<button class=\"btn\" onclick=\"setEV(4)\">+4</button>")
         sb.append("</div></div></div>")
 
-        // ──── SEÇÃO: COR & WB ─────────────────────────────────────────
+        // COR & WB
         sb.append("<div class=\"section\" id=\"sec-image\">")
         sb.append("<div class=\"sec-head\"><h2>&#127755; Cor &amp; WB</h2><p>Balan&#231;o de branco e flash</p></div>")
-
         sb.append("<div class=\"card\">")
         sb.append("<div class=\"card-title\">&#127755; Balan&#231;o de Branco</div>")
         sb.append("<div class=\"btn-row\" id=\"btngroup-wb\"></div>")
-        sb.append("<div class=\"trow\" style=\"margin-top:8px\">")
-        sb.append("<span class=\"tlabel\">&#128274; Travar AWB</span>")
-        sb.append("<label class=\"switch\"><input type=\"checkbox\" id=\"toggle-awb-lock\" onchange=\"toggleAWBLock(this)\"><span class=\"sw\"></span></label>")
-        sb.append("</div></div>")
-
+        sb.append("<div class=\"trow\" style=\"margin-top:8px\"><span class=\"tlabel\">&#128274; Travar AWB</span>")
+        sb.append("<label class=\"switch\"><input type=\"checkbox\" id=\"toggle-awb-lock\" onchange=\"toggleAWBLock(this)\"><span class=\"sw\"></span></label></div>")
+        sb.append("</div>")
         sb.append("<div class=\"card\">")
         sb.append("<div class=\"card-title\">&#128161; Flash &amp; Tocha</div>")
         sb.append("<div class=\"btn-row\">")
@@ -395,21 +445,16 @@ object WebControlHtml {
         sb.append("<button class=\"btn\" onclick=\"sendControl({flash:'torch'},this,'Tocha')\">Tocha</button>")
         sb.append("</div></div></div>")
 
-        // ──── SEÇÃO: SISTEMA ───────────────────────────────────────────
+        // SISTEMA
         sb.append("<div class=\"section\" id=\"sec-system\">")
         sb.append("<div class=\"sec-head\"><h2>&#9881; Sistema</h2><p>Estabiliza&#231;&#227;o e diagn&#243;stico</p></div>")
-
         sb.append("<div class=\"card\">")
         sb.append("<div class=\"card-title\">&#128307; Estabiliza&#231;&#227;o</div>")
-        sb.append("<div class=\"trow\">")
-        sb.append("<span class=\"tlabel\">OIS &#8212; &#211;ptica</span>")
-        sb.append("<label class=\"switch\"><input type=\"checkbox\" id=\"toggle-ois\" onchange=\"toggleOIS(this)\"><span class=\"sw\"></span></label>")
+        sb.append("<div class=\"trow\"><span class=\"tlabel\">OIS &#8212; &#211;ptica</span>")
+        sb.append("<label class=\"switch\"><input type=\"checkbox\" id=\"toggle-ois\" onchange=\"toggleOIS(this)\"><span class=\"sw\"></span></label></div>")
+        sb.append("<div class=\"trow\"><span class=\"tlabel\">EIS &#8212; Digital</span>")
+        sb.append("<label class=\"switch\"><input type=\"checkbox\" id=\"toggle-eis\" onchange=\"toggleEIS(this)\"><span class=\"sw\"></span></label></div>")
         sb.append("</div>")
-        sb.append("<div class=\"trow\">")
-        sb.append("<span class=\"tlabel\">EIS &#8212; Digital</span>")
-        sb.append("<label class=\"switch\"><input type=\"checkbox\" id=\"toggle-eis\" onchange=\"toggleEIS(this)\"><span class=\"sw\"></span></label>")
-        sb.append("</div></div>")
-
         sb.append("<div class=\"card\">")
         sb.append("<div class=\"card-title\">&#8505; Diagn&#243;stico</div>")
         sb.append("<div class=\"stat-grid\">")
@@ -420,15 +465,12 @@ object WebControlHtml {
         sb.append("<div class=\"stat-cell\"><div class=\"stat-lbl\">ISO</div><div class=\"stat-val\" id=\"diag-iso\">-</div></div>")
         sb.append("<div class=\"stat-cell\"><div class=\"stat-lbl\">Stream</div><div class=\"stat-val\" id=\"diag-stream\">-</div></div>")
         sb.append("</div></div>")
-
-        sb.append("<p style=\"text-align:center;color:var(--muted);font-size:9px;padding:6px 0\">")
-        sb.append("Camera2 API &middot; RootEncoder &middot; v5-ui</p>")
+        sb.append("<p style=\"text-align:center;color:var(--muted);font-size:9px;padding:6px 0\">Camera2 API &middot; RootEncoder &middot; v5-ui</p>")
         sb.append("</div>") // sec-system
 
         sb.append("</div>") // content-area
         sb.append("</div>") // right-panel
         sb.append("</div>") // layout
-
         sb.append("<div id=\"toast\" class=\"ok\">OK</div>")
 
         // ════════════════════════════════════════
@@ -437,26 +479,17 @@ object WebControlHtml {
         sb.append("<script>")
 
         // Menu Win98
-        sb.append("function toggleMenu(id){")
-        sb.append("var el=document.getElementById('menu-'+id);")
-        sb.append("var isOpen=el.classList.contains('open');")
-        sb.append("closeMenus();")
-        sb.append("if(!isOpen)el.classList.add('open');}")
-        sb.append("function closeMenus(){")
-        sb.append("document.querySelectorAll('.win98-menu-item').forEach(function(m){m.classList.remove('open');});}")
-        sb.append("document.addEventListener('click',function(e){")
-        sb.append("if(!e.target.closest('.win98-menu-item'))closeMenus();});")
+        sb.append("function toggleMenu(id){var el=document.getElementById('menu-'+id);")
+        sb.append("var isOpen=el.classList.contains('open');closeMenus();if(!isOpen)el.classList.add('open');}")
+        sb.append("function closeMenus(){document.querySelectorAll('.win98-menu-item').forEach(function(m){m.classList.remove('open');});}")
+        sb.append("document.addEventListener('click',function(e){if(!e.target.closest('.win98-menu-item'))closeMenus();});")
 
         // Seções
-        sb.append("function openSection(id){")
-        sb.append("document.querySelectorAll('.section').forEach(function(s){s.classList.remove('active');});")
-        sb.append("document.getElementById('sec-'+id).classList.add('active');}")
+        sb.append("function openSection(id){document.querySelectorAll('.section').forEach(function(s){s.classList.remove('active');});document.getElementById('sec-'+id).classList.add('active');}")
 
         // Toast
-        sb.append("var _tt;function showToast(m,e){")
-        sb.append("var t=document.getElementById('toast');t.textContent=m;")
-        sb.append("t.className=e?'err show':'ok show';clearTimeout(_tt);")
-        sb.append("_tt=setTimeout(function(){t.classList.remove('show');},1800);}")
+        sb.append("var _tt;function showToast(m,e){var t=document.getElementById('toast');t.textContent=m;")
+        sb.append("t.className=e?'err show':'ok show';clearTimeout(_tt);_tt=setTimeout(function(){t.classList.remove('show');},1800);}")
 
         // Send
         sb.append("function sendControl(d,btn,msg){")
@@ -464,8 +497,25 @@ object WebControlHtml {
         sb.append(".then(function(r){if(!r.ok)throw new Error(r.status);return r.json();})")
         sb.append(".then(function(){showToast(msg||'OK',false);})")
         sb.append(".catch(function(e){showToast('ERR:'+e.message,true);});}")
-
         sb.append("function markSel(attr,val){document.querySelectorAll('['+attr+']').forEach(function(el){el.classList.toggle('sel',el.getAttribute(attr)===String(val));});}")
+
+        // ── Preview MJPEG ──────────────────────────────────────────────────
+        sb.append("var previewOn=false;")
+        sb.append("function startPreview(){")
+        sb.append("var img=document.getElementById('preview-img');")
+        sb.append("img.src='/api/preview?t='+Date.now();")
+        sb.append("img.style.display='block';")
+        sb.append("document.getElementById('preview-offline').style.display='none';")
+        sb.append("document.getElementById('preview-osd').style.display='flex';")
+        sb.append("previewOn=true;}")
+        sb.append("function stopPreview(){")
+        sb.append("var img=document.getElementById('preview-img');")
+        sb.append("img.src='';img.style.display='none';")
+        sb.append("document.getElementById('preview-offline').style.display='flex';")
+        sb.append("document.getElementById('preview-osd').style.display='none';")
+        sb.append("previewOn=false;}")
+        sb.append("function previewError(){if(previewOn)stopPreview();}")
+        sb.append("function togglePreview(){if(previewOn)stopPreview();else startPreview();}")
 
         // RTMP
         sb.append("function applyRtmpUrl(){var v=document.getElementById('rtmp-url').value.trim();if(v)sendControl({rtmpUrl:v},null,'URL salva');}")
@@ -502,8 +552,10 @@ object WebControlHtml {
         sb.append("function toggleAELock(c){sendControl({aeLock:c.checked},null,c.checked?'AE Lock':'AE Livre');}")
         sb.append("function toggleAWBLock(c){sendControl({awbLock:c.checked},null,c.checked?'AWB Lock':'AWB Livre');}")
 
-        // Câmera / Resolução / FPS / WB / AF
-        sb.append("function switchCamera(id){markSel('data-cam',id);sendControl({camera:id},null,'Cam '+id);}")
+        sb.append("function switchCamera(id){")
+        sb.append("markSel('data-cam',id);")
+        sb.append("document.querySelectorAll('.cam-btn').forEach(function(b){b.classList.toggle('sel',b.getAttribute('data-cam')===String(id));});")
+        sb.append("sendControl({camera:id},null,'Cam '+id);}")
         sb.append("function setResolution(res){markSel('data-res',res);sendControl({resolution:res},null,res);}")
         sb.append("function setFPS(fps){markSel('data-fps',fps);sendControl({fps:fps},null,fps+' fps');}")
         sb.append("function setFocusMode(m){markSel('data-fm',m);sendControl({focusmode:m},null,'Foco: '+m);}")
@@ -521,12 +573,26 @@ object WebControlHtml {
         sb.append("document.getElementById('lbl-br').textContent=c.bitrate_kbps||'-';")
         sb.append("document.getElementById('lbl-lat').textContent=lat+'ms';")
         sb.append("var rs=d.rtmp_url||'-';document.getElementById('lbl-rtmp-short').textContent=rs;")
+        // preview screen border quando ao vivo
+        sb.append("document.getElementById('preview-screen').classList.toggle('streaming',on);")
+        // OSD dados
+        sb.append("document.getElementById('osd-res').textContent=c.video_size||'-';")
+        sb.append("document.getElementById('osd-fps').textContent=(c.fps||'-')+' fps';")
+        // preview statusbar
+        sb.append("document.getElementById('prev-cam').textContent=c.camera_id||'-';")
+        sb.append("document.getElementById('prev-res').textContent=c.video_size||'-';")
+        sb.append("document.getElementById('prev-iso').textContent=c.iso||'-';")
+        sb.append("document.getElementById('prev-lat').textContent=lat+'ms';")
+        // diag
         sb.append("document.getElementById('diag-cam').textContent=c.camera_id||'-';")
         sb.append("document.getElementById('diag-res').textContent=c.video_size||'-';")
         sb.append("document.getElementById('diag-br').textContent=(c.bitrate_kbps||'-')+'k';")
         sb.append("document.getElementById('diag-lat').textContent=lat+'ms';")
         sb.append("document.getElementById('diag-iso').textContent=c.iso||'-';")
         sb.append("document.getElementById('diag-stream').textContent=on?'Ativo':'Off';")
+        // se stream ativo e preview desligado, liga preview automaticamente
+        sb.append("if(on&&!previewOn)startPreview();")
+        sb.append("if(!on&&previewOn)stopPreview();")
         sb.append("var u=document.getElementById('rtmp-url');if(u&&d.rtmp_url&&document.activeElement!==u)u.value=d.rtmp_url;")
         sb.append("var el;")
         sb.append("el=document.getElementById('toggle-manual');if(el)el.checked=c.manual_sensor==='on';")
@@ -539,24 +605,34 @@ object WebControlHtml {
 
         // Init capabilities
         sb.append("function initCapabilities(){fetch('/api/capabilities').then(function(r){return r.json();}).then(function(caps){")
+        // seletor de câmera no preview
+        sb.append("var cs=document.getElementById('cam-selector');cs.innerHTML='';")
+        sb.append("caps.forEach(function(cap){if(cap.is_depth)return;")
+        sb.append("var b=document.createElement('button');b.className='cam-btn';b.setAttribute('data-cam',cap.camera_id);")
+        sb.append("var lbl=cap.name||(\"Cam \"+cap.camera_id);")
+        sb.append("b.textContent=lbl;")
+        sb.append("b.onclick=function(){switchCamera(cap.camera_id);};")
+        sb.append("cs.appendChild(b);});")
+        // seletor na seção câmera
         sb.append("var cg=document.getElementById('btngroup-camera');cg.innerHTML='';")
         sb.append("caps.forEach(function(cap){if(cap.is_depth)return;")
         sb.append("var b=document.createElement('button');b.className='btn';b.setAttribute('data-cam',cap.camera_id);")
         sb.append("b.textContent=cap.name||('Cam '+cap.camera_id);")
         sb.append("b.onclick=function(){switchCamera(cap.camera_id);};cg.appendChild(b);});")
+        // resoluções
         sb.append("var rg=document.getElementById('btngroup-resolution');rg.innerHTML='';")
         sb.append("var fc=caps.find(function(c){return !c.is_depth;})||null;")
         sb.append("if(fc&&fc.available_resolutions){")
         sb.append("[{res:'720p',key:'1280x720',lbl:'720p'},{res:'1080p',key:'1920x1080',lbl:'1080p'},{res:'4k',key:'3840x2160',lbl:'4K'}]")
-        sb.append(".forEach(function(p){")
-        sb.append("if(fc.available_resolutions.indexOf(p.key)<0)return;")
+        sb.append(".forEach(function(p){if(fc.available_resolutions.indexOf(p.key)<0)return;")
         sb.append("var b=document.createElement('button');b.className='btn';b.setAttribute('data-res',p.res);b.textContent=p.lbl;")
         sb.append("b.onclick=function(){setResolution(p.res);};rg.appendChild(b);});}")
+        // FPS
         sb.append("var fg=document.getElementById('btngroup-fps');fg.innerHTML='';")
-        sb.append("[15,24,30,60].forEach(function(fps){")
-        sb.append("var b=document.createElement('button');b.className='btn';b.setAttribute('data-fps',fps);")
-        sb.append("b.textContent=fps+'fps';if(fps===30)b.classList.add('sel');")
+        sb.append("[15,24,30,60].forEach(function(fps){var b=document.createElement('button');b.className='btn';")
+        sb.append("b.setAttribute('data-fps',fps);b.textContent=fps+'fps';if(fps===30)b.classList.add('sel');")
         sb.append("b.onclick=function(){setFPS(fps);};fg.appendChild(b);});")
+        // WB
         sb.append("var wg=document.getElementById('btngroup-wb');wg.innerHTML='';")
         sb.append("var wbN={'auto':'Auto','daylight':'Dia','cloudy':'Nublado','tungsten':'Tung.','incandescent':'Incand.','fluorescent':'Fluor.'};")
         sb.append("if(caps[0]&&caps[0].supported_awb_modes)caps[0].supported_awb_modes.forEach(function(mode){")
@@ -564,6 +640,7 @@ object WebControlHtml {
         sb.append("b.textContent=wbN[mode]||mode;")
         sb.append("b.onclick=function(){markSel('data-wb',mode);sendControl({whiteBalance:mode},null,'WB '+mode);};")
         sb.append("wg.appendChild(b);});")
+        // AF modes
         sb.append("var fg2=document.getElementById('btngroup-focusmode');fg2.innerHTML='';")
         sb.append("var afN={'off':'Travar','auto':'Auto','continuous-video':'Video','continuous-picture':'Foto'};")
         sb.append("if(caps[0]&&caps[0].supported_af_modes)caps[0].supported_af_modes.forEach(function(mode){")
