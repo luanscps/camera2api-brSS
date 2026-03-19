@@ -28,7 +28,7 @@ class WebControlServer(
         }
     }
 
-    // ── Painel de controle ────────────────────────────────────────────
+    // ── Painel de controle (UI v5) ──────────────────────────────────
     private fun serveControlPanel(): Response {
         val html = WebControlHtml.build()
         return newFixedLengthResponse(Response.Status.OK, "text/html", html)
@@ -144,6 +144,7 @@ class WebControlServer(
             val params = com.google.gson.Gson().fromJson<Map<String, Any>>(
                 json, object : TypeToken<Map<String, Any>>() {}.type
             )
+
             // Troca de URL RTMP em tempo real
             (params["rtmpUrl"] as? String)?.let { newUrl ->
                 StreamingService.instance?.let { svc ->
@@ -152,6 +153,15 @@ class WebControlServer(
                     svc.startStream()
                 }
             }
+
+            // Controle de stream (botões Iniciar / Parar da UI v5)
+            (params["streamAction"] as? String)?.let { action ->
+                when (action) {
+                    "start" -> StreamingService.instance?.startStream()
+                    "stop"  -> StreamingService.instance?.stopStream()
+                }
+            }
+
             cameraController.updateSettings(params)
             val resp = newFixedLengthResponse(Response.Status.OK, "application/json", """{"status":"ok"}""")
             resp.addHeader("Access-Control-Allow-Origin", "*")
