@@ -19,10 +19,19 @@ class WebControlServer(
     override fun serve(session: IHTTPSession): Response {
         val uri = session.uri
         return when {
+            // CORS preflight
+            session.method == Method.OPTIONS -> {
+                val resp = newFixedLengthResponse(Response.Status.OK, "text/plain", "")
+                resp.addHeader("Access-Control-Allow-Origin", "*")
+                resp.addHeader("Access-Control-Allow-Methods", "GET, POST, OPTIONS")
+                resp.addHeader("Access-Control-Allow-Headers", "Content-Type")
+                resp
+            }
             uri == "/"                  -> serveControlPanel()
             uri == "/status"            -> serveStatus()
             uri == "/api/status"        -> serveStatus()
             uri == "/api/capabilities"  -> serveCapabilities()
+            uri == "/api/preview"       -> servePreview()
             uri == "/api/control" && session.method == Method.POST -> handleControl(session)
             else -> newFixedLengthResponse(Response.Status.NOT_FOUND, "text/plain", "Not Found")
         }
@@ -32,6 +41,23 @@ class WebControlServer(
     private fun serveControlPanel(): Response {
         val html = WebControlHtml.build()
         return newFixedLengthResponse(Response.Status.OK, "text/html", html)
+    }
+
+    // ── Preview MJPEG (JPEG estático, atualizado pelo streamer a ~1fps) ─────
+    private fun servePreview(): Response {
+        val jpegBytes = RtmpStreamer.lastFrameJpeg
+        return if (jpegBytes != null && jpegBytes.isNotEmpty()) {
+            val resp = newFixedLengthResponse(
+                Response.Status.OK, "image/jpeg",
+                java.io.ByteArrayInputStream(jpegBytes), jpegBytes.size.toLong()
+            )
+            resp.addHeader("Cache-Control", "no-store")
+            resp.addHeader("Access-Control-Allow-Origin", "*")
+            resp
+        } else {
+            // Câmera não iniciada ou frame ainda não capturado
+            newFixedLengthResponse(Response.Status.NO_CONTENT, "text/plain", "")
+        }
     }
 
     // ── Capabilities ─────────────────────────────────────────────────
@@ -99,7 +125,9 @@ class WebControlServer(
             "edge_mode"            to edgeModeStr(c.edgeMode),
             "noise_reduction_mode" to nrModeStr(c.noiseReductionMode),
             "tonemap_mode"         to "high_quality",
-            "hot_pixel_mode"       to hotPixelModeStr(c.hotPixelMode)
+            "hot_pixel_mode"       to hotPixelModeStr(c.hotPixelMode),
+            // ✅ FIX: expõe rotação atual para o poll da WebGUI sincronizar o OSD
+            "rotation"             to c.previewRotation.toString()
         )
 
         val avail = mapOf(

@@ -16,7 +16,6 @@ class Camera2Controller {
 
     private val tag = "Camera2Ctrl"
 
-    // Unica diferenca em relacao a v3: RtmpCamera2 em vez de RtspServerCamera2
     var rtmpCamera: RtmpCamera2? = null
     var appContext: Context? = null
 
@@ -40,6 +39,8 @@ class Camera2Controller {
     var currentHeight    = 1080
     var currentBitrate   = 4000
     var currentFps       = 30
+    // ✅ FIX: campo de rotação do preview/stream
+    var previewRotation  = 0
 
     var edgeMode           = CameraMetadata.EDGE_MODE_HIGH_QUALITY
     var noiseReductionMode = CameraMetadata.NOISE_REDUCTION_MODE_HIGH_QUALITY
@@ -51,7 +52,8 @@ class Camera2Controller {
         worker.post { runCatching(block).onFailure { Log.e(tag, "worker error", it) } }
 
     // -------------------------------------------------------------------------
-    // Reflection helpers — identicos a v3, apenas ref muda para rtmpCamera
+    // Reflection helpers — usados apenas para sensor manual (ISO, shutter, frameDuration)
+    // Os demais controles usam API pública do RootEncoder
     // -------------------------------------------------------------------------
 
     private fun getCam2Manager(): Camera2ApiManager? = try {
@@ -95,7 +97,7 @@ class Camera2Controller {
     }
 
     // -------------------------------------------------------------------------
-    // Sensor manual / auto — logica identica a v3
+    // Sensor manual / auto
     // -------------------------------------------------------------------------
 
     private fun applyManualSensor() {
@@ -120,7 +122,7 @@ class Camera2Controller {
     }
 
     // -------------------------------------------------------------------------
-    // updateSettings — logica identica a v3, srv -> rtmpCamera
+    // updateSettings
     // -------------------------------------------------------------------------
 
     fun updateSettings(params: Map<String, Any>) {
@@ -260,6 +262,16 @@ class Camera2Controller {
             Log.d(tag, "awbLock -> $awbLocked")
         }
 
+        // ✅ FIX: handler para chave 'flash' enviada pela WebGUI (botões Flash/Tocha)
+        params["flash"]?.let {
+            flashMode = it as String
+            when (flashMode) {
+                "torch" -> { cam.enableLantern(); lanternEnabled = true }
+                else    -> { cam.disableLantern(); lanternEnabled = false }
+            }
+            Log.d(tag, "flash -> $flashMode")
+        }
+
         params["flashMode"]?.let {
             flashMode = it as String
             when (flashMode) {
@@ -267,6 +279,21 @@ class Camera2Controller {
                 else    -> { cam.disableLantern(); lanternEnabled = false }
             }
             Log.d(tag, "flashMode -> $flashMode")
+        }
+
+        // ✅ FIX: handler para previewRotation (botões de rotação da WebGUI)
+        params["previewRotation"]?.let {
+            val deg = when (it) {
+                is Double -> it.toInt()
+                is Number -> it.toInt()
+                else      -> it.toString().toIntOrNull() ?: 0
+            }.let { v -> listOf(0, 90, 180, 270).find { r -> r == v } ?: 0 }
+            previewRotation = deg
+            // Aplica rotação no encoder (afeta o stream codificado)
+            try { cam.setOrientation(deg) } catch (e: Exception) { Log.w(tag, "setOrientation: ${e.message}") }
+            // Aplica rotação visual no preview OpenGL (não afeta o stream)
+            try { cam.glInterface?.setRotation(deg) } catch (e: Exception) { Log.w(tag, "glInterface.setRotation: ${e.message}") }
+            Log.d(tag, "previewRotation -> $deg")
         }
 
         params["bitrate"]?.let {
