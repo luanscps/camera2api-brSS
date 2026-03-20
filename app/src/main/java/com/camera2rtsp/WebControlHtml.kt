@@ -10,123 +10,95 @@ object WebControlHtml {
         sb.append("<title>Camera2 Control</title>")
         sb.append("<style>")
 
-        // ── Paleta Clara Moderna ───────────────────────────────────────
         sb.append(":root{")
-        sb.append("--bg:#e8edf2;")
-        sb.append("--panel-bg:#d4dce6;")
-        sb.append("--card-bg:#f0f4f8;")
-        sb.append("--card-border:#b8c8d8;")
-        sb.append("--accent:#2563eb;")
-        sb.append("--accent2:#7c3aed;")
-        sb.append("--green:#059669;")
-        sb.append("--red:#dc2626;")
-        sb.append("--yellow:#d97706;")
-        sb.append("--text:#1e293b;")
-        sb.append("--muted:#64748b;")
-        sb.append("--right-w:340px;")
-        sb.append("--w98-bg:#c0c0c0;")
-        sb.append("--w98-border-light:#ffffff;")
-        sb.append("--w98-border-dark:#808080;")
-        sb.append("--w98-border-darker:#404040;")
-        sb.append("}")
+        sb.append("--bg:#e8edf2;--panel-bg:#d4dce6;--card-bg:#f0f4f8;--card-border:#b8c8d8;")
+        sb.append("--accent:#2563eb;--accent2:#7c3aed;--green:#059669;--red:#dc2626;--yellow:#d97706;")
+        sb.append("--text:#1e293b;--muted:#64748b;--right-w:340px;")
+        sb.append("--w98-bg:#c0c0c0;--w98-border-light:#ffffff;--w98-border-dark:#808080;--w98-border-darker:#404040;}")
 
-        // ── Reset ─────────────────────────────────────────────────────
         sb.append("*{margin:0;padding:0;box-sizing:border-box;}")
-        sb.append("html,body{height:100%;font-family:'Segoe UI',Tahoma,sans-serif;")
-        sb.append("background:var(--bg);color:var(--text);font-size:13px;}")
+        sb.append("html,body{height:100%;font-family:'Segoe UI',Tahoma,sans-serif;background:var(--bg);color:var(--text);font-size:13px;}")
 
-        // ── Layout geral ──────────────────────────────────────────────
+        // Layout
         sb.append(".layout{display:flex;height:100vh;overflow:hidden;}")
-        sb.append(".left-area{flex:1;overflow:auto;padding:20px;display:flex;align-items:flex-start;")
-        sb.append("justify-content:center;background:linear-gradient(135deg,#e2e8f0 0%,#dde5f0 100%);}")
-        sb.append(".right-panel{width:var(--right-w);flex-shrink:0;background:var(--panel-bg);")
-        sb.append("border-left:2px solid var(--card-border);display:flex;flex-direction:column;overflow:hidden;}")
+        sb.append(".left-area{flex:1;overflow:hidden;position:relative;background:linear-gradient(135deg,#e2e8f0 0%,#dde5f0 100%);}")
+        sb.append(".right-panel{width:var(--right-w);flex-shrink:0;background:var(--panel-bg);border-left:2px solid var(--card-border);display:flex;flex-direction:column;overflow:hidden;}")
 
-        // ── Preview box (janela Win98) ────────────────────────────────
-        sb.append(".preview-win{width:420px;max-width:100%;")
-        sb.append("border-top:2px solid var(--w98-border-light);")
-        sb.append("border-left:2px solid var(--w98-border-light);")
-        sb.append("border-bottom:2px solid var(--w98-border-darker);")
-        sb.append("border-right:2px solid var(--w98-border-darker);")
-        sb.append("background:var(--w98-bg);}")
+        // ── Janela flutuante preview ───────────────────────────────────────
+        sb.append(".preview-win{position:absolute;top:20px;left:20px;")
+        sb.append("width:620px;min-width:280px;min-height:180px;")
+        sb.append("border-top:2px solid var(--w98-border-light);border-left:2px solid var(--w98-border-light);")
+        sb.append("border-bottom:2px solid var(--w98-border-darker);border-right:2px solid var(--w98-border-darker);")
+        sb.append("background:var(--w98-bg);z-index:10;")
+        sb.append("display:flex;flex-direction:column;")
+        sb.append("resize:both;overflow:hidden;}")
+
+        // titlebar drag handle
         sb.append(".preview-titlebar{background:linear-gradient(to right,#000080,#1084d0);")
         sb.append("padding:3px 6px;display:flex;align-items:center;justify-content:space-between;")
-        sb.append("user-select:none;}")
+        sb.append("cursor:move;user-select:none;flex-shrink:0;}")
         sb.append(".preview-title-txt{color:#fff;font-size:11px;font-weight:700;")
         sb.append("font-family:'Courier New',monospace;display:flex;align-items:center;gap:5px;}")
         sb.append(".preview-btns{display:flex;gap:2px;}")
         sb.append(".preview-wbtn{width:16px;height:14px;background:var(--w98-bg);")
-        sb.append("border-top:1px solid var(--w98-border-light);")
-        sb.append("border-left:1px solid var(--w98-border-light);")
-        sb.append("border-bottom:1px solid var(--w98-border-dark);")
-        sb.append("border-right:1px solid var(--w98-border-dark);")
-        sb.append("font-size:9px;font-weight:700;cursor:pointer;")
-        sb.append("display:flex;align-items:center;justify-content:center;")
-        sb.append("font-family:monospace;color:#000;}")
+        sb.append("border-top:1px solid var(--w98-border-light);border-left:1px solid var(--w98-border-light);")
+        sb.append("border-bottom:1px solid var(--w98-border-dark);border-right:1px solid var(--w98-border-dark);")
+        sb.append("font-size:9px;font-weight:700;cursor:pointer;display:flex;align-items:center;")
+        sb.append("justify-content:center;font-family:monospace;color:#000;}")
 
-        // Tela de vídeo
-        sb.append(".preview-screen{position:relative;background:#000;")
-        sb.append("border-top:2px solid var(--w98-border-darker);")
-        sb.append("border-left:2px solid var(--w98-border-darker);")
-        sb.append("border-bottom:2px solid var(--w98-border-light);")
-        sb.append("border-right:2px solid var(--w98-border-light);")
-        sb.append("margin:4px;overflow:hidden;aspect-ratio:16/9;}")
-        sb.append("#preview-img{width:100%;height:100%;object-fit:cover;display:block;}")
+        // tela 16:9 — cresce proporcionalmente com a janela
+        sb.append(".preview-screen-wrap{flex:1;background:#000;")
+        sb.append("border-top:2px solid var(--w98-border-darker);border-left:2px solid var(--w98-border-darker);")
+        sb.append("border-bottom:2px solid var(--w98-border-light);border-right:2px solid var(--w98-border-light);")
+        sb.append("margin:4px;overflow:hidden;position:relative;}")
+        sb.append("#preview-img{position:absolute;inset:0;width:100%;height:100%;object-fit:contain;display:none;")
+        sb.append("transform-origin:center center;transition:transform .25s;}")
         sb.append(".preview-offline{position:absolute;inset:0;display:flex;flex-direction:column;")
         sb.append("align-items:center;justify-content:center;gap:8px;background:#111;color:#555;}")
         sb.append(".preview-offline span{font-size:28px;}")
         sb.append(".preview-offline p{font-size:11px;font-family:monospace;}")
-        // OSD overlay
         sb.append(".preview-osd{position:absolute;top:6px;left:6px;display:flex;flex-direction:column;gap:3px;pointer-events:none;}")
         sb.append(".osd-badge{background:rgba(0,0,0,.62);color:#fff;font-size:9px;font-weight:700;")
         sb.append("padding:2px 6px;border-radius:3px;font-family:monospace;white-space:nowrap;}")
         sb.append(".osd-badge.live{background:rgba(220,38,38,.85);animation:blink 1.2s infinite;}")
         sb.append("@keyframes blink{0%,100%{opacity:1}50%{opacity:.5}}")
-        // borda pulsante quando ao vivo
-        sb.append(".preview-screen.streaming{box-shadow:0 0 0 2px #dc2626,0 0 12px rgba(220,38,38,.4);}")
+        sb.append(".preview-screen-wrap.streaming{box-shadow:inset 0 0 0 2px #dc2626,0 0 14px rgba(220,38,38,.35);}")
 
-        // Toolbar de câmeras
-        sb.append(".cam-toolbar{padding:5px 6px;display:flex;align-items:center;gap:6px;flex-wrap:wrap;")
-        sb.append("border-top:1px solid var(--w98-border-dark);}")
+        // toolbar câmeras + rotação
+        sb.append(".cam-toolbar{padding:4px 6px;display:flex;align-items:center;gap:5px;flex-wrap:wrap;")
+        sb.append("border-top:1px solid var(--w98-border-dark);flex-shrink:0;}")
         sb.append(".cam-toolbar-lbl{font-size:10px;font-weight:700;color:#444;font-family:monospace;white-space:nowrap;}")
-        sb.append(".cam-btn{background:var(--w98-bg);")
-        sb.append("border-top:1px solid var(--w98-border-light);")
-        sb.append("border-left:1px solid var(--w98-border-light);")
-        sb.append("border-bottom:1px solid var(--w98-border-dark);")
-        sb.append("border-right:1px solid var(--w98-border-dark);")
-        sb.append("padding:3px 9px;font-size:10px;cursor:pointer;font-family:inherit;color:#000;}")
-        sb.append(".cam-btn:active{border-top:1px solid var(--w98-border-dark);")
-        sb.append("border-left:1px solid var(--w98-border-dark);")
-        sb.append("border-bottom:1px solid var(--w98-border-light);")
-        sb.append("border-right:1px solid var(--w98-border-light);}")
-        sb.append(".cam-btn.sel{background:#000080;color:#fff;")
-        sb.append("border-top:1px solid var(--w98-border-dark);")
-        sb.append("border-left:1px solid var(--w98-border-dark);")
-        sb.append("border-bottom:1px solid var(--w98-border-light);")
-        sb.append("border-right:1px solid var(--w98-border-light);}")
+        sb.append(".cam-btn,.rot-btn{background:var(--w98-bg);")
+        sb.append("border-top:1px solid var(--w98-border-light);border-left:1px solid var(--w98-border-light);")
+        sb.append("border-bottom:1px solid var(--w98-border-dark);border-right:1px solid var(--w98-border-dark);")
+        sb.append("padding:2px 8px;font-size:10px;cursor:pointer;font-family:inherit;color:#000;white-space:nowrap;}")
+        sb.append(".cam-btn:active,.rot-btn:active{border-top:1px solid var(--w98-border-dark);border-left:1px solid var(--w98-border-dark);")
+        sb.append("border-bottom:1px solid var(--w98-border-light);border-right:1px solid var(--w98-border-light);}")
+        sb.append(".cam-btn.sel,.rot-btn.sel{background:#000080;color:#fff;")
+        sb.append("border-top:1px solid var(--w98-border-dark);border-left:1px solid var(--w98-border-dark);")
+        sb.append("border-bottom:1px solid var(--w98-border-light);border-right:1px solid var(--w98-border-light);}")
+        sb.append(".toolbar-sep{width:1px;background:var(--w98-border-dark);height:14px;margin:0 3px;}")
 
-        // Preview statusbar
-        sb.append(".preview-statusbar{background:var(--w98-bg);")
-        sb.append("border-top:2px solid var(--w98-border-darker);")
-        sb.append("padding:2px 6px;display:flex;gap:4px;}")
+        // statusbar preview
+        sb.append(".preview-statusbar{background:var(--w98-bg);border-top:2px solid var(--w98-border-darker);")
+        sb.append("padding:2px 6px;display:flex;gap:4px;flex-shrink:0;}")
         sb.append(".p98-cell{background:var(--w98-bg);")
-        sb.append("border-top:1px solid var(--w98-border-dark);")
-        sb.append("border-left:1px solid var(--w98-border-dark);")
-        sb.append("border-bottom:1px solid var(--w98-border-light);")
-        sb.append("border-right:1px solid var(--w98-border-light);")
+        sb.append("border-top:1px solid var(--w98-border-dark);border-left:1px solid var(--w98-border-dark);")
+        sb.append("border-bottom:1px solid var(--w98-border-light);border-right:1px solid var(--w98-border-light);")
         sb.append("padding:1px 7px;font-size:10px;font-family:'Courier New',monospace;color:#000;white-space:nowrap;}")
 
-        // ── Win98 Menu (direita) ─────────────────────────────────────
+        // resize handle visual (canto inferior direito)
+        sb.append(".resize-handle{position:absolute;right:0;bottom:0;width:14px;height:14px;cursor:se-resize;")
+        sb.append("background:linear-gradient(135deg,transparent 50%,var(--w98-border-dark) 50%);z-index:20;}")
+
+        // Win98 menu direita
         sb.append(".win98-bar{background:var(--w98-bg);")
-        sb.append("border-bottom:2px solid var(--w98-border-darker);")
-        sb.append("border-right:2px solid var(--w98-border-darker);")
-        sb.append("border-top:2px solid var(--w98-border-light);")
-        sb.append("border-left:2px solid var(--w98-border-light);")
+        sb.append("border-bottom:2px solid var(--w98-border-darker);border-right:2px solid var(--w98-border-darker);")
+        sb.append("border-top:2px solid var(--w98-border-light);border-left:2px solid var(--w98-border-light);")
         sb.append("display:flex;flex-direction:column;}")
         sb.append(".win98-titlebar{background:linear-gradient(to right,#000080,#1084d0);")
         sb.append("padding:3px 6px;display:flex;align-items:center;justify-content:space-between;user-select:none;}")
-        sb.append(".win98-title-txt{color:#fff;font-size:11px;font-weight:700;")
-        sb.append("font-family:'Courier New',monospace;display:flex;align-items:center;gap:5px;}")
+        sb.append(".win98-title-txt{color:#fff;font-size:11px;font-weight:700;font-family:'Courier New',monospace;display:flex;align-items:center;gap:5px;}")
         sb.append(".win98-btns{display:flex;gap:2px;}")
         sb.append(".win98-btn{width:16px;height:14px;background:var(--w98-bg);")
         sb.append("border-top:1px solid var(--w98-border-light);border-left:1px solid var(--w98-border-light);")
@@ -137,51 +109,35 @@ object WebControlHtml {
         sb.append("border-bottom:1px solid var(--w98-border-light);border-right:1px solid var(--w98-border-light);}")
         sb.append(".win98-menubar{display:flex;padding:2px 4px;background:var(--w98-bg);}")
         sb.append(".win98-menu-item{position:relative;}")
-        sb.append(".win98-menu-btn{background:transparent;border:none;padding:2px 8px;cursor:pointer;")
-        sb.append("font-size:11px;font-family:inherit;color:#000;text-decoration:underline;}")
+        sb.append(".win98-menu-btn{background:transparent;border:none;padding:2px 8px;cursor:pointer;font-size:11px;font-family:inherit;color:#000;text-decoration:underline;}")
         sb.append(".win98-menu-btn:hover,.win98-menu-btn.active{background:#000080;color:#fff;}")
-        sb.append(".win98-dropdown{display:none;position:absolute;top:100%;left:0;z-index:999;")
-        sb.append("background:var(--w98-bg);min-width:160px;")
+        sb.append(".win98-dropdown{display:none;position:absolute;top:100%;left:0;z-index:999;background:var(--w98-bg);min-width:160px;")
         sb.append("border-top:1px solid var(--w98-border-light);border-left:1px solid var(--w98-border-light);")
         sb.append("border-bottom:2px solid var(--w98-border-darker);border-right:2px solid var(--w98-border-darker);}")
         sb.append(".win98-menu-item.open .win98-dropdown{display:block;}")
-        sb.append(".win98-dd-item{display:block;width:100%;background:none;border:none;")
-        sb.append("padding:4px 16px 4px 24px;text-align:left;cursor:pointer;")
-        sb.append("font-size:11px;font-family:inherit;color:#000;white-space:nowrap;}")
+        sb.append(".win98-dd-item{display:block;width:100%;background:none;border:none;padding:4px 16px 4px 24px;")
+        sb.append("text-align:left;cursor:pointer;font-size:11px;font-family:inherit;color:#000;white-space:nowrap;}")
         sb.append(".win98-dd-item:hover{background:#000080;color:#fff;}")
-        sb.append(".win98-dd-sep{height:1px;background:var(--w98-border-dark);")
-        sb.append("border-top:1px solid var(--w98-border-light);margin:2px 4px;}")
-        sb.append(".win98-statusbar{background:var(--w98-bg);border-top:2px solid var(--w98-border-darker);")
-        sb.append("padding:2px 6px;display:flex;gap:4px;flex-wrap:wrap;}")
+        sb.append(".win98-dd-sep{height:1px;background:var(--w98-border-dark);border-top:1px solid var(--w98-border-light);margin:2px 4px;}")
+        sb.append(".win98-statusbar{background:var(--w98-bg);border-top:2px solid var(--w98-border-darker);padding:2px 6px;display:flex;gap:4px;flex-wrap:wrap;}")
         sb.append(".w98-cell{background:var(--w98-bg);")
         sb.append("border-top:1px solid var(--w98-border-dark);border-left:1px solid var(--w98-border-dark);")
         sb.append("border-bottom:1px solid var(--w98-border-light);border-right:1px solid var(--w98-border-light);")
         sb.append("padding:1px 7px;font-size:10px;font-family:'Courier New',monospace;white-space:nowrap;color:#000;}")
-        sb.append(".dot-w98{display:inline-block;width:7px;height:7px;border-radius:50%;")
-        sb.append("background:#dc2626;margin-right:4px;vertical-align:middle;}")
+        sb.append(".dot-w98{display:inline-block;width:7px;height:7px;border-radius:50%;background:#dc2626;margin-right:4px;vertical-align:middle;}")
         sb.append(".dot-w98.live{background:#059669;}")
 
-        // ── Área de conteúdo direita ────────────────────────────────────
+        // cards direita
         sb.append(".content-area{flex:1;overflow-y:auto;padding:8px;}")
         sb.append(".section{display:none;}.section.active{display:block;}")
-
-        // ── Cards ───────────────────────────────────────────────────────
-        sb.append(".card{background:var(--card-bg);border:1px solid var(--card-border);")
-        sb.append("border-radius:8px;padding:10px;margin-bottom:8px;box-shadow:0 1px 3px rgba(0,0,0,.08);}")
-        sb.append(".card-title{font-size:11px;font-weight:700;color:var(--muted);")
-        sb.append("text-transform:uppercase;letter-spacing:.06em;margin-bottom:8px;")
-        sb.append("display:flex;align-items:center;gap:5px;}")
-        sb.append(".card-val{margin-left:auto;background:#dbeafe;color:var(--accent);")
-        sb.append("font-size:11px;font-weight:700;padding:1px 7px;border-radius:5px;")
-        sb.append("border:1px solid #bfdbfe;text-transform:none;}")
+        sb.append(".card{background:var(--card-bg);border:1px solid var(--card-border);border-radius:8px;padding:10px;margin-bottom:8px;box-shadow:0 1px 3px rgba(0,0,0,.08);}")
+        sb.append(".card-title{font-size:11px;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:.06em;margin-bottom:8px;display:flex;align-items:center;gap:5px;}")
+        sb.append(".card-val{margin-left:auto;background:#dbeafe;color:var(--accent);font-size:11px;font-weight:700;padding:1px 7px;border-radius:5px;border:1px solid #bfdbfe;text-transform:none;}")
         sb.append(".stat-grid{display:grid;grid-template-columns:1fr 1fr;gap:6px;margin-bottom:8px;}")
         sb.append(".stat-cell{background:#e2eaf4;border:1px solid #c8d8ea;border-radius:6px;padding:7px 9px;}")
-        sb.append(".stat-lbl{font-size:9px;font-weight:700;text-transform:uppercase;")
-        sb.append("letter-spacing:.06em;color:var(--muted);margin-bottom:2px;}")
+        sb.append(".stat-lbl{font-size:9px;font-weight:700;text-transform:uppercase;letter-spacing:.06em;color:var(--muted);margin-bottom:2px;}")
         sb.append(".stat-val{font-size:13px;font-weight:700;color:var(--text);}")
-        sb.append(".btn{background:#f8fafc;color:var(--text);border:1px solid var(--card-border);")
-        sb.append("padding:6px 10px;border-radius:6px;cursor:pointer;font-weight:600;font-size:11px;")
-        sb.append("transition:all .12s;touch-action:manipulation;min-height:32px;}")
+        sb.append(".btn{background:#f8fafc;color:var(--text);border:1px solid var(--card-border);padding:6px 10px;border-radius:6px;cursor:pointer;font-weight:600;font-size:11px;transition:all .12s;touch-action:manipulation;min-height:32px;}")
         sb.append(".btn:hover{background:#dbeafe;border-color:var(--accent);color:var(--accent);}")
         sb.append(".btn:active{transform:scale(.92);}")
         sb.append(".btn.sel{background:#dbeafe;border-color:var(--accent);color:var(--accent);}")
@@ -189,54 +145,41 @@ object WebControlHtml {
         sb.append(".btn.off2{background:#fee2e2;border-color:var(--red);color:var(--red);}")
         sb.append(".btn-full{width:100%;margin-bottom:4px;}")
         sb.append(".btn-row{display:flex;flex-wrap:wrap;gap:5px;}")
-        sb.append("input[type=range]{width:100%;height:4px;background:#cbd5e1;")
-        sb.append("border-radius:4px;outline:none;-webkit-appearance:none;margin:10px 0 2px;cursor:pointer;}")
-        sb.append("input[type=range]::-webkit-slider-thumb{-webkit-appearance:none;width:20px;height:20px;")
-        sb.append("background:var(--accent);border-radius:50%;border:2px solid #fff;")
-        sb.append("box-shadow:0 1px 4px rgba(37,99,235,.4);cursor:grab;}")
+        sb.append("input[type=range]{width:100%;height:4px;background:#cbd5e1;border-radius:4px;outline:none;-webkit-appearance:none;margin:10px 0 2px;cursor:pointer;}")
+        sb.append("input[type=range]::-webkit-slider-thumb{-webkit-appearance:none;width:20px;height:20px;background:var(--accent);border-radius:50%;border:2px solid #fff;box-shadow:0 1px 4px rgba(37,99,235,.4);cursor:grab;}")
         sb.append(".s-labels{display:flex;justify-content:space-between;font-size:9px;color:var(--muted);}")
-        sb.append(".trow{display:flex;align-items:center;justify-content:space-between;")
-        sb.append("padding:8px 0;border-bottom:1px solid var(--card-border);}")
+        sb.append(".trow{display:flex;align-items:center;justify-content:space-between;padding:8px 0;border-bottom:1px solid var(--card-border);}")
         sb.append(".trow:last-child{border-bottom:none;}")
         sb.append(".tlabel{font-size:12px;display:flex;align-items:center;gap:6px;color:var(--text);}")
         sb.append(".switch{position:relative;display:inline-block;width:42px;height:24px;flex-shrink:0;}")
         sb.append(".switch input{opacity:0;width:0;height:0;}")
-        sb.append(".sw{position:absolute;cursor:pointer;inset:0;background:#cbd5e1;")
-        sb.append("border-radius:24px;transition:.3s;border:1px solid #94a3b8;}")
-        sb.append(".sw:before{content:'';position:absolute;height:18px;width:18px;left:2px;bottom:2px;")
-        sb.append("background:#fff;border-radius:50%;transition:.3s;box-shadow:0 1px 3px rgba(0,0,0,.3);}")
+        sb.append(".sw{position:absolute;cursor:pointer;inset:0;background:#cbd5e1;border-radius:24px;transition:.3s;border:1px solid #94a3b8;}")
+        sb.append(".sw:before{content:'';position:absolute;height:18px;width:18px;left:2px;bottom:2px;background:#fff;border-radius:50%;transition:.3s;box-shadow:0 1px 3px rgba(0,0,0,.3);}")
         sb.append("input:checked+.sw{background:#34d399;border-color:var(--green);}")
         sb.append("input:checked+.sw:before{transform:translateX(18px);}")
-        sb.append(".txt-input{width:100%;background:#fff;color:var(--text);")
-        sb.append("border:1px solid var(--card-border);border-radius:6px;padding:7px 10px;")
-        sb.append("font-size:11px;font-family:monospace;outline:none;margin-top:6px;}")
+        sb.append(".txt-input{width:100%;background:#fff;color:var(--text);border:1px solid var(--card-border);border-radius:6px;padding:7px 10px;font-size:11px;font-family:monospace;outline:none;margin-top:6px;}")
         sb.append(".txt-input:focus{border-color:var(--accent);box-shadow:0 0 0 2px #bfdbfe;}")
-        sb.append(".sub-label{font-size:9px;font-weight:700;text-transform:uppercase;")
-        sb.append("letter-spacing:.07em;color:var(--muted);margin:8px 0 5px;}")
-        sb.append("#toast{position:fixed;bottom:16px;right:16px;padding:7px 16px;border-radius:6px;")
-        sb.append("font-size:11px;font-weight:700;pointer-events:none;transition:opacity .2s;opacity:0;z-index:9999;white-space:nowrap;}")
+        sb.append(".sub-label{font-size:9px;font-weight:700;text-transform:uppercase;letter-spacing:.07em;color:var(--muted);margin:8px 0 5px;}")
+        sb.append("#toast{position:fixed;bottom:16px;right:16px;padding:7px 16px;border-radius:6px;font-size:11px;font-weight:700;pointer-events:none;transition:opacity .2s;opacity:0;z-index:9999;white-space:nowrap;}")
         sb.append("#toast.show{opacity:1;}")
         sb.append("#toast.ok{background:#d1fae5;color:#065f46;border:1px solid #6ee7b7;}")
         sb.append("#toast.err{background:#fee2e2;color:#991b1b;border:1px solid #fca5a5;}")
         sb.append(".sec-head{padding:6px 0 8px;margin-bottom:4px;border-bottom:1px solid var(--card-border);}")
         sb.append(".sec-head h2{font-size:13px;font-weight:800;color:var(--text);}")
         sb.append(".sec-head p{font-size:10px;color:var(--muted);}")
-
         sb.append("</style></head><body>")
 
-        // ════════════════════════════════════════
-        //  LAYOUT
-        // ════════════════════════════════════════
+        // LAYOUT
         sb.append("<div class=\"layout\">")
 
-        // ── Área ESQUERDA: Preview ───────────────────────────────────
-        sb.append("<div class=\"left-area\">")
+        // ── ÁREA ESQUERDA ────────────────────────────────────────────────
+        sb.append("<div class=\"left-area\" id=\"left-area\">")
 
-        // Janela de preview estilo Win98
-        sb.append("<div class=\"preview-win\">")
+        // Janela flutuante de preview
+        sb.append("<div class=\"preview-win\" id=\"preview-win\">")
 
-        // titlebar preview
-        sb.append("<div class=\"preview-titlebar\">")
+        // titlebar (drag handle)
+        sb.append("<div class=\"preview-titlebar\" id=\"preview-titlebar\">")
         sb.append("<div class=\"preview-title-txt\">&#127909; Camera Preview</div>")
         sb.append("<div class=\"preview-btns\">")
         sb.append("<div class=\"preview-wbtn\">_</div>")
@@ -245,51 +188,57 @@ object WebControlHtml {
         sb.append("</div></div>")
 
         // tela de vídeo
-        sb.append("<div class=\"preview-screen\" id=\"preview-screen\">")
-        // imagem MJPEG
-        sb.append("<img id=\"preview-img\" src=\"/api/preview\" alt=\"\" style=\"display:none\" onerror=\"previewError()\">")
-        // overlay offline
+        sb.append("<div class=\"preview-screen-wrap\" id=\"preview-screen\">")
+        sb.append("<img id=\"preview-img\" src=\"\" alt=\"\" onerror=\"previewError()\">")
         sb.append("<div class=\"preview-offline\" id=\"preview-offline\">")
         sb.append("<span>&#128247;</span>")
         sb.append("<p>Preview indispon&#237;vel</p>")
         sb.append("<p style=\"font-size:9px;color:#444\">Inicie o stream para ativar</p>")
         sb.append("</div>")
-        // OSD badges
         sb.append("<div class=\"preview-osd\" id=\"preview-osd\" style=\"display:none\">")
-        sb.append("<div class=\"osd-badge live\" id=\"osd-live\">&#11044; AO VIVO</div>")
+        sb.append("<div class=\"osd-badge live\">&#11044; AO VIVO</div>")
         sb.append("<div class=\"osd-badge\" id=\"osd-res\">-</div>")
         sb.append("<div class=\"osd-badge\" id=\"osd-fps\">- fps</div>")
+        sb.append("<div class=\"osd-badge\" id=\"osd-rot\">&#8635; 0&#176;</div>")
         sb.append("</div>")
-        sb.append("</div>") // preview-screen
+        sb.append("</div>") // preview-screen-wrap
 
-        // toolbar de seleção de câmera
+        // toolbar câmeras + rotação
         sb.append("<div class=\"cam-toolbar\">")
-        sb.append("<span class=\"cam-toolbar-lbl\">C&#226;mera:</span>")
-        sb.append("<div id=\"cam-selector\"></div>")
+        sb.append("<span class=\"cam-toolbar-lbl\">C&#226;m:</span>")
+        sb.append("<div id=\"cam-selector\" style=\"display:flex;gap:4px;flex-wrap:wrap\"></div>")
+        sb.append("<div class=\"toolbar-sep\"></div>")
+        sb.append("<span class=\"cam-toolbar-lbl\">Rot:</span>")
+        sb.append("<button class=\"rot-btn sel\" data-rot=\"0\" onclick=\"setRotation(0)\">0&#176;</button>")
+        sb.append("<button class=\"rot-btn\" data-rot=\"90\" onclick=\"setRotation(90)\">90&#176;</button>")
+        sb.append("<button class=\"rot-btn\" data-rot=\"180\" onclick=\"setRotation(180)\">180&#176;</button>")
+        sb.append("<button class=\"rot-btn\" data-rot=\"270\" onclick=\"setRotation(270)\">270&#176;</button>")
+        sb.append("<div class=\"toolbar-sep\"></div>")
+        sb.append("<button class=\"rot-btn\" id=\"btn-rot-lock\" onclick=\"toggleRotLock()\" title=\"Travar rota\u00e7\u00e3o\">&#128274; Livre</button>")
         sb.append("</div>")
 
-        // statusbar do preview
+        // statusbar
         sb.append("<div class=\"preview-statusbar\">")
-        sb.append("<div class=\"p98-cell\">Cam: <span id=\"prev-cam\">-</span></div>")
+        sb.append("<div class=\"p98-cell\">Cam:<span id=\"prev-cam\">-</span></div>")
         sb.append("<div class=\"p98-cell\"><span id=\"prev-res\">-</span></div>")
-        sb.append("<div class=\"p98-cell\">ISO: <span id=\"prev-iso\">-</span></div>")
-        sb.append("<div class=\"p98-cell\">&#9889; <span id=\"prev-lat\">--</span></div>")
+        sb.append("<div class=\"p98-cell\">ISO:<span id=\"prev-iso\">-</span></div>")
+        sb.append("<div class=\"p98-cell\">&#9889;<span id=\"prev-lat\">--</span></div>")
+        sb.append("<div class=\"p98-cell\">&#8635;<span id=\"prev-rot\">0&#176;</span></div>")
         sb.append("</div>")
+
+        // resize handle
+        sb.append("<div class=\"resize-handle\" id=\"resize-handle\"></div>")
 
         sb.append("</div>") // preview-win
         sb.append("</div>") // left-area
 
-        // ── Painel DIREITO ────────────────────────────────────────────
+        // ── PAINEL DIREITO ───────────────────────────────────────────────
         sb.append("<div class=\"right-panel\">")
         sb.append("<div class=\"win98-bar\">")
         sb.append("<div class=\"win98-titlebar\">")
         sb.append("<div class=\"win98-title-txt\"><span>&#128247;</span>Camera2 Control v5</div>")
-        sb.append("<div class=\"win98-btns\">")
-        sb.append("<div class=\"win98-btn\">_</div>")
-        sb.append("<div class=\"win98-btn\">&#9633;</div>")
-        sb.append("<div class=\"win98-btn\">&#215;</div>")
-        sb.append("</div></div>")
-
+        sb.append("<div class=\"win98-btns\"><div class=\"win98-btn\">_</div><div class=\"win98-btn\">&#9633;</div><div class=\"win98-btn\">&#215;</div></div>")
+        sb.append("</div>")
         sb.append("<div class=\"win98-menubar\">")
         sb.append("<div class=\"win98-menu-item\" id=\"menu-stream-item\">")
         sb.append("<button class=\"win98-menu-btn\" onclick=\"toggleMenu('stream-item')\">Stream</button>")
@@ -314,8 +263,7 @@ object WebControlHtml {
         sb.append("<div class=\"win98-dropdown\">")
         sb.append("<button class=\"win98-dd-item\" onclick=\"openSection('system');closeMenus()\">&#9881; Status</button>")
         sb.append("</div></div>")
-        sb.append("</div>") // win98-menubar
-
+        sb.append("</div>") // menubar
         sb.append("<div class=\"win98-statusbar\">")
         sb.append("<div class=\"w98-cell\"><span class=\"dot-w98\" id=\"dot-stream\"></span><span id=\"lbl-stream\">Off</span></div>")
         sb.append("<div class=\"w98-cell\">Cam:<span id=\"lbl-cam\">-</span></div>")
@@ -324,7 +272,6 @@ object WebControlHtml {
         sb.append("</div>")
         sb.append("</div>") // win98-bar
 
-        // ── Seções (conteúdo) ─────────────────────────────────────────
         sb.append("<div class=\"content-area\">")
 
         // STREAM
@@ -334,22 +281,17 @@ object WebControlHtml {
         sb.append("<div class=\"stat-cell\"><div class=\"stat-lbl\">Bitrate</div><div class=\"stat-val\"><span id=\"lbl-br\">-</span>k</div></div>")
         sb.append("<div class=\"stat-cell\"><div class=\"stat-lbl\">RTMP</div><div class=\"stat-val\" id=\"lbl-rtmp-short\" style=\"font-size:9px;word-break:break-all\">-</div></div>")
         sb.append("</div>")
-        sb.append("<div class=\"card\">")
-        sb.append("<div class=\"card-title\">&#128279; Destino RTMP</div>")
+        sb.append("<div class=\"card\"><div class=\"card-title\">&#128279; Destino RTMP</div>")
         sb.append("<input class=\"txt-input\" id=\"rtmp-url\" type=\"text\" placeholder=\"rtmp://IP:1935/live/stream\">")
         sb.append("<div class=\"btn-row\" style=\"margin-top:7px\">")
         sb.append("<button class=\"btn\" onclick=\"applyRtmpUrl()\">Salvar URL</button>")
         sb.append("<button class=\"btn on\" onclick=\"sendControl({streamAction:'start'},this,'Iniciado')\">&#9654; Start</button>")
         sb.append("<button class=\"btn off2\" onclick=\"sendControl({streamAction:'stop'},this,'Parado')\">&#9209; Stop</button>")
         sb.append("</div></div>")
-        sb.append("<div class=\"card\">")
-        sb.append("<div class=\"card-title\">&#128251; Resolu&#231;&#227;o</div>")
+        sb.append("<div class=\"card\"><div class=\"card-title\">&#128251; Resolu&#231;&#227;o</div>")
         sb.append("<div class=\"btn-row\" id=\"btngroup-resolution\"></div>")
-        sb.append("<div class=\"sub-label\">FPS</div>")
-        sb.append("<div class=\"btn-row\" id=\"btngroup-fps\"></div>")
-        sb.append("</div>")
-        sb.append("<div class=\"card\">")
-        sb.append("<div class=\"card-title\">&#128246; Bitrate <span class=\"card-val\" id=\"br-value\">4000k</span></div>")
+        sb.append("<div class=\"sub-label\">FPS</div><div class=\"btn-row\" id=\"btngroup-fps\"></div></div>")
+        sb.append("<div class=\"card\"><div class=\"card-title\">&#128246; Bitrate <span class=\"card-val\" id=\"br-value\">4000k</span></div>")
         sb.append("<input type=\"range\" id=\"bitrate\" min=\"500\" max=\"25000\" value=\"4000\" step=\"500\" oninput=\"updateBitrate(this.value)\">")
         sb.append("<div class=\"s-labels\"><span>500k</span><span>25M</span></div>")
         sb.append("<div class=\"btn-row\" style=\"margin-top:6px\">")
@@ -358,22 +300,19 @@ object WebControlHtml {
         sb.append("<button class=\"btn\" onclick=\"setBitrate(8000)\">8M</button>")
         sb.append("<button class=\"btn\" onclick=\"setBitrate(15000)\">15M</button>")
         sb.append("<button class=\"btn\" onclick=\"setBitrate(20000)\">20M</button>")
-        sb.append("</div></div>")
-        sb.append("</div>") // sec-stream
+        sb.append("</div></div></div>")
 
         // CÂMERA
         sb.append("<div class=\"section\" id=\"sec-camera\">")
         sb.append("<div class=\"sec-head\"><h2>&#128247; C&#226;mera</h2><p>Sensor e lente ativa</p></div>")
-        sb.append("<div class=\"card\">")
-        sb.append("<div class=\"card-title\">Sensores</div>")
+        sb.append("<div class=\"card\"><div class=\"card-title\">Sensores</div>")
         sb.append("<div class=\"btn-row\" id=\"btngroup-camera\"><span style=\"color:var(--muted);font-size:11px\">Carregando...</span></div>")
         sb.append("</div></div>")
 
         // FOCO
         sb.append("<div class=\"section\" id=\"sec-focus\">")
         sb.append("<div class=\"sec-head\"><h2>&#127919; Zoom &amp; Foco</h2><p>&#211;ptica e AF</p></div>")
-        sb.append("<div class=\"card\">")
-        sb.append("<div class=\"card-title\">&#128269; Zoom <span class=\"card-val\" id=\"zoom-val\">1x</span></div>")
+        sb.append("<div class=\"card\"><div class=\"card-title\">&#128269; Zoom <span class=\"card-val\" id=\"zoom-val\">1x</span></div>")
         sb.append("<input type=\"range\" id=\"zoom\" min=\"0\" max=\"1\" value=\"0\" step=\"0.01\" oninput=\"updateZoom(this.value)\">")
         sb.append("<div class=\"s-labels\"><span>1x</span><span>M&#225;x</span></div>")
         sb.append("<div class=\"btn-row\" style=\"margin-top:6px\">")
@@ -383,8 +322,7 @@ object WebControlHtml {
         sb.append("<button class=\"btn\" onclick=\"setZoom(0.5)\">4x</button>")
         sb.append("<button class=\"btn\" onclick=\"setZoom(1.0)\">Max</button>")
         sb.append("</div></div>")
-        sb.append("<div class=\"card\">")
-        sb.append("<div class=\"card-title\">&#127919; Foco <span class=\"card-val\" id=\"focus-val\">Auto</span></div>")
+        sb.append("<div class=\"card\"><div class=\"card-title\">&#127919; Foco <span class=\"card-val\" id=\"focus-val\">Auto</span></div>")
         sb.append("<input type=\"range\" id=\"focus\" min=\"0\" max=\"10\" value=\"0\" step=\"0.1\" oninput=\"updateFocus(this.value)\">")
         sb.append("<div class=\"s-labels\"><span>Auto/&#8734;</span><span>Macro</span></div>")
         sb.append("<div class=\"sub-label\">Modo AF</div>")
@@ -395,49 +333,35 @@ object WebControlHtml {
         // ISO & EV
         sb.append("<div class=\"section\" id=\"sec-exposure\">")
         sb.append("<div class=\"sec-head\"><h2>&#9728; ISO &amp; EV</h2><p>Exposi&#231;&#227;o manual</p></div>")
-        sb.append("<div class=\"card\">")
-        sb.append("<div class=\"card-title\">Modo</div>")
+        sb.append("<div class=\"card\"><div class=\"card-title\">Modo</div>")
         sb.append("<div class=\"trow\"><span class=\"tlabel\">&#129504; Sensor Manual</span>")
         sb.append("<label class=\"switch\"><input type=\"checkbox\" id=\"toggle-manual\" onchange=\"toggleManual(this)\"><span class=\"sw\"></span></label></div>")
         sb.append("<div class=\"trow\"><span class=\"tlabel\">&#128274; Travar AE</span>")
-        sb.append("<label class=\"switch\"><input type=\"checkbox\" id=\"toggle-ae-lock\" onchange=\"toggleAELock(this)\"><span class=\"sw\"></span></label></div>")
-        sb.append("</div>")
-        sb.append("<div class=\"card\">")
-        sb.append("<div class=\"card-title\">&#128248; ISO <span class=\"card-val\" id=\"iso-val\">50</span></div>")
+        sb.append("<label class=\"switch\"><input type=\"checkbox\" id=\"toggle-ae-lock\" onchange=\"toggleAELock(this)\"><span class=\"sw\"></span></label></div></div>")
+        sb.append("<div class=\"card\"><div class=\"card-title\">&#128248; ISO <span class=\"card-val\" id=\"iso-val\">50</span></div>")
         sb.append("<input type=\"range\" id=\"iso\" min=\"0\" max=\"6\" value=\"0\" step=\"1\" oninput=\"updateISO(this.value)\">")
         sb.append("<div class=\"s-labels\"><span>50</span><span>3200</span></div>")
         sb.append("<div class=\"btn-row\" style=\"margin-top:6px\">")
-        sb.append("<button class=\"btn\" onclick=\"setISO(0)\">50</button>")
-        sb.append("<button class=\"btn\" onclick=\"setISO(1)\">100</button>")
-        sb.append("<button class=\"btn\" onclick=\"setISO(2)\">200</button>")
-        sb.append("<button class=\"btn\" onclick=\"setISO(3)\">400</button>")
-        sb.append("<button class=\"btn\" onclick=\"setISO(4)\">800</button>")
-        sb.append("<button class=\"btn\" onclick=\"setISO(5)\">1600</button>")
-        sb.append("<button class=\"btn\" onclick=\"setISO(6)\">3200</button>")
-        sb.append("</div></div>")
-        sb.append("<div class=\"card\">")
-        sb.append("<div class=\"card-title\">&#9728; EV <span class=\"card-val\" id=\"ev-val\">&#177;0</span></div>")
+        sb.append("<button class=\"btn\" onclick=\"setISO(0)\">50</button><button class=\"btn\" onclick=\"setISO(1)\">100</button>")
+        sb.append("<button class=\"btn\" onclick=\"setISO(2)\">200</button><button class=\"btn\" onclick=\"setISO(3)\">400</button>")
+        sb.append("<button class=\"btn\" onclick=\"setISO(4)\">800</button><button class=\"btn\" onclick=\"setISO(5)\">1600</button>")
+        sb.append("<button class=\"btn\" onclick=\"setISO(6)\">3200</button></div></div>")
+        sb.append("<div class=\"card\"><div class=\"card-title\">&#9728; EV <span class=\"card-val\" id=\"ev-val\">&#177;0</span></div>")
         sb.append("<input type=\"range\" id=\"ev\" min=\"-8\" max=\"8\" value=\"0\" step=\"1\" oninput=\"updateEV(this.value)\">")
         sb.append("<div class=\"s-labels\"><span>-8</span><span>0</span><span>+8</span></div>")
         sb.append("<div class=\"btn-row\" style=\"margin-top:6px\">")
-        sb.append("<button class=\"btn\" onclick=\"setEV(-4)\">-4</button>")
-        sb.append("<button class=\"btn\" onclick=\"setEV(-2)\">-2</button>")
-        sb.append("<button class=\"btn\" onclick=\"setEV(0)\">0</button>")
-        sb.append("<button class=\"btn\" onclick=\"setEV(2)\">+2</button>")
-        sb.append("<button class=\"btn\" onclick=\"setEV(4)\">+4</button>")
-        sb.append("</div></div></div>")
+        sb.append("<button class=\"btn\" onclick=\"setEV(-4)\">-4</button><button class=\"btn\" onclick=\"setEV(-2)\">-2</button>")
+        sb.append("<button class=\"btn\" onclick=\"setEV(0)\">0</button><button class=\"btn\" onclick=\"setEV(2)\">+2</button>")
+        sb.append("<button class=\"btn\" onclick=\"setEV(4)\">+4</button></div></div></div>")
 
         // COR & WB
         sb.append("<div class=\"section\" id=\"sec-image\">")
         sb.append("<div class=\"sec-head\"><h2>&#127755; Cor &amp; WB</h2><p>Balan&#231;o de branco e flash</p></div>")
-        sb.append("<div class=\"card\">")
-        sb.append("<div class=\"card-title\">&#127755; Balan&#231;o de Branco</div>")
+        sb.append("<div class=\"card\"><div class=\"card-title\">&#127755; Balan&#231;o de Branco</div>")
         sb.append("<div class=\"btn-row\" id=\"btngroup-wb\"></div>")
         sb.append("<div class=\"trow\" style=\"margin-top:8px\"><span class=\"tlabel\">&#128274; Travar AWB</span>")
-        sb.append("<label class=\"switch\"><input type=\"checkbox\" id=\"toggle-awb-lock\" onchange=\"toggleAWBLock(this)\"><span class=\"sw\"></span></label></div>")
-        sb.append("</div>")
-        sb.append("<div class=\"card\">")
-        sb.append("<div class=\"card-title\">&#128161; Flash &amp; Tocha</div>")
+        sb.append("<label class=\"switch\"><input type=\"checkbox\" id=\"toggle-awb-lock\" onchange=\"toggleAWBLock(this)\"><span class=\"sw\"></span></label></div></div>")
+        sb.append("<div class=\"card\"><div class=\"card-title\">&#128161; Flash &amp; Tocha</div>")
         sb.append("<div class=\"btn-row\">")
         sb.append("<button class=\"btn\" onclick=\"sendControl({flash:'off'},this,'Off')\">Off</button>")
         sb.append("<button class=\"btn\" onclick=\"sendControl({flash:'auto'},this,'Auto')\">Auto</button>")
@@ -448,15 +372,12 @@ object WebControlHtml {
         // SISTEMA
         sb.append("<div class=\"section\" id=\"sec-system\">")
         sb.append("<div class=\"sec-head\"><h2>&#9881; Sistema</h2><p>Estabiliza&#231;&#227;o e diagn&#243;stico</p></div>")
-        sb.append("<div class=\"card\">")
-        sb.append("<div class=\"card-title\">&#128307; Estabiliza&#231;&#227;o</div>")
+        sb.append("<div class=\"card\"><div class=\"card-title\">&#128307; Estabiliza&#231;&#227;o</div>")
         sb.append("<div class=\"trow\"><span class=\"tlabel\">OIS &#8212; &#211;ptica</span>")
         sb.append("<label class=\"switch\"><input type=\"checkbox\" id=\"toggle-ois\" onchange=\"toggleOIS(this)\"><span class=\"sw\"></span></label></div>")
         sb.append("<div class=\"trow\"><span class=\"tlabel\">EIS &#8212; Digital</span>")
-        sb.append("<label class=\"switch\"><input type=\"checkbox\" id=\"toggle-eis\" onchange=\"toggleEIS(this)\"><span class=\"sw\"></span></label></div>")
-        sb.append("</div>")
-        sb.append("<div class=\"card\">")
-        sb.append("<div class=\"card-title\">&#8505; Diagn&#243;stico</div>")
+        sb.append("<label class=\"switch\"><input type=\"checkbox\" id=\"toggle-eis\" onchange=\"toggleEIS(this)\"><span class=\"sw\"></span></label></div></div>")
+        sb.append("<div class=\"card\"><div class=\"card-title\">&#8505; Diagn&#243;stico</div>")
         sb.append("<div class=\"stat-grid\">")
         sb.append("<div class=\"stat-cell\"><div class=\"stat-lbl\">C&#226;mera</div><div class=\"stat-val\" id=\"diag-cam\">-</div></div>")
         sb.append("<div class=\"stat-cell\"><div class=\"stat-lbl\">Res</div><div class=\"stat-val\" id=\"diag-res\">-</div></div>")
@@ -473,124 +394,135 @@ object WebControlHtml {
         sb.append("</div>") // layout
         sb.append("<div id=\"toast\" class=\"ok\">OK</div>")
 
-        // ════════════════════════════════════════
-        //  JAVASCRIPT
-        // ════════════════════════════════════════
+        // ── JAVASCRIPT ───────────────────────────────────────────────────
         sb.append("<script>")
 
-        // Menu Win98
-        sb.append("function toggleMenu(id){var el=document.getElementById('menu-'+id);")
-        sb.append("var isOpen=el.classList.contains('open');closeMenus();if(!isOpen)el.classList.add('open');}")
+        // ── Menu Win98 ────────────────────────────────────────────────────
+        sb.append("function toggleMenu(id){var el=document.getElementById('menu-'+id);var isOpen=el.classList.contains('open');closeMenus();if(!isOpen)el.classList.add('open');}")
         sb.append("function closeMenus(){document.querySelectorAll('.win98-menu-item').forEach(function(m){m.classList.remove('open');});}")
         sb.append("document.addEventListener('click',function(e){if(!e.target.closest('.win98-menu-item'))closeMenus();});")
-
-        // Seções
         sb.append("function openSection(id){document.querySelectorAll('.section').forEach(function(s){s.classList.remove('active');});document.getElementById('sec-'+id).classList.add('active');}")
 
-        // Toast
-        sb.append("var _tt;function showToast(m,e){var t=document.getElementById('toast');t.textContent=m;")
-        sb.append("t.className=e?'err show':'ok show';clearTimeout(_tt);_tt=setTimeout(function(){t.classList.remove('show');},1800);}")
+        // ── Toast ─────────────────────────────────────────────────────────
+        sb.append("var _tt;function showToast(m,e){var t=document.getElementById('toast');t.textContent=m;t.className=e?'err show':'ok show';clearTimeout(_tt);_tt=setTimeout(function(){t.classList.remove('show');},1800);}")
 
-        // Send
-        sb.append("function sendControl(d,btn,msg){")
-        sb.append("fetch('/api/control',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(d)})")
-        sb.append(".then(function(r){if(!r.ok)throw new Error(r.status);return r.json();})")
-        sb.append(".then(function(){showToast(msg||'OK',false);})")
-        sb.append(".catch(function(e){showToast('ERR:'+e.message,true);});}")
+        // ── API ───────────────────────────────────────────────────────────
+        sb.append("function sendControl(d,btn,msg){fetch('/api/control',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(d)}).then(function(r){if(!r.ok)throw new Error(r.status);return r.json();}).then(function(){showToast(msg||'OK',false);}).catch(function(e){showToast('ERR:'+e.message,true);});}")
         sb.append("function markSel(attr,val){document.querySelectorAll('['+attr+']').forEach(function(el){el.classList.toggle('sel',el.getAttribute(attr)===String(val));});}")
 
-        // ── Preview MJPEG ──────────────────────────────────────────────────
+        // ── Drag (arrastar pela titlebar) ─────────────────────────────────
+        sb.append("(function(){")
+        sb.append("var win=document.getElementById('preview-win');")
+        sb.append("var bar=document.getElementById('preview-titlebar');")
+        sb.append("var ox=0,oy=0,wx=0,wy=0;")
+        sb.append("bar.addEventListener('mousedown',function(e){")
+        sb.append("if(e.target.classList.contains('preview-wbtn'))return;")
+        sb.append("ox=e.clientX;oy=e.clientY;wx=win.offsetLeft;wy=win.offsetTop;")
+        sb.append("function mv(e){win.style.left=(wx+e.clientX-ox)+'px';win.style.top=(wy+e.clientY-oy)+'px';}")
+        sb.append("function up(){document.removeEventListener('mousemove',mv);document.removeEventListener('mouseup',up);}")
+        sb.append("document.addEventListener('mousemove',mv);document.addEventListener('mouseup',up);e.preventDefault();});")
+        // touch drag
+        sb.append("bar.addEventListener('touchstart',function(e){")
+        sb.append("if(e.target.classList.contains('preview-wbtn'))return;")
+        sb.append("var t=e.touches[0];ox=t.clientX;oy=t.clientY;wx=win.offsetLeft;wy=win.offsetTop;")
+        sb.append("function mv(e){var t=e.touches[0];win.style.left=(wx+t.clientX-ox)+'px';win.style.top=(wy+t.clientY-oy)+'px';}")
+        sb.append("function up(){document.removeEventListener('touchmove',mv);document.removeEventListener('touchend',up);}")
+        sb.append("document.addEventListener('touchmove',mv,{passive:false});document.addEventListener('touchend',up);e.preventDefault();},{passive:false});")
+        sb.append("}());")
+
+        // ── Resize manual (handle canto) ──────────────────────────────────
+        sb.append("(function(){")
+        sb.append("var win=document.getElementById('preview-win');")
+        sb.append("var hdl=document.getElementById('resize-handle');")
+        sb.append("var sx=0,sy=0,sw=0,sh=0;")
+        sb.append("hdl.addEventListener('mousedown',function(e){")
+        sb.append("sx=e.clientX;sy=e.clientY;sw=win.offsetWidth;sh=win.offsetHeight;")
+        sb.append("function mv(e){var nw=Math.max(280,sw+e.clientX-sx);var nh=Math.max(180,sh+e.clientY-sy);win.style.width=nw+'px';win.style.height=nh+'px';}")
+        sb.append("function up(){document.removeEventListener('mousemove',mv);document.removeEventListener('mouseup',up);}")
+        sb.append("document.addEventListener('mousemove',mv);document.addEventListener('mouseup',up);e.preventDefault();});")
+        sb.append("}());")
+
+        // ── Preview MJPEG ─────────────────────────────────────────────────
         sb.append("var previewOn=false;")
-        sb.append("function startPreview(){")
-        sb.append("var img=document.getElementById('preview-img');")
-        sb.append("img.src='/api/preview?t='+Date.now();")
-        sb.append("img.style.display='block';")
-        sb.append("document.getElementById('preview-offline').style.display='none';")
-        sb.append("document.getElementById('preview-osd').style.display='flex';")
-        sb.append("previewOn=true;}")
-        sb.append("function stopPreview(){")
-        sb.append("var img=document.getElementById('preview-img');")
-        sb.append("img.src='';img.style.display='none';")
-        sb.append("document.getElementById('preview-offline').style.display='flex';")
-        sb.append("document.getElementById('preview-osd').style.display='none';")
-        sb.append("previewOn=false;}")
+        sb.append("function startPreview(){var img=document.getElementById('preview-img');img.src='/api/preview?t='+Date.now();img.style.display='block';document.getElementById('preview-offline').style.display='none';document.getElementById('preview-osd').style.display='flex';previewOn=true;}")
+        sb.append("function stopPreview(){var img=document.getElementById('preview-img');img.src='';img.style.display='none';document.getElementById('preview-offline').style.display='flex';document.getElementById('preview-osd').style.display='none';previewOn=false;}")
         sb.append("function previewError(){if(previewOn)stopPreview();}")
         sb.append("function togglePreview(){if(previewOn)stopPreview();else startPreview();}")
+
+        // ── Rotação do preview ────────────────────────────────────────────
+        // rotLocked: quando true, a rotação NÃO muda automaticamente pelo status da câmera
+        sb.append("var curRot=0,rotLocked=false;")
+        sb.append("function applyRotation(deg){")
+        sb.append("var img=document.getElementById('preview-img');")
+        sb.append("img.style.transform='rotate('+deg+'deg)';")
+        sb.append("// se 90 ou 270 precisamos trocar width/height para não distorcer
+")
+        sb.append("if(deg===90||deg===270){img.style.width=null;img.style.height=null;")
+        sb.append("img.style.maxWidth='100vh';img.style.maxHeight='100%';}")
+        sb.append("else{img.style.width='100%';img.style.height='100%';img.style.maxWidth='';img.style.maxHeight='';}")
+        sb.append("document.getElementById('osd-rot').textContent='\u21bb '+deg+'\u00b0';")
+        sb.append("document.getElementById('prev-rot').textContent=deg+'\u00b0';")
+        sb.append("document.querySelectorAll('[data-rot]').forEach(function(b){b.classList.toggle('sel',+b.getAttribute('data-rot')===deg);});")
+        sb.append("curRot=deg;}")
+        sb.append("function setRotation(deg){applyRotation(deg);if(rotLocked)sendControl({previewRotation:deg},null,'Rot '+deg+'\u00b0');}")
+        sb.append("function toggleRotLock(){rotLocked=!rotLocked;")
+        sb.append("var btn=document.getElementById('btn-rot-lock');")
+        sb.append("btn.textContent=rotLocked?'\ud83d\udd12 Travado':'\ud83d\udd13 Livre';")
+        sb.append("btn.classList.toggle('sel',rotLocked);")
+        sb.append("showToast(rotLocked?'Rota\u00e7\u00e3o travada':'Rota\u00e7\u00e3o livre',false);}")
 
         // RTMP
         sb.append("function applyRtmpUrl(){var v=document.getElementById('rtmp-url').value.trim();if(v)sendControl({rtmpUrl:v},null,'URL salva');}")
 
-        // Bitrate
-        sb.append("var _brT;")
-        sb.append("function updateBitrate(v){document.getElementById('br-value').textContent=v+'k';clearTimeout(_brT);_brT=setTimeout(function(){sendControl({bitrate:+v},null,v+'kbps');},400);}")
+        // Bitrate / Zoom / Foco / ISO / EV / Toggles
+        sb.append("var _brT;function updateBitrate(v){document.getElementById('br-value').textContent=v+'k';clearTimeout(_brT);_brT=setTimeout(function(){sendControl({bitrate:+v},null,v+'kbps');},400);}")
         sb.append("function setBitrate(v){document.getElementById('bitrate').value=v;document.getElementById('br-value').textContent=v+'k';sendControl({bitrate:v},null,v+'kbps');}")
-
-        // Zoom
-        sb.append("var _zT;")
-        sb.append("function updateZoom(v){var m=(1+parseFloat(v)*7).toFixed(1);document.getElementById('zoom-val').textContent=m+'x';clearTimeout(_zT);_zT=setTimeout(function(){sendControl({zoom:parseFloat(v)},null,'Zoom '+m+'x');},150);}")
+        sb.append("var _zT;function updateZoom(v){var m=(1+parseFloat(v)*7).toFixed(1);document.getElementById('zoom-val').textContent=m+'x';clearTimeout(_zT);_zT=setTimeout(function(){sendControl({zoom:parseFloat(v)},null,'Zoom '+m+'x');},150);}")
         sb.append("function setZoom(v){document.getElementById('zoom').value=v;updateZoom(v);}")
-
-        // Foco
-        sb.append("var _fT;")
-        sb.append("function updateFocus(v){var f=parseFloat(v);document.getElementById('focus-val').textContent=f===0?'Auto':f.toFixed(1)+'D';clearTimeout(_fT);_fT=setTimeout(function(){sendControl({focus:f/10},null,(f===0?'Auto':f.toFixed(1)+'D'));},200);}")
+        sb.append("var _fT;function updateFocus(v){var f=parseFloat(v);document.getElementById('focus-val').textContent=f===0?'Auto':f.toFixed(1)+'D';clearTimeout(_fT);_fT=setTimeout(function(){sendControl({focus:f/10},null,(f===0?'Auto':f.toFixed(1)+'D'));},200);}")
         sb.append("function triggerAF(){sendControl({afTrigger:true},null,'AF disparado');}")
-
-        // ISO
         sb.append("var ISO_LIST=[50,100,200,400,800,1600,3200];var _iT;")
         sb.append("function updateISO(v){var iso=ISO_LIST[Math.min(+v,6)];document.getElementById('iso-val').textContent=iso;clearTimeout(_iT);_iT=setTimeout(function(){sendControl({iso:iso},null,'ISO '+iso);},350);}")
         sb.append("function setISO(idx){document.getElementById('iso').value=idx;updateISO(idx);}")
-
-        // EV
-        sb.append("var _eT;")
-        sb.append("function updateEV(v){var n=+v;document.getElementById('ev-val').textContent=(n>0?'+':n===0?'\u00b1':'')+n;clearTimeout(_eT);_eT=setTimeout(function(){sendControl({exposure:n},null,'EV '+(n>0?'+':'')+n);},300);}")
+        sb.append("var _eT;function updateEV(v){var n=+v;document.getElementById('ev-val').textContent=(n>0?'+':n===0?'\u00b1':'')+n;clearTimeout(_eT);_eT=setTimeout(function(){sendControl({exposure:n},null,'EV '+(n>0?'+':'')+n);},300);}")
         sb.append("function setEV(v){document.getElementById('ev').value=v;updateEV(v);}")
-
-        // Toggles
         sb.append("function toggleManual(c){sendControl({manualSensor:c.checked},null,c.checked?'Manual ON':'Auto');}")
         sb.append("function toggleOIS(c){sendControl({ois:c.checked},null,c.checked?'OIS ON':'OIS OFF');}")
         sb.append("function toggleEIS(c){sendControl({eis:c.checked},null,c.checked?'EIS ON':'EIS OFF');}")
         sb.append("function toggleAELock(c){sendControl({aeLock:c.checked},null,c.checked?'AE Lock':'AE Livre');}")
         sb.append("function toggleAWBLock(c){sendControl({awbLock:c.checked},null,c.checked?'AWB Lock':'AWB Livre');}")
-
-        sb.append("function switchCamera(id){")
-        sb.append("markSel('data-cam',id);")
-        sb.append("document.querySelectorAll('.cam-btn').forEach(function(b){b.classList.toggle('sel',b.getAttribute('data-cam')===String(id));});")
-        sb.append("sendControl({camera:id},null,'Cam '+id);}")
+        sb.append("function switchCamera(id){markSel('data-cam',id);document.querySelectorAll('.cam-btn').forEach(function(b){b.classList.toggle('sel',b.getAttribute('data-cam')===String(id));});sendControl({camera:id},null,'Cam '+id);}")
         sb.append("function setResolution(res){markSel('data-res',res);sendControl({resolution:res},null,res);}")
         sb.append("function setFPS(fps){markSel('data-fps',fps);sendControl({fps:fps},null,fps+' fps');}")
         sb.append("function setFocusMode(m){markSel('data-fm',m);sendControl({focusmode:m},null,'Foco: '+m);}")
 
-        // Poll status
+        // ── Poll status ───────────────────────────────────────────────────
         sb.append("var _pf=0;")
         sb.append("function pollStatus(){var t0=Date.now();")
         sb.append("fetch('/api/status').then(function(r){return r.json();}).then(function(d){")
         sb.append("var lat=Date.now()-t0;var c=d.curvals||{};_pf=0;var on=d.streaming;")
-        sb.append("var dotCls='dot-w98'+(on?' live':'');")
-        sb.append("document.getElementById('dot-stream').className=dotCls;")
+        sb.append("document.getElementById('dot-stream').className='dot-w98'+(on?' live':'');")
         sb.append("document.getElementById('lbl-stream').textContent=on?'AO VIVO':'Off';")
         sb.append("document.getElementById('lbl-cam').textContent=c.camera_id||'-';")
         sb.append("document.getElementById('lbl-res').textContent=c.video_size||'-';")
         sb.append("document.getElementById('lbl-br').textContent=c.bitrate_kbps||'-';")
         sb.append("document.getElementById('lbl-lat').textContent=lat+'ms';")
-        sb.append("var rs=d.rtmp_url||'-';document.getElementById('lbl-rtmp-short').textContent=rs;")
-        // preview screen border quando ao vivo
+        sb.append("document.getElementById('lbl-rtmp-short').textContent=d.rtmp_url||'-';")
         sb.append("document.getElementById('preview-screen').classList.toggle('streaming',on);")
-        // OSD dados
         sb.append("document.getElementById('osd-res').textContent=c.video_size||'-';")
         sb.append("document.getElementById('osd-fps').textContent=(c.fps||'-')+' fps';")
-        // preview statusbar
         sb.append("document.getElementById('prev-cam').textContent=c.camera_id||'-';")
         sb.append("document.getElementById('prev-res').textContent=c.video_size||'-';")
         sb.append("document.getElementById('prev-iso').textContent=c.iso||'-';")
         sb.append("document.getElementById('prev-lat').textContent=lat+'ms';")
-        // diag
+        // rotação automática se não travada — usa campo rotation da API se disponível
+        sb.append("if(!rotLocked&&c.rotation!==undefined){var nr=(+c.rotation||0);if(nr!==curRot)applyRotation(nr);}")
         sb.append("document.getElementById('diag-cam').textContent=c.camera_id||'-';")
         sb.append("document.getElementById('diag-res').textContent=c.video_size||'-';")
         sb.append("document.getElementById('diag-br').textContent=(c.bitrate_kbps||'-')+'k';")
         sb.append("document.getElementById('diag-lat').textContent=lat+'ms';")
         sb.append("document.getElementById('diag-iso').textContent=c.iso||'-';")
         sb.append("document.getElementById('diag-stream').textContent=on?'Ativo':'Off';")
-        // se stream ativo e preview desligado, liga preview automaticamente
         sb.append("if(on&&!previewOn)startPreview();")
         sb.append("if(!on&&previewOn)stopPreview();")
         sb.append("var u=document.getElementById('rtmp-url');if(u&&d.rtmp_url&&document.activeElement!==u)u.value=d.rtmp_url;")
@@ -603,23 +535,18 @@ object WebControlHtml {
         sb.append("el=document.getElementById('bitrate');if(c.bitrate_kbps&&el&&document.activeElement!==el){el.value=c.bitrate_kbps;document.getElementById('br-value').textContent=c.bitrate_kbps+'k';}")
         sb.append("}).catch(function(){_pf++;if(_pf>=3){document.getElementById('dot-stream').className='dot-w98';document.getElementById('lbl-stream').textContent='Sem conex\u00e3o';}});}")
 
-        // Init capabilities
+        // ── Init capabilities ─────────────────────────────────────────────
         sb.append("function initCapabilities(){fetch('/api/capabilities').then(function(r){return r.json();}).then(function(caps){")
-        // seletor de câmera no preview
         sb.append("var cs=document.getElementById('cam-selector');cs.innerHTML='';")
         sb.append("caps.forEach(function(cap){if(cap.is_depth)return;")
         sb.append("var b=document.createElement('button');b.className='cam-btn';b.setAttribute('data-cam',cap.camera_id);")
-        sb.append("var lbl=cap.name||(\"Cam \"+cap.camera_id);")
-        sb.append("b.textContent=lbl;")
-        sb.append("b.onclick=function(){switchCamera(cap.camera_id);};")
-        sb.append("cs.appendChild(b);});")
-        // seletor na seção câmera
+        sb.append("b.textContent=cap.name||('Cam '+cap.camera_id);")
+        sb.append("b.onclick=function(){switchCamera(cap.camera_id);};cs.appendChild(b);});")
         sb.append("var cg=document.getElementById('btngroup-camera');cg.innerHTML='';")
         sb.append("caps.forEach(function(cap){if(cap.is_depth)return;")
         sb.append("var b=document.createElement('button');b.className='btn';b.setAttribute('data-cam',cap.camera_id);")
         sb.append("b.textContent=cap.name||('Cam '+cap.camera_id);")
         sb.append("b.onclick=function(){switchCamera(cap.camera_id);};cg.appendChild(b);});")
-        // resoluções
         sb.append("var rg=document.getElementById('btngroup-resolution');rg.innerHTML='';")
         sb.append("var fc=caps.find(function(c){return !c.is_depth;})||null;")
         sb.append("if(fc&&fc.available_resolutions){")
@@ -627,25 +554,17 @@ object WebControlHtml {
         sb.append(".forEach(function(p){if(fc.available_resolutions.indexOf(p.key)<0)return;")
         sb.append("var b=document.createElement('button');b.className='btn';b.setAttribute('data-res',p.res);b.textContent=p.lbl;")
         sb.append("b.onclick=function(){setResolution(p.res);};rg.appendChild(b);});}")
-        // FPS
         sb.append("var fg=document.getElementById('btngroup-fps');fg.innerHTML='';")
-        sb.append("[15,24,30,60].forEach(function(fps){var b=document.createElement('button');b.className='btn';")
-        sb.append("b.setAttribute('data-fps',fps);b.textContent=fps+'fps';if(fps===30)b.classList.add('sel');")
-        sb.append("b.onclick=function(){setFPS(fps);};fg.appendChild(b);});")
-        // WB
+        sb.append("[15,24,30,60].forEach(function(fps){var b=document.createElement('button');b.className='btn';b.setAttribute('data-fps',fps);b.textContent=fps+'fps';if(fps===30)b.classList.add('sel');b.onclick=function(){setFPS(fps);};fg.appendChild(b);});")
         sb.append("var wg=document.getElementById('btngroup-wb');wg.innerHTML='';")
         sb.append("var wbN={'auto':'Auto','daylight':'Dia','cloudy':'Nublado','tungsten':'Tung.','incandescent':'Incand.','fluorescent':'Fluor.'};")
         sb.append("if(caps[0]&&caps[0].supported_awb_modes)caps[0].supported_awb_modes.forEach(function(mode){")
-        sb.append("var b=document.createElement('button');b.className='btn';b.setAttribute('data-wb',mode);")
-        sb.append("b.textContent=wbN[mode]||mode;")
-        sb.append("b.onclick=function(){markSel('data-wb',mode);sendControl({whiteBalance:mode},null,'WB '+mode);};")
-        sb.append("wg.appendChild(b);});")
-        // AF modes
+        sb.append("var b=document.createElement('button');b.className='btn';b.setAttribute('data-wb',mode);b.textContent=wbN[mode]||mode;")
+        sb.append("b.onclick=function(){markSel('data-wb',mode);sendControl({whiteBalance:mode},null,'WB '+mode);};wg.appendChild(b);});")
         sb.append("var fg2=document.getElementById('btngroup-focusmode');fg2.innerHTML='';")
         sb.append("var afN={'off':'Travar','auto':'Auto','continuous-video':'Video','continuous-picture':'Foto'};")
         sb.append("if(caps[0]&&caps[0].supported_af_modes)caps[0].supported_af_modes.forEach(function(mode){")
-        sb.append("var b=document.createElement('button');b.className='btn';b.setAttribute('data-fm',mode);")
-        sb.append("b.textContent=afN[mode]||mode;")
+        sb.append("var b=document.createElement('button');b.className='btn';b.setAttribute('data-fm',mode);b.textContent=afN[mode]||mode;")
         sb.append("b.onclick=function(){setFocusMode(mode);};fg2.appendChild(b);});")
         sb.append("}).catch(function(){console.warn('caps indispon\u00edvel');});}")
 
