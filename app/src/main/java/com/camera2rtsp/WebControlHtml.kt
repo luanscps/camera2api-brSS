@@ -449,8 +449,11 @@ object WebControlHtml {
         sb.append("function previewError(){if(previewOn)stopPreview();}")
         sb.append("function togglePreview(){if(previewOn)stopPreview();else startPreview();}")
 
-        // Rotação do preview
-        sb.append("var curRot=0,rotLocked=false;")
+        // Rotação do preview — lógica corrigida
+        // userSetRot: true quando o usuário escolheu manualmente; o poll não sobrescreve
+        // setRotation: sempre envia para a API e marca userSetRot=true
+        // toggleRotLock: reseta userSetRot, permitindo o poll sincronizar novamente
+        sb.append("var curRot=0,rotLocked=false,userSetRot=false;")
         sb.append("function applyRotation(deg){")
         sb.append("var img=document.getElementById('preview-img');")
         sb.append("img.style.transform='rotate('+deg+'deg)';")
@@ -461,8 +464,10 @@ object WebControlHtml {
         sb.append("document.getElementById('prev-rot').textContent=deg+'\u00b0';")
         sb.append("document.querySelectorAll('[data-rot]').forEach(function(b){b.classList.toggle('sel',+b.getAttribute('data-rot')===deg);});")
         sb.append("curRot=deg;}")
-        sb.append("function setRotation(deg){applyRotation(deg);if(rotLocked)sendControl({previewRotation:deg},null,'Rot '+deg+'\u00b0');}")
-        sb.append("function toggleRotLock(){rotLocked=!rotLocked;")
+        // setRotation: sempre aplica visual + sempre persiste na API + marca userSetRot
+        sb.append("function setRotation(deg){applyRotation(deg);userSetRot=true;sendControl({previewRotation:deg},null,'Rot '+deg+'\u00b0');}")
+        // toggleRotLock: se desbloquear, libera o poll sincronizar de novo
+        sb.append("function toggleRotLock(){rotLocked=!rotLocked;if(!rotLocked)userSetRot=false;")
         sb.append("var btn=document.getElementById('btn-rot-lock');")
         sb.append("btn.textContent=rotLocked?'\ud83d\udd12 Travado':'\ud83d\udd13 Livre';")
         sb.append("btn.classList.toggle('sel',rotLocked);")
@@ -512,7 +517,8 @@ object WebControlHtml {
         sb.append("document.getElementById('prev-res').textContent=c.video_size||'-';")
         sb.append("document.getElementById('prev-iso').textContent=c.iso||'-';")
         sb.append("document.getElementById('prev-lat').textContent=lat+'ms';")
-        sb.append("if(!rotLocked&&c.rotation!==undefined){var nr=(+c.rotation||0);if(nr!==curRot)applyRotation(nr);}")
+        // Poll só atualiza rotação se o usuário não escolheu manualmente E não está travado
+        sb.append("if(!userSetRot&&!rotLocked&&c.rotation!==undefined){var nr=(+c.rotation||0);if(nr!==curRot)applyRotation(nr);}")
         sb.append("document.getElementById('diag-cam').textContent=c.camera_id||'-';")
         sb.append("document.getElementById('diag-res').textContent=c.video_size||'-';")
         sb.append("document.getElementById('diag-br').textContent=(c.bitrate_kbps||'-')+'k';")
