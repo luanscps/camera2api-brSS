@@ -24,7 +24,7 @@ object WebControlHtml {
         sb.append(".left-area{flex:1;overflow:hidden;position:relative;background:linear-gradient(135deg,#e2e8f0 0%,#dde5f0 100%);}")
         sb.append(".right-panel{width:var(--right-w);flex-shrink:0;background:var(--panel-bg);border-left:2px solid var(--card-border);display:flex;flex-direction:column;overflow:hidden;}")
 
-        // ── Janela flutuante preview ───────────────────────────────────────
+        // Janela flutuante preview
         sb.append(".preview-win{position:absolute;top:20px;left:20px;")
         sb.append("width:620px;min-width:280px;min-height:180px;")
         sb.append("border-top:2px solid var(--w98-border-light);border-left:2px solid var(--w98-border-light);")
@@ -46,7 +46,7 @@ object WebControlHtml {
         sb.append("font-size:9px;font-weight:700;cursor:pointer;display:flex;align-items:center;")
         sb.append("justify-content:center;font-family:monospace;color:#000;}")
 
-        // tela 16:9 — cresce proporcionalmente com a janela
+        // tela 16:9
         sb.append(".preview-screen-wrap{flex:1;background:#000;")
         sb.append("border-top:2px solid var(--w98-border-darker);border-left:2px solid var(--w98-border-darker);")
         sb.append("border-bottom:2px solid var(--w98-border-light);border-right:2px solid var(--w98-border-light);")
@@ -64,7 +64,7 @@ object WebControlHtml {
         sb.append("@keyframes blink{0%,100%{opacity:1}50%{opacity:.5}}")
         sb.append(".preview-screen-wrap.streaming{box-shadow:inset 0 0 0 2px #dc2626,0 0 14px rgba(220,38,38,.35);}")
 
-        // toolbar câmeras + rotação
+        // toolbar cameras + rotação
         sb.append(".cam-toolbar{padding:4px 6px;display:flex;align-items:center;gap:5px;flex-wrap:wrap;")
         sb.append("border-top:1px solid var(--w98-border-dark);flex-shrink:0;}")
         sb.append(".cam-toolbar-lbl{font-size:10px;font-weight:700;color:#444;font-family:monospace;white-space:nowrap;}")
@@ -87,7 +87,7 @@ object WebControlHtml {
         sb.append("border-bottom:1px solid var(--w98-border-light);border-right:1px solid var(--w98-border-light);")
         sb.append("padding:1px 7px;font-size:10px;font-family:'Courier New',monospace;color:#000;white-space:nowrap;}")
 
-        // resize handle visual (canto inferior direito)
+        // resize handle visual
         sb.append(".resize-handle{position:absolute;right:0;bottom:0;width:14px;height:14px;cursor:se-resize;")
         sb.append("background:linear-gradient(135deg,transparent 50%,var(--w98-border-dark) 50%);z-index:20;}")
 
@@ -172,7 +172,7 @@ object WebControlHtml {
         // LAYOUT
         sb.append("<div class=\"layout\">")
 
-        // ── ÁREA ESQUERDA ────────────────────────────────────────────────
+        // ÁREA ESQUERDA
         sb.append("<div class=\"left-area\" id=\"left-area\">")
 
         // Janela flutuante de preview
@@ -203,7 +203,7 @@ object WebControlHtml {
         sb.append("</div>")
         sb.append("</div>") // preview-screen-wrap
 
-        // toolbar câmeras + rotação
+        // toolbar cameras + rotação
         sb.append("<div class=\"cam-toolbar\">")
         sb.append("<span class=\"cam-toolbar-lbl\">C&#226;m:</span>")
         sb.append("<div id=\"cam-selector\" style=\"display:flex;gap:4px;flex-wrap:wrap\"></div>")
@@ -232,7 +232,7 @@ object WebControlHtml {
         sb.append("</div>") // preview-win
         sb.append("</div>") // left-area
 
-        // ── PAINEL DIREITO ───────────────────────────────────────────────
+        // PAINEL DIREITO
         sb.append("<div class=\"right-panel\">")
         sb.append("<div class=\"win98-bar\">")
         sb.append("<div class=\"win98-titlebar\">")
@@ -394,23 +394,23 @@ object WebControlHtml {
         sb.append("</div>") // layout
         sb.append("<div id=\"toast\" class=\"ok\">OK</div>")
 
-        // ── JAVASCRIPT ───────────────────────────────────────────────────
+        // JAVASCRIPT
         sb.append("<script>")
 
-        // ── Menu Win98 ────────────────────────────────────────────────────
+        // Menu Win98
         sb.append("function toggleMenu(id){var el=document.getElementById('menu-'+id);var isOpen=el.classList.contains('open');closeMenus();if(!isOpen)el.classList.add('open');}")
         sb.append("function closeMenus(){document.querySelectorAll('.win98-menu-item').forEach(function(m){m.classList.remove('open');});}")
         sb.append("document.addEventListener('click',function(e){if(!e.target.closest('.win98-menu-item'))closeMenus();});")
         sb.append("function openSection(id){document.querySelectorAll('.section').forEach(function(s){s.classList.remove('active');});document.getElementById('sec-'+id).classList.add('active');}")
 
-        // ── Toast ─────────────────────────────────────────────────────────
+        // Toast
         sb.append("var _tt;function showToast(m,e){var t=document.getElementById('toast');t.textContent=m;t.className=e?'err show':'ok show';clearTimeout(_tt);_tt=setTimeout(function(){t.classList.remove('show');},1800);}")
 
-        // ── API ───────────────────────────────────────────────────────────
+        // API
         sb.append("function sendControl(d,btn,msg){fetch('/api/control',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(d)}).then(function(r){if(!r.ok)throw new Error(r.status);return r.json();}).then(function(){showToast(msg||'OK',false);}).catch(function(e){showToast('ERR:'+e.message,true);});}")
         sb.append("function markSel(attr,val){document.querySelectorAll('['+attr+']').forEach(function(el){el.classList.toggle('sel',el.getAttribute(attr)===String(val));});}")
 
-        // ── Drag (arrastar pela titlebar) ─────────────────────────────────
+        // Drag (arrastar pela titlebar)
         sb.append("(function(){")
         sb.append("var win=document.getElementById('preview-win');")
         sb.append("var bar=document.getElementById('preview-titlebar');")
@@ -430,7 +430,7 @@ object WebControlHtml {
         sb.append("document.addEventListener('touchmove',mv,{passive:false});document.addEventListener('touchend',up);e.preventDefault();},{passive:false});")
         sb.append("}());")
 
-        // ── Resize manual (handle canto) ──────────────────────────────────
+        // Resize manual (handle canto)
         sb.append("(function(){")
         sb.append("var win=document.getElementById('preview-win');")
         sb.append("var hdl=document.getElementById('resize-handle');")
@@ -442,21 +442,18 @@ object WebControlHtml {
         sb.append("document.addEventListener('mousemove',mv);document.addEventListener('mouseup',up);e.preventDefault();});")
         sb.append("}());")
 
-        // ── Preview MJPEG ─────────────────────────────────────────────────
+        // Preview MJPEG
         sb.append("var previewOn=false;")
         sb.append("function startPreview(){var img=document.getElementById('preview-img');img.src='/api/preview?t='+Date.now();img.style.display='block';document.getElementById('preview-offline').style.display='none';document.getElementById('preview-osd').style.display='flex';previewOn=true;}")
         sb.append("function stopPreview(){var img=document.getElementById('preview-img');img.src='';img.style.display='none';document.getElementById('preview-offline').style.display='flex';document.getElementById('preview-osd').style.display='none';previewOn=false;}")
         sb.append("function previewError(){if(previewOn)stopPreview();}")
         sb.append("function togglePreview(){if(previewOn)stopPreview();else startPreview();}")
 
-        // ── Rotação do preview ────────────────────────────────────────────
-        // rotLocked: quando true, a rotação NÃO muda automaticamente pelo status da câmera
+        // Rotação do preview
         sb.append("var curRot=0,rotLocked=false;")
         sb.append("function applyRotation(deg){")
         sb.append("var img=document.getElementById('preview-img');")
         sb.append("img.style.transform='rotate('+deg+'deg)';")
-        sb.append("// se 90 ou 270 precisamos trocar width/height para não distorcer
-")
         sb.append("if(deg===90||deg===270){img.style.width=null;img.style.height=null;")
         sb.append("img.style.maxWidth='100vh';img.style.maxHeight='100%';}")
         sb.append("else{img.style.width='100%';img.style.height='100%';img.style.maxWidth='';img.style.maxHeight='';}")
@@ -496,7 +493,7 @@ object WebControlHtml {
         sb.append("function setFPS(fps){markSel('data-fps',fps);sendControl({fps:fps},null,fps+' fps');}")
         sb.append("function setFocusMode(m){markSel('data-fm',m);sendControl({focusmode:m},null,'Foco: '+m);}")
 
-        // ── Poll status ───────────────────────────────────────────────────
+        // Poll status
         sb.append("var _pf=0;")
         sb.append("function pollStatus(){var t0=Date.now();")
         sb.append("fetch('/api/status').then(function(r){return r.json();}).then(function(d){")
@@ -515,7 +512,6 @@ object WebControlHtml {
         sb.append("document.getElementById('prev-res').textContent=c.video_size||'-';")
         sb.append("document.getElementById('prev-iso').textContent=c.iso||'-';")
         sb.append("document.getElementById('prev-lat').textContent=lat+'ms';")
-        // rotação automática se não travada — usa campo rotation da API se disponível
         sb.append("if(!rotLocked&&c.rotation!==undefined){var nr=(+c.rotation||0);if(nr!==curRot)applyRotation(nr);}")
         sb.append("document.getElementById('diag-cam').textContent=c.camera_id||'-';")
         sb.append("document.getElementById('diag-res').textContent=c.video_size||'-';")
@@ -535,7 +531,7 @@ object WebControlHtml {
         sb.append("el=document.getElementById('bitrate');if(c.bitrate_kbps&&el&&document.activeElement!==el){el.value=c.bitrate_kbps;document.getElementById('br-value').textContent=c.bitrate_kbps+'k';}")
         sb.append("}).catch(function(){_pf++;if(_pf>=3){document.getElementById('dot-stream').className='dot-w98';document.getElementById('lbl-stream').textContent='Sem conex\u00e3o';}});}")
 
-        // ── Init capabilities ─────────────────────────────────────────────
+        // Init capabilities
         sb.append("function initCapabilities(){fetch('/api/capabilities').then(function(r){return r.json();}).then(function(caps){")
         sb.append("var cs=document.getElementById('cam-selector');cs.innerHTML='';")
         sb.append("caps.forEach(function(cap){if(cap.is_depth)return;")
