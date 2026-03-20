@@ -1,6 +1,7 @@
 package com.camera2rtsp
 
 import android.content.Context
+import android.graphics.ImageFormat
 import android.util.Log
 import com.pedro.common.ConnectChecker
 import com.pedro.encoder.input.video.CameraHelper
@@ -28,6 +29,65 @@ class RtmpStreamer(
 
     val isStreaming: Boolean get() = camera?.isStreaming == true
     val isOnPreview: Boolean get() = camera?.isOnPreview == true
+
+    // -- Preview MJPEG para WebGUI ------------------------------------------
+    // Throttle: captura apenas 1 frame por segundo para não impactar o RTMP
+    @Volatile private var lastCaptureMs = 0L
+    private var webPreviewEnabled = false
+
+    companion object {
+        /** Último frame JPEG capturado — servido pelo WebControlServer em /api/preview */
+        @Volatile var lastFrameJpeg: ByteArray? = null
+    }
+
+    /**
+     * Habilita captura de frames para preview na WebGUI.
+     * Deve ser chamado DEPOIS de startPreview() (câmera já aberta).
+     * Usa addImageListener do RootEncoder — Surface independente, não interfere no RTMP.
+     */
+    fun enableWebPreview() {
+        val cam = camera ?: return
+        if (webPreviewEnabled) return
+        try {
+            cam.addImageListener(
+                ImageFormat.JPEG,
+                2  // maxImages baixo para não consumir memória
+            ) { image ->
+                try {
+                    val now = System.currentTimeMillis()
+                    if (now - lastCaptureMs >= 1000L) {  // throttle 1fps
+                        lastCaptureMs = now
+                        val buffer = image.planes[0].buffer
+                        val bytes = ByteArray(buffer.remaining())
+                        buffer.get(bytes)
+                        lastFrameJpeg = bytes
+                    }
+                } catch (e: Exception) {
+                    Log.w(tag, "enableWebPreview frame error: ${e.message}")
+                } finally {
+                    image.close()
+                }
+            }
+            webPreviewEnabled = true
+            Log.i(tag, "Web preview habilitado (1fps JPEG)")
+        } catch (e: Exception) {
+            Log.w(tag, "enableWebPreview: addImageListener falhou — ${e.message}")
+        }
+    }
+
+    /**
+     * Desabilita captura de frames e limpa o buffer.
+     */
+    fun disableWebPreview() {
+        try {
+            camera?.removeImageListener()
+        } catch (e: Exception) {
+            Log.w(tag, "disableWebPreview: ${e.message}")
+        }
+        webPreviewEnabled = false
+        lastFrameJpeg = null
+        Log.i(tag, "Web preview desabilitado")
+    }
 
     // -- Inicializacao --------------------------------------------------------
 
@@ -58,13 +118,18 @@ class RtmpStreamer(
 
     fun startPreview(facing: CameraHelper.Facing = CameraHelper.Facing.BACK) {
         val cam = camera ?: return
-        try { if (!cam.isOnPreview) cam.startPreview(facing) }
-        catch (e: Exception) { Log.e(tag, "Erro ao iniciar preview", e) }
+        try {
+            if (!cam.isOnPreview) cam.startPreview(facing)
+            // ✅ Habilita captura JPEG para o /api/preview da WebGUI
+            enableWebPreview()
+        } catch (e: Exception) { Log.e(tag, "Erro ao iniciar preview", e) }
     }
 
     fun stopPreview() {
-        try { if (camera?.isOnPreview == true) camera?.stopPreview() }
-        catch (e: Exception) { Log.e(tag, "Erro ao parar preview", e) }
+        try {
+            disableWebPreview()
+            if (camera?.isOnPreview == true) camera?.stopPreview()
+        } catch (e: Exception) { Log.e(tag, "Erro ao parar preview", e) }
     }
 
     /**
@@ -74,9 +139,10 @@ class RtmpStreamer(
     fun switchCamera(facing: CameraHelper.Facing) {
         val cam = camera ?: return
         try {
-            val wasStreaming = cam.isStreaming
+            disableWebPreview()
             if (cam.isOnPreview) cam.stopPreview()
             cam.startPreview(facing)
+            enableWebPreview()
             Log.i(tag, "Camera trocada para $facing")
         } catch (e: Exception) {
             Log.e(tag, "Erro ao trocar camera", e)
@@ -85,14 +151,15 @@ class RtmpStreamer(
 
     /**
      * Troca para uma camera pelo ID (ex: "0", "1", "2").
-     * Usa stopPreview + startPreview com o mesmo facing implicitamente.
      */
     fun switchCameraById(cameraId: String, facing: CameraHelper.Facing) {
         val cam = camera ?: return
         try {
+            disableWebPreview()
             if (cam.isOnPreview) cam.stopPreview()
             cam.startPreview(facing)
             ctrl.currentCameraId = cameraId
+            enableWebPreview()
             Log.i(tag, "Camera trocada para ID=$cameraId facing=$facing")
         } catch (e: Exception) {
             Log.e(tag, "Erro ao trocar camera por ID", e)
@@ -124,12 +191,14 @@ class RtmpStreamer(
     }
 
     fun stop() {
+        disableWebPreview()
         stopStream()
         stopPreview()
         releaseCamera()
     }
 
     private fun releaseCamera() {
+        disableWebPreview()
         try {
             camera?.let {
                 if (it.isStreaming) it.stopStream()
