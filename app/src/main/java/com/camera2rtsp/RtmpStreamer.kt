@@ -2,21 +2,16 @@ package com.camera2rtsp
 
 import android.content.Context
 import android.graphics.ImageFormat
+import android.media.Image
 import android.util.Log
 import com.pedro.common.ConnectChecker
+import com.pedro.encoder.input.video.Camera2ApiManager
 import com.pedro.encoder.input.video.CameraHelper
 import com.pedro.library.rtmp.RtmpCamera2
 import com.pedro.library.view.OpenGlView
 
 /**
- * Wrapper do RtmpCamera2 (RootEncoder library:2.4.5).
- *
- * Dois modos:
- *  1. initWithView(OpenGlView)  -> preview visivel + stream RTMP
- *  2. initBackground(Context)  -> sem preview (modo servico em segundo plano)
- *
- * A Activity deve chamar initWithView() passando a OpenGlView / AutoFitTextureView.
- * Quando a Activity e destruida, chamar detachView() para voltar ao modo background.
+ * Wrapper do RtmpCamera2 (RootEncoder 2.6.1).
  */
 class RtmpStreamer(
     private val ctrl: Camera2Controller,
@@ -31,7 +26,6 @@ class RtmpStreamer(
     val isOnPreview: Boolean get() = camera?.isOnPreview == true
 
     // -- Preview MJPEG para WebGUI ------------------------------------------
-    // Throttle: captura apenas 1 frame por segundo para não impactar o RTMP
     @Volatile private var lastCaptureMs = 0L
     private var webPreviewEnabled = false
 
@@ -41,43 +35,47 @@ class RtmpStreamer(
     }
 
     /**
-     * Habilita captura de frames para preview na WebGUI.
-     * Deve ser chamado DEPOIS de startPreview() (câmera já aberta).
-     * Usa addImageListener do RootEncoder — Surface independente, não interfere no RTMP.
+     * Habilita captura de frames JPEG para o /api/preview da WebGUI (throttle 1fps).
+     * Usa Camera2ApiManager.addImageListener — Surface auxiliar independente do RTMP.
+     * API real (2.6.1): addImageListener(width, height, format, maxImages, autoClose, ImageCallback)
      */
     fun enableWebPreview() {
         val cam = camera ?: return
         if (webPreviewEnabled) return
         try {
+            val w = ctrl.currentWidth
+            val h = ctrl.currentHeight
             cam.addImageListener(
+                w, h,
                 ImageFormat.JPEG,
-                2  // maxImages baixo para não consumir memória
-            ) { image ->
-                try {
-                    val now = System.currentTimeMillis()
-                    if (now - lastCaptureMs >= 1000L) {  // throttle 1fps
-                        lastCaptureMs = now
-                        val buffer = image.planes[0].buffer
-                        val bytes = ByteArray(buffer.remaining())
-                        buffer.get(bytes)
-                        lastFrameJpeg = bytes
+                2,       // maxImages
+                true,    // autoClose — a lib fecha o Image após o callback
+                object : Camera2ApiManager.ImageCallback {
+                    override fun onImageAvailable(image: Image) {
+                        try {
+                            val now = System.currentTimeMillis()
+                            if (now - lastCaptureMs >= 1000L) { // throttle 1fps
+                                lastCaptureMs = now
+                                val buffer = image.planes[0].buffer
+                                val bytes = ByteArray(buffer.remaining())
+                                buffer.get(bytes)
+                                lastFrameJpeg = bytes
+                            }
+                        } catch (e: Exception) {
+                            Log.w(tag, "enableWebPreview frame error: ${e.message}")
+                        }
+                        // Não chamamos image.close() pois autoClose=true
                     }
-                } catch (e: Exception) {
-                    Log.w(tag, "enableWebPreview frame error: ${e.message}")
-                } finally {
-                    image.close()
                 }
-            }
+            )
             webPreviewEnabled = true
-            Log.i(tag, "Web preview habilitado (1fps JPEG)")
+            Log.i(tag, "Web preview habilitado (1fps JPEG ${w}x${h})")
         } catch (e: Exception) {
             Log.w(tag, "enableWebPreview: addImageListener falhou — ${e.message}")
         }
     }
 
-    /**
-     * Desabilita captura de frames e limpa o buffer.
-     */
+    /** Desabilita captura e limpa o buffer. */
     fun disableWebPreview() {
         try {
             camera?.removeImageListener()
@@ -89,12 +87,8 @@ class RtmpStreamer(
         Log.i(tag, "Web preview desabilitado")
     }
 
-    // -- Inicializacao --------------------------------------------------------
+    // -- Inicialização --------------------------------------------------------
 
-    /**
-     * Inicializa com OpenGlView para exibir preview na tela.
-     * Se ja existir uma instancia em background, para ela primeiro.
-     */
     fun initWithView(view: OpenGlView, context: Context) {
         releaseCamera()
         camera = RtmpCamera2(view, checker)
@@ -102,12 +96,8 @@ class RtmpStreamer(
         Log.i(tag, "RtmpCamera2 inicializado com OpenGlView")
     }
 
-    /**
-     * Inicializa em modo background (sem preview na tela).
-     * Usado quando a Activity nao esta visivel.
-     */
     fun initBackground(context: Context) {
-        if (camera != null && !isOnPreview) return   // ja em background
+        if (camera != null && !isOnPreview) return
         releaseCamera()
         camera = RtmpCamera2(context, checker)
         ctrl.rtmpCamera = camera
@@ -120,22 +110,21 @@ class RtmpStreamer(
         val cam = camera ?: return
         try {
             if (!cam.isOnPreview) cam.startPreview(facing)
-            // ✅ Habilita captura JPEG para o /api/preview da WebGUI
             enableWebPreview()
-        } catch (e: Exception) { Log.e(tag, "Erro ao iniciar preview", e) }
+        } catch (e: Exception) {
+            Log.e(tag, "Erro ao iniciar preview", e)
+        }
     }
 
     fun stopPreview() {
         try {
             disableWebPreview()
             if (camera?.isOnPreview == true) camera?.stopPreview()
-        } catch (e: Exception) { Log.e(tag, "Erro ao parar preview", e) }
+        } catch (e: Exception) {
+            Log.e(tag, "Erro ao parar preview", e)
+        }
     }
 
-    /**
-     * Troca a camera ativa.
-     * Para o preview, muda o facing e reinicia — a TextureView continua a mesma.
-     */
     fun switchCamera(facing: CameraHelper.Facing) {
         val cam = camera ?: return
         try {
@@ -149,9 +138,6 @@ class RtmpStreamer(
         }
     }
 
-    /**
-     * Troca para uma camera pelo ID (ex: "0", "1", "2").
-     */
     fun switchCameraById(cameraId: String, facing: CameraHelper.Facing) {
         val cam = camera ?: return
         try {
@@ -169,8 +155,8 @@ class RtmpStreamer(
     // -- Stream ---------------------------------------------------------------
 
     fun startStream(context: Context, url: String) {
-        val cam = camera ?: run { Log.e(tag, "init nao chamado"); return }
-        if (cam.isStreaming) { Log.d(tag, "ja streaming"); return }
+        val cam = camera ?: run { Log.e(tag, "init não chamado"); return }
+        if (cam.isStreaming) { Log.d(tag, "já streaming"); return }
         val rotation = CameraHelper.getCameraOrientation(context)
         val vOk = cam.prepareVideo(
             ctrl.currentWidth, ctrl.currentHeight,
@@ -204,7 +190,9 @@ class RtmpStreamer(
                 if (it.isStreaming) it.stopStream()
                 if (it.isOnPreview) it.stopPreview()
             }
-        } catch (e: Exception) { Log.w(tag, "releaseCamera: ${e.message}") }
+        } catch (e: Exception) {
+            Log.w(tag, "releaseCamera: ${e.message}")
+        }
         camera = null
         ctrl.rtmpCamera = null
     }

@@ -39,7 +39,7 @@ class Camera2Controller {
     var currentHeight    = 1080
     var currentBitrate   = 4000
     var currentFps       = 30
-    // ✅ FIX: campo de rotação do preview/stream
+    // Rotação atual do preview/stream (0, 90, 180, 270)
     var previewRotation  = 0
 
     var edgeMode           = CameraMetadata.EDGE_MODE_HIGH_QUALITY
@@ -52,8 +52,7 @@ class Camera2Controller {
         worker.post { runCatching(block).onFailure { Log.e(tag, "worker error", it) } }
 
     // -------------------------------------------------------------------------
-    // Reflection helpers — usados apenas para sensor manual (ISO, shutter, frameDuration)
-    // Os demais controles usam API pública do RootEncoder
+    // Reflection helpers — usados apenas para sensor manual
     // -------------------------------------------------------------------------
 
     private fun getCam2Manager(): Camera2ApiManager? = try {
@@ -87,13 +86,12 @@ class Camera2Controller {
     // -------------------------------------------------------------------------
 
     private fun applyPostProcessing() {
-        val ok = applyOnBuilder { b ->
+        applyOnBuilder { b ->
             b.set(CaptureRequest.EDGE_MODE,            edgeMode)
             b.set(CaptureRequest.NOISE_REDUCTION_MODE, noiseReductionMode)
             b.set(CaptureRequest.HOT_PIXEL_MODE,       hotPixelMode)
             b.set(CaptureRequest.TONEMAP_MODE,         CameraMetadata.TONEMAP_MODE_HIGH_QUALITY)
         }
-        Log.d(tag, "postProcessing ok=$ok")
     }
 
     // -------------------------------------------------------------------------
@@ -102,23 +100,21 @@ class Camera2Controller {
 
     private fun applyManualSensor() {
         val safeDuration = maxOf(frameDurationNs, exposureNs)
-        val ok = applyOnBuilder { b ->
+        applyOnBuilder { b ->
             b.set(CaptureRequest.CONTROL_MODE,          CameraMetadata.CONTROL_MODE_OFF)
             b.set(CaptureRequest.CONTROL_AE_MODE,       CameraMetadata.CONTROL_AE_MODE_OFF)
             b.set(CaptureRequest.SENSOR_SENSITIVITY,    isoValue)
             b.set(CaptureRequest.SENSOR_EXPOSURE_TIME,  exposureNs)
             b.set(CaptureRequest.SENSOR_FRAME_DURATION, safeDuration)
         }
-        Log.d(tag, "manualSensor ok=$ok ISO=$isoValue exp=${exposureNs}ns dur=${safeDuration}ns")
         applyPostProcessing()
     }
 
     private fun applyAutoSensor() {
-        val ok = applyOnBuilder { b ->
+        applyOnBuilder { b ->
             b.set(CaptureRequest.CONTROL_MODE,    CameraMetadata.CONTROL_MODE_AUTO)
             b.set(CaptureRequest.CONTROL_AE_MODE, CameraMetadata.CONTROL_AE_MODE_ON)
         }
-        Log.d(tag, "autoSensor ok=$ok")
     }
 
     // -------------------------------------------------------------------------
@@ -132,13 +128,11 @@ class Camera2Controller {
             manualSensor = it as Boolean
             if (manualSensor) applyManualSensor()
             else { applyAutoSensor(); cam.setExposure(0); exposureLevel = 0 }
-            Log.d(tag, "manualSensor -> $manualSensor")
         }
 
         params["iso"]?.let {
             isoValue = when (it) {
                 is Double -> it.toInt()
-                is Int    -> it
                 is Number -> it.toInt()
                 else      -> it.toString().toIntOrNull() ?: 100
             }
@@ -149,31 +143,26 @@ class Camera2Controller {
                     .toInt().coerceIn(minEv, maxEv)
                 exposureLevel = ev; cam.setExposure(ev)
             }
-            Log.d(tag, "iso -> $isoValue manual=$manualSensor")
         }
 
         params["shutterSpeed"]?.let { raw ->
             exposureNs = parseTimeParam(raw, 33_333_333L)
             if (manualSensor) applyManualSensor()
-            Log.d(tag, "shutterSpeed -> ${exposureNs}ns")
         }
 
         params["frameDuration"]?.let { raw ->
             frameDurationNs = parseTimeParam(raw, 33_333_333L)
             if (manualSensor) applyManualSensor()
-            Log.d(tag, "frameDuration -> ${frameDurationNs}ns")
         }
 
         params["exposure"]?.let {
             if (!manualSensor) {
                 val ev = when (it) {
                     is Double -> it.toInt()
-                    is Int    -> it
                     is Number -> it.toInt()
                     else      -> it.toString().toIntOrNull() ?: 0
                 }.coerceIn(cam.minExposure, cam.maxExposure)
                 exposureLevel = ev; cam.setExposure(ev)
-                Log.d(tag, "EV -> $ev")
             }
         }
 
@@ -189,7 +178,6 @@ class Camera2Controller {
                 autoFocus = false; focusDistance = norm * 10f
                 cam.disableAutoFocus(); cam.setFocusDistance(focusDistance)
             }
-            Log.d(tag, "focus norm=$norm dist=$focusDistance")
         }
 
         params["focusmode"]?.let {
@@ -199,10 +187,9 @@ class Camera2Controller {
                 }
                 "off" -> cam.disableAutoFocus()
             }
-            Log.d(tag, "focusMode -> $it")
         }
 
-        params["afTrigger"]?.let { cam.enableAutoFocus(); Log.d(tag, "afTrigger") }
+        params["afTrigger"]?.let { cam.enableAutoFocus() }
 
         params["whiteBalance"]?.let {
             whiteBalanceMode = it as String
@@ -214,7 +201,6 @@ class Camera2Controller {
                 else                       -> CameraMetadata.CONTROL_AWB_MODE_AUTO
             }
             cam.enableAutoWhiteBalance(mode)
-            Log.d(tag, "WB -> $whiteBalanceMode")
         }
 
         params["zoom"]?.let {
@@ -226,50 +212,43 @@ class Camera2Controller {
             zoomLevel = z
             val zr = cam.zoomRange
             cam.setZoom(zr.lower + z * (zr.upper - zr.lower))
-            Log.d(tag, "zoom -> $z (real=${zr.lower + z * (zr.upper - zr.lower)})")
         }
 
         params["lantern"]?.let {
             lanternEnabled = it as Boolean
             if (lanternEnabled) cam.enableLantern() else cam.disableLantern()
-            Log.d(tag, "lantern -> $lanternEnabled")
         }
 
         params["ois"]?.let {
             oisEnabled = it as Boolean
             if (oisEnabled) cam.enableOpticalVideoStabilization()
             else cam.disableOpticalVideoStabilization()
-            Log.d(tag, "ois -> $oisEnabled")
         }
 
         params["eis"]?.let {
             eisEnabled = it as Boolean
             if (eisEnabled) cam.enableVideoStabilization()
             else cam.disableVideoStabilization()
-            Log.d(tag, "eis -> $eisEnabled")
         }
 
         params["aeLock"]?.let {
             aeLocked = it as Boolean
             if (aeLocked) cam.disableAutoExposure() else cam.enableAutoExposure()
-            Log.d(tag, "aeLock -> $aeLocked")
         }
 
         params["awbLock"]?.let {
             awbLocked = it as Boolean
             if (awbLocked) cam.disableAutoWhiteBalance()
             else cam.enableAutoWhiteBalance(CameraMetadata.CONTROL_AWB_MODE_AUTO)
-            Log.d(tag, "awbLock -> $awbLocked")
         }
 
-        // ✅ FIX: handler para chave 'flash' enviada pela WebGUI (botões Flash/Tocha)
+        // FIX: handler para chave 'flash' enviada pela WebGUI
         params["flash"]?.let {
             flashMode = it as String
             when (flashMode) {
                 "torch" -> { cam.enableLantern(); lanternEnabled = true }
                 else    -> { cam.disableLantern(); lanternEnabled = false }
             }
-            Log.d(tag, "flash -> $flashMode")
         }
 
         params["flashMode"]?.let {
@@ -278,10 +257,11 @@ class Camera2Controller {
                 "torch" -> { cam.enableLantern(); lanternEnabled = true }
                 else    -> { cam.disableLantern(); lanternEnabled = false }
             }
-            Log.d(tag, "flashMode -> $flashMode")
         }
 
-        // ✅ FIX: handler para previewRotation (botões de rotação da WebGUI)
+        // FIX: handler para previewRotation (botões de rotação da WebGUI)
+        // setOrientation NÃO existe no RtmpCamera2 2.6.1 — rotação do encoder é
+        // definida no prepareVideo(). Aqui apenas rotacionamos o preview visual via glInterface.
         params["previewRotation"]?.let {
             val deg = when (it) {
                 is Double -> it.toInt()
@@ -289,10 +269,8 @@ class Camera2Controller {
                 else      -> it.toString().toIntOrNull() ?: 0
             }.let { v -> listOf(0, 90, 180, 270).find { r -> r == v } ?: 0 }
             previewRotation = deg
-            // Aplica rotação no encoder (afeta o stream codificado)
-            try { cam.setOrientation(deg) } catch (e: Exception) { Log.w(tag, "setOrientation: ${e.message}") }
-            // Aplica rotação visual no preview OpenGL (não afeta o stream)
-            try { cam.glInterface?.setRotation(deg) } catch (e: Exception) { Log.w(tag, "glInterface.setRotation: ${e.message}") }
+            try { cam.glInterface?.setRotation(deg) }
+            catch (e: Exception) { Log.w(tag, "glInterface.setRotation: ${e.message}") }
             Log.d(tag, "previewRotation -> $deg")
         }
 
@@ -303,7 +281,6 @@ class Camera2Controller {
                 else      -> it.toString().toIntOrNull() ?: 4000
             }
             if (cam.isStreaming) cam.setVideoBitrateOnFly(currentBitrate * 1024)
-            Log.d(tag, "bitrate -> ${currentBitrate}kbps")
         }
 
         params["fps"]?.let { value ->
@@ -321,7 +298,6 @@ class Camera2Controller {
                 val vOk = cam.prepareVideo(currentWidth, currentHeight, fps, currentBitrate * 1024, 0)
                 val aOk = cam.prepareAudio(128 * 1024, 44100, true)
                 if (wasStreaming && vOk && aOk) cam.startStream(url)
-                Log.d(tag, "fps -> $fps vOk=$vOk")
             }
         }
 
@@ -331,7 +307,6 @@ class Camera2Controller {
                 cam.switchCamera(currentCameraId)
                 if (manualSensor) applyManualSensor()
                 else if (!autoFocus && focusDistance > 0f) cam.setFocusDistance(focusDistance)
-                Log.d(tag, "camera -> $currentCameraId")
             }
         }
 
@@ -357,7 +332,6 @@ class Camera2Controller {
                 val vOk = cam.prepareVideo(w, h, currentFps, br * 1024, 0)
                 val aOk = cam.prepareAudio(128 * 1024, 44100, true)
                 if (wasStreaming && vOk && aOk) cam.startStream(url)
-                Log.d(tag, "resolution -> ${w}x${h} vOk=$vOk")
             }
         }
 
@@ -367,7 +341,7 @@ class Camera2Controller {
                 "fast" -> CameraMetadata.EDGE_MODE_FAST
                 else   -> CameraMetadata.EDGE_MODE_HIGH_QUALITY
             }
-            applyPostProcessing(); Log.d(tag, "edgeMode -> $it")
+            applyPostProcessing()
         }
 
         params["noiseReduction"]?.let {
@@ -377,7 +351,7 @@ class Camera2Controller {
                 "minimal" -> CameraMetadata.NOISE_REDUCTION_MODE_MINIMAL
                 else      -> CameraMetadata.NOISE_REDUCTION_MODE_HIGH_QUALITY
             }
-            applyPostProcessing(); Log.d(tag, "noiseReduction -> $it")
+            applyPostProcessing()
         }
 
         params["hotPixel"]?.let {
@@ -386,7 +360,7 @@ class Camera2Controller {
                 "fast" -> CameraMetadata.HOT_PIXEL_MODE_FAST
                 else   -> CameraMetadata.HOT_PIXEL_MODE_HIGH_QUALITY
             }
-            applyPostProcessing(); Log.d(tag, "hotPixel -> $it")
+            applyPostProcessing()
         }
     }
 
