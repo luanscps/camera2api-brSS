@@ -25,11 +25,11 @@ object WebControlHtml {
         sb.append(".right-panel{width:var(--right-w);flex-shrink:0;background:var(--panel-bg);border-left:2px solid var(--card-border);display:flex;flex-direction:column;overflow:hidden;}")
 
         // Janela flutuante preview
-        sb.append(".preview-win{position:absolute;top:20px;left:20px;")
-        sb.append("width:620px;min-width:280px;min-height:180px;")
+        sb.append(".preview-win{position:fixed;top:20px;left:20px;")
+        sb.append("width:620px;height:420px;min-width:280px;min-height:180px;")
         sb.append("border-top:2px solid var(--w98-border-light);border-left:2px solid var(--w98-border-light);")
         sb.append("border-bottom:2px solid var(--w98-border-darker);border-right:2px solid var(--w98-border-darker);")
-        sb.append("background:var(--w98-bg);z-index:10;")
+        sb.append("background:var(--w98-bg);z-index:500;")
         sb.append("display:flex;flex-direction:column;")
         sb.append("resize:both;overflow:hidden;}")
 
@@ -444,8 +444,9 @@ object WebControlHtml {
 
         // Preview MJPEG
         sb.append("var previewOn=false;")
+                sb.append("var previewManualOff=false;")
         sb.append("function startPreview(){var img=document.getElementById('preview-img');img.src='/api/preview?t='+Date.now();img.style.display='block';document.getElementById('preview-offline').style.display='none';document.getElementById('preview-osd').style.display='flex';previewOn=true;}")
-        sb.append("function stopPreview(){var img=document.getElementById('preview-img');img.src='';img.style.display='none';document.getElementById('preview-offline').style.display='flex';document.getElementById('preview-osd').style.display='none';previewOn=false;}")
+        sb.append("function stopPreview(){previewManualOff=true;var img=document.getElementById('preview-img');img.src='';img.style.display='none';document.getElementById('preview-offline').style.display='flex';document.getElementById('preview-osd').style.display='none';previewOn=false;}")
         sb.append("function previewError(){if(previewOn)stopPreview();}")
         sb.append("function togglePreview(){if(previewOn)stopPreview();else startPreview();}")
 
@@ -525,9 +526,7 @@ object WebControlHtml {
         sb.append("document.getElementById('diag-lat').textContent=lat+'ms';")
         sb.append("document.getElementById('diag-iso').textContent=c.iso||'-';")
         sb.append("document.getElementById('diag-stream').textContent=on?'Ativo':'Off';")
-        sb.append("if(on&&!previewOn)startPreview();")
-        sb.append("if(!on&&previewOn)stopPreview();")
-        sb.append("var u=document.getElementById('rtmp-url');if(u&&d.rtmp_url&&document.activeElement!==u)u.value=d.rtmp_url;")
+        sb.append("if(on&&!previewOn&&!previewManualOff)startPreview();")        sb.append("if(!on&&previewOn)stopPreview();")
         sb.append("var el;")
         sb.append("el=document.getElementById('toggle-manual');if(el)el.checked=c.manual_sensor==='on';")
         sb.append("el=document.getElementById('toggle-ois');if(el)el.checked=c.ois==='on';")
