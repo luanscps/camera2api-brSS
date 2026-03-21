@@ -19,7 +19,7 @@ import java.net.NetworkInterface
 
 class StreamingService : Service(), ConnectChecker {
 
-    private val tag       = "StreamingService"
+    private val tag        = "StreamingService"
     private val notifId   = 1
     private val channelId = "camera2rtsp_channel"
 
@@ -42,7 +42,7 @@ class StreamingService : Service(), ConnectChecker {
     override fun onBind(intent: Intent?): IBinder = binder
 
     companion object {
-        const val ACTION_STOP    = "com.camera2rtsp.STOP"
+        const val ACTION_STOP     = "com.camera2rtsp.STOP"
         const val EXTRA_RTMP_URL = "rtmp_url"
         var instance: StreamingService? = null
             private set
@@ -63,13 +63,10 @@ class StreamingService : Service(), ConnectChecker {
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
         if (intent?.action == ACTION_STOP) { stopSelf(); return START_NOT_STICKY }
         intent?.getStringExtra(EXTRA_RTMP_URL)?.let { rtmpUrl = it }
-
         startForeground(notifId, buildNotification("Aguardando preview..."))
-
         val pm = getSystemService(POWER_SERVICE) as PowerManager
         wakeLock = pm.newWakeLock(PowerManager.PARTIAL_WAKE_LOCK, "camera2rtsp:streaming")
             .apply { acquire(12 * 60 * 60 * 1000L) }
-
         try {
             httpServer = WebControlServer(8080, cameraController, applicationContext)
             httpServer.start()
@@ -77,7 +74,6 @@ class StreamingService : Service(), ConnectChecker {
         } catch (e: Exception) {
             Log.e(tag, "Erro ao iniciar httpServer", e)
         }
-
         return START_STICKY
     }
 
@@ -85,11 +81,15 @@ class StreamingService : Service(), ConnectChecker {
         super.onDestroy()
         instance = null
         try {
-            rtmpStreamer.stop()
+            if (::rtmpStreamer.isInitialized) rtmpStreamer.stop()
             if (::cameraController.isInitialized) cameraController.release()
             if (::httpServer.isInitialized) httpServer.stop()
-        } catch (e: Exception) { Log.e(tag, "Erro ao parar", e) }
-        wakeLock?.release()
+        } catch (e: Exception) {
+            Log.e(tag, "Erro ao parar", e)
+        } finally {
+            wakeLock?.release()
+            wakeLock = null
+        }
         Log.i(tag, "Servico encerrado")
     }
 
@@ -120,21 +120,24 @@ class StreamingService : Service(), ConnectChecker {
         rtmpStreamer.startPreview(facing)
     }
 
-    fun stopPreview()  = rtmpStreamer.stopPreview()
-    fun startStream()  { rtmpStreamer.startStream(applicationContext, rtmpUrl) }
-    fun stopStream()   = rtmpStreamer.stopStream()
+    fun stopPreview() = rtmpStreamer.stopPreview()
 
-    override fun onConnectionStarted(url: String)    { Log.i(tag, "RTMP conectando: $url");   updateNotification("Conectando RTMP...") }
-    override fun onConnectionSuccess()               { Log.i(tag, "RTMP conectado");           updateNotification("Streaming ativo") }
-    override fun onConnectionFailed(reason: String)  { Log.e(tag, "RTMP falhou: $reason");     updateNotification("Erro: $reason") }
-    override fun onDisconnect()                      { Log.i(tag, "RTMP desconectado");        updateNotification("Desconectado") }
-    override fun onAuthError()                       { Log.e(tag, "RTMP auth error") }
-    override fun onAuthSuccess()                     { Log.i(tag, "RTMP auth ok") }
+    fun startStream() {
+        rtmpStreamer.startStream(applicationContext, rtmpUrl)
+    }
+
+    fun stopStream() = rtmpStreamer.stopStream()
+
+    override fun onConnectionStarted(url: String)  { Log.i(tag, "RTMP conectando: $url"); updateNotification("Conectando RTMP...") }
+    override fun onConnectionSuccess()             { Log.i(tag, "RTMP conectado"); updateNotification("Streaming ativo") }
+    override fun onConnectionFailed(reason: String){ Log.e(tag, "RTMP falhou: $reason"); updateNotification("Erro: $reason") }
+    override fun onDisconnect()                    { Log.i(tag, "RTMP desconectado"); updateNotification("Desconectado") }
+    override fun onAuthError()                     { Log.e(tag, "RTMP auth error") }
+    override fun onAuthSuccess()                   { Log.i(tag, "RTMP auth ok") }
 
     private fun createNotificationChannel() {
         val channel = NotificationChannel(
-            channelId, "Camera2 RTMP Streaming",
-            NotificationManager.IMPORTANCE_LOW
+            channelId, "Camera2 RTMP Streaming", NotificationManager.IMPORTANCE_LOW
         ).apply { description = "Stream RTMP ativo"; setShowBadge(false) }
         getSystemService(NotificationManager::class.java).createNotificationChannel(channel)
     }
