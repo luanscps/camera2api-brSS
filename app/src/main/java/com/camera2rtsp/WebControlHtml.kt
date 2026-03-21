@@ -445,7 +445,7 @@ object WebControlHtml {
         // Preview MJPEG
         sb.append("var previewOn=false;")
                 sb.append("var previewManualOff=false;")
-        sb.append("function startPreview(){var img=document.getElementById('preview-img');img.src='/api/preview?t='+Date.now();img.style.display='block';document.getElementById('preview-offline').style.display='none';document.getElementById('preview-osd').style.display='flex';previewOn=true;}")
+        sb.append("function startPreview(){previewManualOff=false;var img=document.getElementById('preview-img');img.src='/api/preview?t='+Date.now();img.style.display='block';document.getElementById('preview-offline').style.display='none';document.getElementById('preview-osd').style.display='flex';previewOn=true;}")
         sb.append("function stopPreview(){previewManualOff=true;var img=document.getElementById('preview-img');img.src='';img.style.display='none';document.getElementById('preview-offline').style.display='flex';document.getElementById('preview-osd').style.display='none';previewOn=false;}")
         sb.append("function previewError(){if(previewOn)stopPreview();}")
         sb.append("function togglePreview(){if(previewOn)stopPreview();else startPreview();}")
@@ -466,7 +466,7 @@ object WebControlHtml {
         sb.append("document.querySelectorAll('[data-rot]').forEach(function(b){b.classList.toggle('sel',+b.getAttribute('data-rot')===deg);});")
         sb.append("curRot=deg;}")
         // setRotation: sempre aplica visual + sempre persiste na API + marca userSetRot
-        sb.append("function setRotation(deg){applyRotation(deg);userSetRot=true;sendControl({previewRotation:deg},null,'Rot '+deg+'\u00b0');}")
+        sb.append("function setRotation(deg){var glDeg=deg;if(deg===90)glDeg=270;else if(deg===270)glDeg=90;applyRotation(deg);userSetRot=true;sendControl({previewRotation:glDeg},null,'Rot '+deg+'\u00b0');}applyRotation(deg);userSetRot=true;sendControl({previewRotation:deg},null,'Rot '+deg+'\u00b0');}")
         // toggleRotLock: se desbloquear, libera o poll sincronizar de novo
         sb.append("function toggleRotLock(){rotLocked=!rotLocked;if(!rotLocked)userSetRot=false;")
         sb.append("var btn=document.getElementById('btn-rot-lock');")
@@ -570,7 +570,7 @@ object WebControlHtml {
         sb.append("b.onclick=function(){setFocusMode(mode);};fg2.appendChild(b);});")
         sb.append("}).catch(function(){console.warn('caps indispon\u00edvel');});}")
 
-        sb.append("initCapabilities();pollStatus();setInterval(pollStatus,2000);")
+        sb.append("function startStream(){sendControl({streamAction:'start'},null,'Iniciando...');}function stopStream(){sendControl({streamAction:'stop'},null,'Parando...');}function setFlash(mode){sendControl({flash:mode},null,'Flash:'+mode);}initCapabilities();pollStatus();setInterval(pollStatus,2000);;")
         sb.append("</script></body></html>")
         return sb.toString()
     }
